@@ -1,12 +1,16 @@
-import { appendFile, readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import {
 	type ExtensionAPI,
 	withFileMutationQueue,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import {
+	appendProjectVentEntry,
+	getProjectVentPath,
+	migrateRepoLocalVent,
+} from "./storage.js";
 
+/** Model-facing input contract for one workflow-friction entry. */
 const ventSchema = Type.Object(
 	{
 		thought: Type.String({
@@ -19,21 +23,22 @@ const ventSchema = Type.Object(
 	{ additionalProperties: false },
 );
 
+/** Normalize user-provided entry text for Markdown storage. */
 function clean(input: string): string {
 	return input.trim().replace(/\r\n/g, "\n");
 }
 
-async function fileExists(path: string): Promise<boolean> {
-	try {
-		await readFile(path, "utf8");
-		return true;
-	} catch (error: unknown) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
-		throw error;
-	}
-}
-
+/** Register centralized vent-log migration, persistence, and rendering. */
 export default function ventExtension(pi: ExtensionAPI) {
+	pi.on("session_start", async (_event, ctx) => {
+		const ventPath = getProjectVentPath(ctx.cwd);
+
+		// Move legacy project history before the session begins producing new entries.
+		await withFileMutationQueue(ventPath, () =>
+			migrateRepoLocalVent(ctx.cwd, ventPath),
+		);
+	});
+
 	pi.registerTool({
 		name: "vent",
 		label: "vent",
@@ -51,11 +56,12 @@ export default function ventExtension(pi: ExtensionAPI) {
 		executionMode: "sequential",
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			// Normalize the entry before deriving any persisted or returned values.
 			const thought = clean(params.thought);
 			if (!thought) throw new Error("vent.thought must not be empty");
 
 			const trigger = params.trigger ? clean(params.trigger) : undefined;
-			const ventPath = resolve(ctx.cwd, "VENT.md");
+			const ventPath = getProjectVentPath(ctx.cwd);
 			const now = new Date();
 			const timestamp =
 				[
@@ -68,8 +74,6 @@ export default function ventExtension(pi: ExtensionAPI) {
 					String(now.getHours()).padStart(2, "0"),
 					String(now.getMinutes()).padStart(2, "0"),
 				].join(":");
-			const heading =
-				"# VENT\n\nFeedback log. Repeated/systemic workflow friction that should become future automation, docs, or workflow fixes.\n\n";
 			const entry = [
 				`## ${timestamp}${trigger ? ` — ${trigger}` : ""}`,
 				"",
@@ -78,10 +82,8 @@ export default function ventExtension(pi: ExtensionAPI) {
 			].join("\n");
 
 			return withFileMutationQueue(ventPath, async () => {
-				if (!(await fileExists(ventPath))) {
-					await writeFile(ventPath, heading, "utf8");
-				}
-				await appendFile(ventPath, entry, "utf8");
+				// Retry migration here so a transient startup failure cannot split history.
+				await appendProjectVentEntry(ctx.cwd, entry, ventPath);
 
 				return {
 					content: [
@@ -90,7 +92,7 @@ export default function ventExtension(pi: ExtensionAPI) {
 							text: `Appended vent entry to VENT.md (${timestamp}).`,
 						},
 					],
-					details: { path: "VENT.md", timestamp, trigger, thought },
+					details: { path: ventPath, timestamp, trigger, thought },
 				};
 			});
 		},

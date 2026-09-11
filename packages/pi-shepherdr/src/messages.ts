@@ -1,3 +1,4 @@
+import { hostname } from "node:os";
 import {
 	type ExtensionAPI,
 	type ExtensionContext,
@@ -5,10 +6,15 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Box, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { activityTask } from "./activity.js";
+import { sendPolicyMessage, startPreparedIdleTurn } from "./delivery.js";
+import { getCurrentPane, getSnapshot } from "./herdr.js";
+import type { HerdrConnection } from "./herdr-client.js";
 import type {
 	LatestAssistant,
 	MonitoredAgent,
 	PaneInfo,
+	PeerMessage,
+	PendingAsk,
 	SettledAgentStatus,
 } from "./types.js";
 
@@ -31,11 +37,65 @@ interface AgentEventLabels {
 	workspace?: string;
 }
 
+export function agentSource(agent: PaneInfo, labels: AgentEventLabels) {
+	const paneName = agent.label || agent.title;
+	return {
+		pane: agent.pane_id,
+		workspace: agent.workspace_id,
+		tab: agent.tab_id,
+		...(agent.name ? { name: agent.name } : {}),
+		...(paneName ? { pane_name: paneName } : {}),
+		...(labels.workspace ? { workspace_name: labels.workspace } : {}),
+		...(labels.tab ? { tab_name: labels.tab } : {}),
+	};
+}
+
+function sourceAttributes(source: Record<string, string | undefined>): string {
+	return Object.entries(source)
+		.filter((entry): entry is [string, string] => entry[1] !== undefined)
+		.map(
+			([key, value]) =>
+				`${key}="${xml(value).replaceAll("\n", "&#10;").replaceAll("\r", "&#13;")}"`,
+		)
+		.join(" ");
+}
+
+export async function attributeAgentPrompt(
+	client: HerdrConnection,
+	message: string,
+	kind: "message" | "task",
+): Promise<PeerMessage> {
+	const [pane, snapshot] = await Promise.all([
+		getCurrentPane(client),
+		getSnapshot(client),
+	]);
+	const workspace = snapshot.workspaces.find(
+		(workspace) => workspace.workspace_id === pane.workspace_id,
+	)?.label;
+	const tab = snapshot.tabs.find((tab) => tab.tab_id === pane.tab_id)?.label;
+	const source = {
+		kind,
+		host: hostname(),
+		session: process.env["HERDR_SESSION"] || "default",
+		...agentSource(pane, {
+			...(workspace ? { workspace } : {}),
+			...(tab ? { tab } : {}),
+		}),
+	};
+	return {
+		sender: `<herdr_sender ${sourceAttributes(source)} />`,
+		text: message,
+	};
+}
+
 interface AgentEventOptions {
 	agent: PaneInfo;
+	agentToolName: string;
+	ask?: PendingAsk;
 	blockedMessage?: string;
 	labels: AgentEventLabels;
 	machine: string;
+	machineLabel: string;
 	operatorPrefix: string;
 	record: MonitoredAgent;
 	reply?: LatestAssistant;
@@ -43,9 +103,11 @@ interface AgentEventOptions {
 }
 
 interface AgentEventDetails {
+	ask?: PendingAsk;
 	blockedOn?: string;
 	cwd?: string;
 	machine: string;
+	machineLabel?: string;
 	name?: string;
 	paneId: string;
 	response?: string;
@@ -53,6 +115,54 @@ interface AgentEventDetails {
 	tab?: string;
 	task?: string;
 	workspace?: string;
+}
+
+function eventAsk(value: unknown): PendingAsk | undefined {
+	if (typeof value !== "object" || value === null) return undefined;
+	const record = value as Record<string, unknown>;
+	if (
+		typeof record["toolCallId"] !== "string" ||
+		typeof record["handoff"] !== "boolean" ||
+		!Array.isArray(record["prompts"])
+	) {
+		return undefined;
+	}
+	const prompts: PendingAsk["prompts"] = [];
+	for (const value of record["prompts"]) {
+		if (typeof value !== "object" || value === null) return undefined;
+		const prompt = value as Record<string, unknown>;
+		if (
+			typeof prompt["title"] !== "string" ||
+			typeof prompt["multiple"] !== "boolean" ||
+			!Array.isArray(prompt["choices"])
+		) {
+			return undefined;
+		}
+		const choices: PendingAsk["prompts"][number]["choices"] = [];
+		for (const value of prompt["choices"]) {
+			if (typeof value !== "object" || value === null) return undefined;
+			const choice = value as Record<string, unknown>;
+			if (typeof choice["label"] !== "string") return undefined;
+			choices.push({
+				label: choice["label"],
+				...(typeof choice["description"] === "string"
+					? { description: choice["description"] }
+					: {}),
+			});
+		}
+		prompts.push({
+			title: prompt["title"],
+			multiple: prompt["multiple"],
+			choices,
+			...(typeof prompt["body"] === "string" ? { body: prompt["body"] } : {}),
+		});
+	}
+	if (prompts.length === 0) return undefined;
+	return {
+		toolCallId: record["toolCallId"],
+		handoff: record["handoff"],
+		prompts,
+	};
 }
 
 function boundedVoicePrompt(prompt: string, truncationNotice: string): string {
@@ -75,7 +185,7 @@ function boundedVoicePrompt(prompt: string, truncationNotice: string): string {
 
 function agentVoicePrompt(details: AgentEventDetails): string {
 	const lines = [
-		`Worker: ${details.machine} / ${details.name?.trim() || "unnamed"}`,
+		`Worker: ${details.machineLabel ?? details.machine} / ${details.name?.trim() || "unnamed"}`,
 		`State: ${details.state}`,
 	];
 	if (details.task?.trim()) lines.push(`Task:\n${details.task.trim()}`);
@@ -88,6 +198,11 @@ function agentVoicePrompt(details: AgentEventDetails): string {
 			"The blocked worker details above were truncated. Tell the user and ask whether they would like the rest.";
 		if (details.blockedOn?.trim())
 			lines.push(`Reason:\n${details.blockedOn.trim()}`);
+		if (details.ask) {
+			lines.push(
+				`Questions:\n${details.ask.prompts.map((prompt) => prompt.title).join(", ")}`,
+			);
+		}
 	} else {
 		instruction =
 			details.state === "failed"
@@ -123,19 +238,21 @@ function operatorCommand(operatorPrefix: string, command: string): string {
 }
 
 function blockedOperatorHint(
+	agentToolName: string,
 	machine: string,
 	operatorPrefix: string,
 	paneId: string,
 ): string {
-	return `Inspect first with ${operatorCommand(operatorPrefix, `agent read ${paneId} --source visible`)}; respond through herdr_agents with machine=${JSON.stringify(machine)}, or use ${operatorCommand(operatorPrefix, `agent send-keys ${paneId} <keys>`)} for interactive controls.`;
+	return `Inspect first with ${operatorCommand(operatorPrefix, `agent read ${paneId} --source visible`)}; respond through ${agentToolName} with machine=${JSON.stringify(machine)}, or use ${operatorCommand(operatorPrefix, `agent send-keys ${paneId} <keys>`)} for interactive controls.`;
 }
 
 function failedOperatorHint(
+	agentToolName: string,
 	machine: string,
 	operatorPrefix: string,
 	paneId: string,
 ): string {
-	return `Inspect with ${operatorCommand(operatorPrefix, `agent read ${paneId} --source recent-unwrapped --lines 80`)} and assess the failure. If this task has not already been retried and one simple corrective prompt could recover it, try once through herdr_agents with machine=${JSON.stringify(machine)}. If it fails again or the setup looks broken, stop retrying and tell the user.`;
+	return `Inspect with ${operatorCommand(operatorPrefix, `agent read ${paneId} --source recent-unwrapped --lines 80`)} and assess the failure. If this task has not already been retried and one simple corrective prompt could recover it, try once through ${agentToolName} with machine=${JSON.stringify(machine)}. If it fails again or the setup looks broken, stop retrying and tell the user.`;
 }
 
 function eventDetails(value: unknown): AgentEventDetails | undefined {
@@ -155,13 +272,16 @@ function eventDetails(value: unknown): AgentEventDetails | undefined {
 		typeof details[field] === "string"
 			? { [field]: details[field] as string }
 			: {};
+	const ask = eventAsk(details["ask"]);
 	return {
 		machine:
 			typeof details["machine"] === "string" ? details["machine"] : "local",
 		paneId: details["paneId"],
 		state: details["state"],
+		...(ask ? { ask } : {}),
 		...optional("blockedOn"),
 		...optional("cwd"),
+		...optional("machineLabel"),
 		...optional("name"),
 		...optional("response"),
 		...optional("tab"),
@@ -176,9 +296,12 @@ function agentEvent(options: AgentEventOptions): {
 } {
 	const {
 		agent,
+		agentToolName,
+		ask,
 		blockedMessage,
 		labels,
 		machine,
+		machineLabel,
 		operatorPrefix,
 		record,
 		reply,
@@ -193,27 +316,31 @@ function agentEvent(options: AgentEventOptions): {
 		: failed
 			? "herdr_agent_failed"
 			: "herdr_agent_result";
-	const attributes = [
-		`machine="${xml(machine)}"`,
-		`pane="${xml(agent.pane_id)}"`,
-		record.name ? `name="${xml(record.name)}"` : undefined,
-		cwd ? `directory="${xml(cwd)}"` : undefined,
-	]
-		.filter(Boolean)
-		.join(" ");
+	const attributes = sourceAttributes({
+		machine,
+		machine_name: machineLabel !== machine ? machineLabel : undefined,
+		...agentSource(agent, labels),
+		name: agent.name ?? record.name,
+		directory: cwd,
+	});
 	const lines = [`<${tag} ${attributes}>`];
 	if (task) lines.push(`<task>${xml(task)}</task>`);
 	if (blockedMessage) {
 		lines.push(`<blocked_on>${xml(blockedMessage)}</blocked_on>`);
 	}
+	if (blocked && ask) {
+		lines.push(
+			`<ask>${xml(JSON.stringify({ handoff: ask.handoff, prompts: ask.prompts }))}</ask>`,
+		);
+	}
 	if (blocked) {
 		lines.push(
-			`<operator_hint>${xml(blockedOperatorHint(machine, operatorPrefix, agent.pane_id))}</operator_hint>`,
+			`<operator_hint>${xml(blockedOperatorHint(agentToolName, machine, operatorPrefix, agent.pane_id))}</operator_hint>`,
 		);
 	}
 	if (failed) {
 		lines.push(
-			`<operator_hint>${xml(failedOperatorHint(machine, operatorPrefix, agent.pane_id))}</operator_hint>`,
+			`<operator_hint>${xml(failedOperatorHint(agentToolName, machine, operatorPrefix, agent.pane_id))}</operator_hint>`,
 		);
 	}
 	if (reply) lines.push(`<response>${xml(reply.text)}</response>`);
@@ -223,9 +350,11 @@ function agentEvent(options: AgentEventOptions): {
 		content: lines.join("\n"),
 		details: {
 			machine,
+			machineLabel,
 			paneId: agent.pane_id,
 			state: blocked ? "blocked" : failed ? "failed" : "finished",
-			...(record.name ? { name: record.name } : {}),
+			...(blocked && ask ? { ask } : {}),
+			...(agent.name || record.name ? { name: agent.name || record.name } : {}),
 			...(cwd ? { cwd } : {}),
 			...(labels.workspace ? { workspace: labels.workspace } : {}),
 			...(labels.tab ? { tab: labels.tab } : {}),
@@ -242,10 +371,12 @@ export function injectAgentEvent(
 	options: AgentEventOptions,
 ): void {
 	const message = agentEvent(options);
-	const delivery = ctx.isIdle()
-		? { triggerTurn: true, deliverAs: "steer" as const }
+	const idle = ctx.isIdle();
+	const delivery = idle
+		? { triggerTurn: false, deliverAs: "steer" as const }
 		: { deliverAs: "steer" as const };
-	pi.sendMessage(
+	sendPolicyMessage(
+		pi,
 		{
 			customType: AGENT_EVENT_MESSAGE_TYPE,
 			content: message.content,
@@ -254,6 +385,7 @@ export function injectAgentEvent(
 		},
 		delivery,
 	);
+	if (idle) startPreparedIdleTurn(pi, ctx);
 	announceAgentEvent(pi, message.details);
 }
 
@@ -282,7 +414,7 @@ export function registerAgentEventRenderer(pi: ExtensionAPI): void {
 			const agentIdentity = details?.name
 				? `${details.name} (${details.paneId})`
 				: (details?.paneId ?? "unknown");
-			const identity = `${details.machine} / ${agentIdentity}`;
+			const identity = `${details.machineLabel ?? details.machine} / ${agentIdentity}`;
 			const title = theme.fg(
 				blocked || failed ? "error" : "success",
 				`Herdr agent ${identity} · ${blocked ? "blocked" : failed ? "failed" : "finished"}`,
@@ -308,6 +440,38 @@ export function registerAgentEventRenderer(pi: ExtensionAPI): void {
 						0,
 					),
 				);
+				if (details.ask) {
+					box.addChild(
+						new Text(
+							theme.fg(
+								"muted",
+								`Questions: ${details.ask.prompts.map((prompt) => prompt.title).join(", ")}`,
+							),
+							0,
+							0,
+						),
+					);
+					if (expanded) {
+						for (const prompt of details.ask.prompts) {
+							box.addChild(new Spacer(1));
+							box.addChild(new Text(theme.fg("muted", prompt.title), 0, 0));
+							if (prompt.body) {
+								box.addChild(
+									new Markdown(prompt.body, 0, 0, getMarkdownTheme()),
+								);
+							}
+							if (prompt.choices.length > 0) {
+								box.addChild(
+									new Text(
+										`Choices: ${prompt.choices.map((choice) => choice.label).join(", ")}`,
+										0,
+										0,
+									),
+								);
+							}
+						}
+					}
+				}
 			}
 			if (expanded && details?.task) {
 				box.addChild(new Spacer(1));

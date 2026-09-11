@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { cpSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -15,6 +15,17 @@ if (packageArgs.length === 0) {
 }
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const workspacePackages = new Map(
+	readdirSync(join(repoRoot, "packages"), { withFileTypes: true })
+		.filter((entry) => entry.isDirectory())
+		.flatMap((entry) => {
+			const root = join(repoRoot, "packages", entry.name);
+			const manifest = join(root, "package.json");
+			if (!existsSync(manifest)) return [];
+			const pkg = JSON.parse(readFileSync(manifest, "utf8"));
+			return typeof pkg.name === "string" ? [[pkg.name, { root, pkg }]] : [];
+		}),
+);
 const allowedLoaderModules = new Set([
 	"@earendil-works/pi-agent-core",
 	"@earendil-works/pi-ai",
@@ -54,10 +65,9 @@ function filesUnder(path, predicate = () => true) {
 }
 
 function verifyLoaderImports(packageRoot) {
-	const dist = join(packageRoot, "dist");
 	let files;
 	try {
-		files = filesUnder(dist, (path) => /\.(?:c|m)?js$/.test(path));
+		files = runtimeModuleFiles(packageRoot);
 	} catch (error) {
 		if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return;
 		throw error;
@@ -122,6 +132,14 @@ function verifyLoaderImports(packageRoot) {
 	process.exit(1);
 }
 
+function runtimeModuleFiles(packageRoot) {
+	const isJavaScript = (path) => /\.(?:c|m)?js$/.test(path);
+	const files = filesUnder(join(packageRoot, "dist"), isJavaScript);
+	const vendor = join(packageRoot, "vendor");
+	if (existsSync(vendor)) files.push(...filesUnder(vendor, isJavaScript));
+	return files;
+}
+
 function packPackage(packageRoot, tempRoot) {
 	const output = run(
 		"npm",
@@ -148,25 +166,91 @@ function copyPackage(packageRoot, tempRoot) {
 	mkdirSync(unpacked);
 	cpSync(join(packageRoot, "dist"), join(unpacked, "dist"), { recursive: true });
 	cpSync(join(packageRoot, "package.json"), join(unpacked, "package.json"));
+	const vendor = join(packageRoot, "vendor");
+	if (existsSync(vendor)) cpSync(vendor, join(unpacked, "vendor"), { recursive: true });
+	const changelogRuntime = join(packageRoot, "changelog.js");
+	if (existsSync(changelogRuntime)) cpSync(changelogRuntime, join(unpacked, "changelog.js"));
 	return unpacked;
+}
+
+function stagePackageUnderNodeModules(packageRoot, isolatedRoot) {
+	const packageJson = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
+	if (typeof packageJson.name !== "string" || packageJson.name.length === 0) {
+		throw new Error(`${packageRoot} has no package name`);
+	}
+	const stagedPackage = join(isolatedRoot, "node_modules", ...packageJson.name.split("/"));
+	mkdirSync(dirname(stagedPackage), { recursive: true });
+	cpSync(packageRoot, stagedPackage, { recursive: true });
+	return stagedPackage;
 }
 
 function installRuntimeDependencies(packageRoot, isolatedRoot) {
 	const packageJson = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
+	const workspaceJson = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8"));
+	const externalDependencies = {};
+	const localDependencies = new Set();
+	const visited = new Set([packageJson.name]);
+	const collect = (pkg) => {
+		const optionalPeers = pkg.peerDependenciesMeta ?? {};
+		for (const [name, range] of [
+			...Object.entries(pkg.dependencies ?? {}),
+			...Object.entries(pkg.peerDependencies ?? {}).filter(
+				([name]) => optionalPeers[name]?.optional !== true,
+			),
+		]) {
+			const workspace = workspacePackages.get(name);
+			if (workspace) {
+				if (visited.has(name)) continue;
+				visited.add(name);
+				localDependencies.add(name);
+				collect(workspace.pkg);
+				continue;
+			}
+			externalDependencies[name] = workspaceJson.devDependencies?.[name] ?? range;
+		}
+	};
+	collect(packageJson);
 	writeFileSync(join(isolatedRoot, "package.json"), JSON.stringify({
 		private: true,
-		dependencies: packageJson.dependencies ?? {},
+		dependencies: externalDependencies,
 	}));
 	run("npm", ["install", "--ignore-scripts", "--legacy-peer-deps", "--no-audit", "--no-fund", "--package-lock=false"], {
 		cwd: isolatedRoot,
 		capture: true,
 		env: { npm_config_dry_run: "false", NPM_CONFIG_DRY_RUN: "false" },
 	});
+	return [...localDependencies];
+}
+
+function stageWorkspaceDependencies(names, isolatedRoot) {
+	const packRoot = join(isolatedRoot, "workspace-packs");
+	mkdirSync(packRoot);
+	for (const name of names) {
+		const workspace = workspacePackages.get(name);
+		if (!workspace) throw new Error(`Missing workspace dependency ${name}`);
+		const output = run(
+			"npm",
+			["pack", "--ignore-scripts", "--json", "--pack-destination", packRoot, workspace.root],
+			{
+				cwd: repoRoot,
+				capture: true,
+				env: { npm_config_dry_run: "false", NPM_CONFIG_DRY_RUN: "false" },
+			},
+		);
+		const packed = JSON.parse(output);
+		const filename = Array.isArray(packed) && typeof packed[0]?.filename === "string"
+			? packed[0].filename
+			: undefined;
+		if (!filename) throw new Error(`npm pack did not report an artifact for ${name}`);
+		const staged = join(isolatedRoot, "node_modules", ...name.split("/"));
+		rmSync(staged, { recursive: true, force: true });
+		mkdirSync(staged, { recursive: true });
+		run("tar", ["-xzf", join(packRoot, filename), "--strip-components=1", "-C", staged]);
+	}
 }
 
 async function loadLazyLocalModules(packageRoot) {
-	const dist = join(packageRoot, "dist");
-	const files = filesUnder(dist, (path) => /\.(?:c|m)?js$/.test(path));
+	const files = runtimeModuleFiles(packageRoot);
 	const dynamicSpecifierPattern = /\bimport\(\s*["'](\.[^"']+)["']\s*\)/g;
 	const modules = new Set();
 	for (const path of files) {
@@ -213,9 +297,11 @@ for (const packageArg of packageArgs) {
 		const isolatedPackage = noPack
 			? copyPackage(packageRoot, tempRoot)
 			: packPackage(packageRoot, tempRoot);
-		installRuntimeDependencies(isolatedPackage, tempRoot);
-		await loadPackedExtensions(isolatedPackage, tempRoot);
-		await loadLazyLocalModules(isolatedPackage);
+		const workspaceDependencies = installRuntimeDependencies(isolatedPackage, tempRoot);
+		stageWorkspaceDependencies(workspaceDependencies, tempRoot);
+		const stagedPackage = stagePackageUnderNodeModules(isolatedPackage, tempRoot);
+		await loadPackedExtensions(stagedPackage, tempRoot);
+		await loadLazyLocalModules(stagedPackage);
 		console.log(`Verified Pi extension artifact: ${packageJson.name}`);
 	} finally {
 		rmSync(tempRoot, { recursive: true, force: true });

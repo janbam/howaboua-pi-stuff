@@ -1,11 +1,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { buildSessionContext, convertToLlm, getAgentDir, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { convertToLlm, getAgentDir, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { Api, ImageContent, Message, Model, TextContent, ToolResultMessage, UserMessage } from "@earendil-works/pi-ai";
 import { CODEX_TOOL_CALL_PROVIDERS, convertResponsesMessages } from "../../providers/openai-responses/shared.ts";
 import { isCodexTransportModel } from "../prompt/codex-model.ts";
 import { isProviderContextExcludedMessage } from "../prompt/context-filter.ts";
+import { CodexDeveloperMessageBridge } from "../developer-messages.ts";
+import { projectCodexReasoningHistory } from "../reasoning-history.ts";
 
 /**
  * Responses compaction reuses the provider's serializer.
@@ -148,7 +150,7 @@ export function serializeActiveSessionToResponsesInput<TApi extends Api>(args: {
 	leafId?: string | null | undefined;
 	options?: SerializeResponsesMessagesOptions | undefined;
 }): ResponsesInputItem[] {
-	const messages = buildSessionContext(args.entries, args.leafId).messages
+	const messages = projectCodexReasoningHistory(args.entries, undefined, args.leafId)
 		.filter((message) => !isProviderContextExcludedMessage(message));
 	return serializeMessagesToResponsesInput(args.model, messages, args.options);
 }
@@ -158,11 +160,15 @@ export function serializeMessagesToResponsesInput<TApi extends Api>(
 	messages: AgentMessage[],
 	options: SerializeResponsesMessagesOptions = {},
 ): ResponsesInputItem[] {
-	const llmMessages = applyBlockImages(convertToLlm(messages), options.blockImages ?? readBlockImagesSetting());
+	const developerMessages = new CodexDeveloperMessageBridge();
+	const llmMessages = applyBlockImages(
+		convertToLlm(developerMessages.prepare(messages, true, model)),
+		options.blockImages ?? readBlockImagesSetting(),
+	);
 	const allowedToolCallProviders = isCodexTransportModel(model) && !CODEX_TOOL_CALL_PROVIDERS.has(model.provider)
 		? new Set([...CODEX_TOOL_CALL_PROVIDERS, model.provider])
 		: CODEX_TOOL_CALL_PROVIDERS;
-	return convertResponsesMessages(
+	const input = convertResponsesMessages(
 		model,
 		{
 			messages: llmMessages,
@@ -174,6 +180,7 @@ export function serializeMessagesToResponsesInput<TApi extends Api>(
 			...(options.grammarToolInputProperties ? { grammarToolInputProperties: options.grammarToolInputProperties } : {}),
 		},
 	) as ResponsesInputItem[];
+	return (developerMessages.rewritePayload({ input }, model) as { input: ResponsesInputItem[] }).input;
 }
 
 export function createResponsesInputParitySignature(input: readonly unknown[]): string[] {

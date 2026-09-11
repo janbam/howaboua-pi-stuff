@@ -51,6 +51,8 @@ export interface CodexLanVoiceServer {
 	readonly customWebAppReady: boolean;
 	agentStarted(): void;
 	agentSettled(text?: string): void;
+	uiPromptStarted(title?: string): void;
+	uiPromptEnded(agentRunning: boolean): void;
 	piEvent(event: string, data: unknown): void;
 	close(): Promise<void>;
 }
@@ -89,7 +91,9 @@ export async function startCodexLanVoiceServer(options: {
 	};
 	const initialConfig = options.getConfig();
 	const initialWebApp = resolveWebApp(initialConfig);
-	const certificate = resolveLanVoiceCertificate(options.certificateAgentDir);
+	const certificate = await resolveLanVoiceCertificate(
+		options.certificateAgentDir,
+	);
 	const ownerIsActive = () =>
 		options.ctx.sessionManager.getSessionId() === options.ownerSessionId;
 	let activeConversation:
@@ -365,6 +369,9 @@ export async function startCodexLanVoiceServer(options: {
 		customWebAppReady: Boolean(initialWebApp.customApp),
 		agentStarted: () => activity.working(),
 		agentSettled: (text) => activity.settled(text),
+		uiPromptStarted: (title) => activity.waiting(title),
+		uiPromptEnded: (agentRunning) =>
+			agentRunning ? activity.working() : activity.settled(),
 		piEvent(event, data) {
 			if (!ownerIsActive() || !clients.hasEventClients()) return;
 			let serialized: unknown;

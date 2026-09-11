@@ -14,6 +14,13 @@ test("legacy persisted config shapes migrate to the current groups", () => {
 	const normalized = normalizeCodexConversionConfig(flat.config);
 	assert.deepEqual(normalized.scope, { allProviders: "on", additionalProviders: [] });
 	assert.equal(normalized.openai.fast, true);
+	for (const [stored, expected] of [
+		[true, "on"], [false, "off"],
+		["off", "off"], ["on", "on"], ["minimal", "minimal"],
+		["invalid", "off"], [undefined, "off"],
+	] as const) {
+		assert.equal(normalizeCodexConversionConfig({ ui: { compactTools: stored } }).ui.compactTools, expected);
+	}
 
 	const code = migrateCodexConversionConfigIfNeeded({ beta: { codeMode: true, responsesLite: false } });
 	assert.equal(code.migrated, true);
@@ -22,6 +29,45 @@ test("legacy persisted config shapes migrate to the current groups", () => {
 		openai: { proxyResponsesLite: false },
 		compaction: { v2UserMessageRetention: 64 },
 	});
+	assert.equal(normalizeCodexConversionConfig(code.config).compaction.portableSummary, false);
+	assert.equal(normalizeCodexConversionConfig({ compaction: { portableSummary: true } }).compaction.portableSummary, false);
+	assert.equal(normalizeCodexConversionConfig({
+		compaction: { responsesCompaction: true, portableSummary: true },
+	}).compaction.portableSummary, true);
+	assert.deepEqual(normalizeCodexConversionConfig({
+		compaction: {
+			contextManagement: "remote",
+			responsesCompaction: true,
+			portableSummary: true,
+		},
+	}).compaction, {
+		contextManagement: "remote",
+		hybridCompaction: false,
+		responsesCompaction: false,
+		portableSummary: false,
+		v2UserMessageRetention: 64,
+	});
+	for (const contextManagement of ["off", "local", "tree", "remote"] as const) {
+		const compaction = normalizeCodexConversionConfig({
+			compaction: { contextManagement, hybridCompaction: true, responsesCompaction: true, portableSummary: true },
+		}).compaction;
+		assert.equal(compaction.contextManagement, contextManagement);
+		assert.equal(compaction.hybridCompaction, contextManagement !== "off");
+		assert.equal(compaction.responsesCompaction, contextManagement === "off");
+		assert.equal(compaction.portableSummary, contextManagement === "off");
+	}
+	assert.equal(normalizeCodexConversionConfig({
+		compaction: { contextManagement: "invalid" },
+	}).compaction.contextManagement, "off");
+	assert.equal(normalizeCodexConversionConfig({
+		voice: { refreshRealtimeAfterCompaction: true },
+	}).voice.refreshRealtimeAfterCompaction, false);
+	assert.equal(normalizeCodexConversionConfig({
+		voice: {
+			contextModel: { provider: "openai-codex", modelId: "gpt-5.6-luna" },
+			refreshRealtimeAfterCompaction: true,
+		},
+	}).voice.refreshRealtimeAfterCompaction, true);
 });
 
 test("Notebook heap configuration is bounded without migrating grouped config", () => {

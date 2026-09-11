@@ -86,14 +86,18 @@ export function registerIncrementalWorkflow(
 
 	pi.registerCommand("end", {
 		description:
-			"Roll up work since /marker into a summary and advance the marker",
+			"Summarize the conversation since /marker and advance the marker",
 		handler: async (args, ctx) => {
 			await ctx.waitForIdle();
 			if (!marker.id) {
 				ctx.ui.notify("No marker set. Run /marker first", "warning");
 				return;
 			}
-			if (!ctx.sessionManager.getEntry(marker.id)) {
+			const navigationTargetId = marker.navigationTargetId(ctx);
+			if (
+				!navigationTargetId ||
+				!ctx.sessionManager.getEntry(navigationTargetId)
+			) {
 				ctx.ui.notify(
 					"Stored marker no longer exists on this session. Run /marker again",
 					"warning",
@@ -105,13 +109,16 @@ export function registerIncrementalWorkflow(
 				return;
 			}
 
-			ctx.ui.setWorkingMessage(
-				ctx.ui.theme.fg("dim", "Summarizing increment…"),
-			);
+			ctx.ui.setWorkingMessage(ctx.ui.theme.fg("dim", "Saving summary…"));
 			if (ctx.hasUI) {
 				ctx.ui.setWidget(
 					INCREMENTAL_WORKFLOW_END_WIDGET,
-					[ctx.ui.theme.fg("dim", "Summarising back to marker...")],
+					[
+						ctx.ui.theme.fg(
+							"dim",
+							"Saving summary before returning to marker...",
+						),
+					],
 					{ placement: "aboveEditor" },
 				);
 			}
@@ -132,11 +139,11 @@ export function registerIncrementalWorkflow(
 				result = summaryConfig
 					? await navigateWithSummaryModel(
 							ctx,
-							marker.id,
+							navigationTargetId,
 							navigationOptions,
 							summaryConfig,
 						)
-					: await ctx.navigateTree(marker.id, navigationOptions);
+					: await ctx.navigateTree(navigationTargetId, navigationOptions);
 			} finally {
 				if (ctx.hasUI) {
 					ctx.ui.setWidget(INCREMENTAL_WORKFLOW_END_WIDGET, undefined);
@@ -156,12 +163,7 @@ export function registerIncrementalWorkflow(
 				);
 				return;
 			}
-			marker.apply(
-				pi,
-				ctx,
-				nextMarkerId,
-				"Increment summarized and marker advanced",
-			);
+			marker.apply(pi, ctx, nextMarkerId, "Summary saved and marker advanced");
 			announceEndCompleted(pi);
 		},
 	});

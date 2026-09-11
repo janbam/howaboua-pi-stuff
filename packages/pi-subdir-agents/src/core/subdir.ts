@@ -12,10 +12,9 @@ import type { PersistedContextFile } from "./subdir/details.js";
 import { mergePersistedContextDetails } from "./subdir/details.js";
 import { contentRootForTarget, resolvePath } from "./subdir/paths.js";
 import {
+	isContentSearchShellCommand,
 	isDiscoveryShellCommand,
-	isPathOutputShellCommand,
 	shellOutputBase,
-	shellOutputToolName,
 	shellTargets,
 } from "./subdir/shell-targets.js";
 import {
@@ -23,12 +22,19 @@ import {
 	type DiscoveryEvent,
 } from "./subdir/tool-events.js";
 
-export function registerSubdirContextAutoload(pi: ExtensionAPI): void {
+export function registerSubdirContextAutoload(
+	pi: ExtensionAPI,
+	developerMessages?: Partial<
+		Pick<
+			typeof import("@howaboua/pi-codex-conversion/developer-messages"),
+			"trySendCodexDeveloperCustomMessage"
+		>
+	>,
+): void {
 	const loadedAgents = new Set<string>();
 	const loadedAgentsContent = new Map<string, string>();
 	let currentCwd = "";
 	let cwdAgentsPath = "";
-	let readCount = 0;
 
 	function relativePath(absolutePath: string): string {
 		const relative = currentCwd
@@ -40,7 +46,6 @@ export function registerSubdirContextAutoload(pi: ExtensionAPI): void {
 	function resetSession(cwd: string): void {
 		currentCwd = resolvePath(cwd, process.cwd());
 		cwdAgentsPath = path.join(currentCwd, "AGENTS.md");
-		readCount = 0;
 		loadedAgents.clear();
 		loadedAgentsContent.clear();
 		loadedAgents.add(cwdAgentsPath);
@@ -89,12 +94,14 @@ export function registerSubdirContextAutoload(pi: ExtensionAPI): void {
 			return pathInput ? [resolvePath(pathInput, eventCwd)] : [eventCwd];
 		if (isPathDiscoveryTool) {
 			const base = pathInput ? resolvePath(pathInput, eventCwd) : eventCwd;
-			return [base, ...pathsFromToolText(event.content, base, event.toolName)];
+			return event.toolName === "grep"
+				? [base, ...pathsFromToolText(event.content, base)]
+				: [base];
 		}
 		if (!shellInput) return [];
 		const base = shellOutputBase(shellInput, eventCwd);
-		const outputPaths = isPathOutputShellCommand(shellInput)
-			? pathsFromToolText(event.content, base, shellOutputToolName(shellInput))
+		const outputPaths = isContentSearchShellCommand(shellInput)
+			? pathsFromToolText(event.content, base)
 			: [];
 		return [...shellTargets(shellInput, eventCwd), ...outputPaths];
 	}
@@ -102,7 +109,6 @@ export function registerSubdirContextAutoload(pi: ExtensionAPI): void {
 	function pathsFromToolText(
 		content: Array<{ type: string; text?: string }>,
 		base: string,
-		toolName: string,
 	): string[] {
 		const maxLines = 250;
 		return content.flatMap((item) => {
@@ -110,17 +116,24 @@ export function registerSubdirContextAutoload(pi: ExtensionAPI): void {
 			return item.text
 				.split(/\r?\n/)
 				.slice(0, maxLines)
-				.map((line) => outputPathCandidate(line.trim(), toolName))
+				.map((line) => outputPathCandidate(line.trim()))
 				.filter((line) => line && looksPathLike(line))
 				.map((line) => resolvePath(line, base))
-				.filter((candidate) => fs.existsSync(candidate));
+				.filter((candidate) => {
+					try {
+						return fs.statSync(candidate).isFile();
+					} catch {
+						return false;
+					}
+				});
 		});
 	}
 
-	function outputPathCandidate(line: string, toolName: string): string {
-		if (toolName !== "grep") return line;
-		const match = line.match(/^(.+?):\d+(?::\d+)?:/);
-		return match?.[1] ?? line.split(":", 1)[0] ?? line;
+	function outputPathCandidate(line: string): string {
+		// Bare names can come from listings piped through grep, not file content.
+		const start = /^[A-Za-z]:[\\/]/.test(line) ? 2 : 0;
+		const separator = line.indexOf(":", start);
+		return separator > start ? line.slice(0, separator) : "";
 	}
 
 	function looksPathLike(value: string): boolean {
@@ -154,7 +167,6 @@ export function registerSubdirContextAutoload(pi: ExtensionAPI): void {
 	async function readAppendixFiles(
 		agentFiles: string[],
 		branchContext: Map<string, string>,
-		refreshAppendix: boolean,
 	) {
 		const loadedNow: string[] = [];
 		const persistedFiles: PersistedContextFile[] = [];
@@ -168,12 +180,9 @@ export function registerSubdirContextAutoload(pi: ExtensionAPI): void {
 				const previousContent =
 					loadedAgentsContent.get(agentsPath) ?? branchContext.get(agentsPath);
 				const changed = previousContent !== content;
-				loadedAgents.add(agentsPath);
-				loadedAgentsContent.set(agentsPath, content);
 				const rel = relativePath(agentsPath);
 				if (changed) persistedFiles.push({ path: rel, content });
-				if (!wasLoaded || changed || refreshAppendix)
-					appendixFiles.push({ path: rel, content });
+				if (!wasLoaded || changed) appendixFiles.push({ path: rel, content });
 				if (!wasLoaded) loadedNow.push(rel);
 			} catch (error) {
 				if (error instanceof Error) failedFiles.push({ agentsPath, error });
@@ -212,16 +221,11 @@ export function registerSubdirContextAutoload(pi: ExtensionAPI): void {
 
 		const branchContext = collectBranchContext(ctx, currentCwd, cwdAgentsPath);
 		mergeRuntimeFromBranch(branchContext);
-		readCount += 1;
 
 		const agentFiles = agentsForTargets(targets);
 		if (!agentFiles.length) return undefined;
 
-		const result = await readAppendixFiles(
-			agentFiles,
-			branchContext,
-			readCount % 10 === 0,
-		);
+		const result = await readAppendixFiles(agentFiles, branchContext);
 		if (ctx.hasUI) {
 			for (const failed of result.failedFiles) {
 				ctx.ui.notify(
@@ -231,10 +235,35 @@ export function registerSubdirContextAutoload(pi: ExtensionAPI): void {
 			}
 		}
 
-		notifyLoaded(ctx, result.loadedNow);
-
 		if (!result.persistedFiles.length && !result.appendixFiles.length)
 			return undefined;
+		const sent =
+			result.appendixFiles.length > 0 &&
+			typeof developerMessages?.trySendCodexDeveloperCustomMessage ===
+				"function" &&
+			developerMessages.trySendCodexDeveloperCustomMessage(
+				pi,
+				{
+					customType: "subdir-agents-context",
+					content: appendAgentsContext([], result.appendixFiles)
+						.map((item) => item.text)
+						.join("\n"),
+					display: true,
+					details: mergePersistedContextDetails(undefined, {
+						files: result.appendixFiles,
+					}),
+				},
+				{ deliverAs: "steer", triggerTurn: false },
+			);
+
+		// Commit only after delivery; failed sends must remain retryable.
+		for (const file of result.appendixFiles) {
+			const absolutePath = resolvePath(file.path, currentCwd);
+			loadedAgents.add(absolutePath);
+			loadedAgentsContent.set(absolutePath, file.content);
+		}
+		if (sent) return undefined;
+		notifyLoaded(ctx, result.loadedNow);
 		const details = result.persistedFiles.length
 			? mergePersistedContextDetails(event.details, {
 					files: result.persistedFiles,

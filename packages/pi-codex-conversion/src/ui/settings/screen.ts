@@ -4,8 +4,13 @@ import {
 	getSettingsListTheme,
 	type Theme,
 } from "@earendil-works/pi-coding-agent";
-import { SettingsList, truncateToWidth } from "@earendil-works/pi-tui";
-import type { CodexConversionConfig } from "../../adapter/activation/config.ts";
+import {
+	Key,
+	matchesKey,
+	SettingsList,
+	truncateToWidth,
+} from "@earendil-works/pi-tui";
+import type { CodexConversionConfig, LunaCacheKeepaliveMinutes } from "../../adapter/activation/config.ts";
 import type { CodexConversionConfigScope } from "../../adapter/activation/config-store.ts";
 import type { ExecutionMode } from "../../adapter/activation/execution-mode.ts";
 import type { CodexLanVoiceServerStatus } from "../../voice/lan/controller.ts";
@@ -24,6 +29,7 @@ import { createUsageTab, type UsageTabOptions } from "./usage-tab.ts";
 export interface CodexSettingsScreenOptions extends UsageTabOptions {
 	initialConfig: CodexConversionConfig;
 	onChange: (nextConfig: CodexConversionConfig) => boolean;
+	onGlobalLunaCacheKeepalive: (minutes: LunaCacheKeepaliveMinutes) => CodexConversionConfig | undefined;
 	onProjectCacheKeepalive: (enabled: boolean) => CodexConversionConfig | undefined;
 	initialTab?: SettingsTab | undefined;
 	configScope: {
@@ -87,24 +93,26 @@ export async function openCodexSettingsScreen(
 				{
 					item: {
 						id: "configScope",
-						label: "Settings",
-						currentValue: options.configScope.current() === "folder" ? "Project" : "Defaults",
+						description: "Choose where changes are saved. Switching to Global removes this project\u0027s overrides.",
+						label: "Editing",
+						currentValue: options.configScope.current() === "folder" ? "This project" : "Global",
 						values: options.configScope.canUseFolder
-							? ["Defaults", "Project"]
-							: ["Defaults"],
+							? ["Global", "This project"]
+							: ["Global"],
 					},
 				},
 				...(activeTab === "adapter"
 					? [{
 							item: {
 								id: "executionMode",
+								description: "Structured: standard JSON schemas. Code: JavaScript. Notebook: persistent Deno shell with checkpoints.",
 								label: "Execution mode",
-								currentValue: draft.executionMode,
-								values: ["normal", "code", "notebook"],
+								currentValue: formatExecutionMode(draft.executionMode),
+								values: ["Structured", "Code", "Notebook (recommended)"],
 							},
 							update: (value: string, current: CodexConversionConfig) => ({
 								...current,
-								executionMode: value as ExecutionMode,
+								executionMode: parseExecutionMode(value),
 							}),
 						}]
 					: []),
@@ -113,6 +121,7 @@ export async function openCodexSettingsScreen(
 							{
 								item: {
 									id: "lanVoiceServer",
+									description: "Serve this session\u0027s voice interface to a browser on your local network. Stops when the session changes.",
 									label: "LAN voice server",
 									currentValue: options.lanVoiceServer.status().running
 										? "on"
@@ -127,7 +136,6 @@ export async function openCodexSettingsScreen(
 					draft,
 					theme,
 					availableContextModels,
-					options.configScope.path(),
 				),
 			];
 			list = new SettingsList(
@@ -141,7 +149,19 @@ export async function openCodexSettingsScreen(
 						return;
 					}
 					if (definition?.action === "project-cache-keepalive") {
-						const nextDraft = options.onProjectCacheKeepalive(value === "on");
+						const nextDraft = options.onProjectCacheKeepalive(value !== "off");
+						if (nextDraft) {
+							draft = nextDraft;
+							for (const { item } of buildSettings()) list.updateValue(item.id, item.currentValue);
+						} else {
+							list.updateValue(id, definition.item.currentValue);
+						}
+						tui.requestRender();
+						return;
+					}
+					if (definition?.action === "global-luna-cache-keepalive") {
+						const minutes = (value === "off" ? 0 : Number.parseInt(value, 10)) as LunaCacheKeepaliveMinutes;
+						const nextDraft = options.onGlobalLunaCacheKeepalive(minutes);
 						if (nextDraft) {
 							draft = nextDraft;
 							for (const { item } of buildSettings()) list.updateValue(item.id, item.currentValue);
@@ -152,8 +172,8 @@ export async function openCodexSettingsScreen(
 						return;
 					}
 					if (id === "configScope") {
-						const previousValue = options.configScope.current() === "folder" ? "Project" : "Defaults";
-						const nextDraft = options.configScope.set(value === "Project" ? "folder" : "global");
+						const previousValue = options.configScope.current() === "folder" ? "This project" : "Global";
+						const nextDraft = options.configScope.set(value === "This project" ? "folder" : "global");
 						if (nextDraft) {
 							draft = nextDraft;
 							settingsList = createSettingsList();
@@ -184,8 +204,13 @@ export async function openCodexSettingsScreen(
 					const nextDraft = definition.update(value, draft);
 					if (options.onChange(nextDraft)) {
 						draft = nextDraft;
-						for (const { item } of buildSettings())
-							list.updateValue(item.id, item.currentValue);
+						if (activeTab === "context") {
+							settingsList = createSettingsList();
+							settingsList.selectItem(id);
+						} else {
+							for (const { item } of buildSettings())
+								list.updateValue(item.id, item.currentValue);
+						}
 					} else {
 						list.updateValue(id, previousValue);
 					}
@@ -216,6 +241,17 @@ export async function openCodexSettingsScreen(
 						theme,
 						options.configScope.current(),
 					);
+				if (activeTab === "context")
+					settingsLines = withContextWindowsWarning(settingsLines, theme);
+				if (activeTab === "context" && draft.compaction.contextManagement !== "off" && !draft.compaction.hybridCompaction)
+					settingsLines = withSettingsDetails(settingsLines, [
+						theme.fg("dim", "  /compact asks the model to save notes and hand off to a new context window, instead of summarizing."),
+					]);
+				if (activeTab === "tools")
+					settingsLines = withSettingsDetails(
+						settingsLines,
+						formatToolsDetails(theme, options.configScope.path()),
+					);
 				if (activeTab === "voice")
 					settingsLines = withSettingsDetails(
 						settingsLines,
@@ -239,7 +275,18 @@ export async function openCodexSettingsScreen(
 			},
 			invalidate: () => settingsList.invalidate(),
 			handleInput: (data: string) => {
-				if (data === "\t") {
+				if (matchesKey(data, Key.shift(Key.tab))) {
+					const currentIndex = SETTINGS_TABS.findIndex(
+						({ id }) => id === activeTab,
+					);
+					activateTab(
+						SETTINGS_TABS[
+							(currentIndex - 1 + SETTINGS_TABS.length) % SETTINGS_TABS.length
+						]?.id ?? "adapter",
+					);
+					return;
+				}
+				if (matchesKey(data, Key.tab)) {
 					const currentIndex = SETTINGS_TABS.findIndex(
 						({ id }) => id === activeTab,
 					);
@@ -324,6 +371,10 @@ function formatVoiceDetails(
 			"dim",
 			`  Change keybinds: ${configPath} (/reload to apply)`,
 		),
+		theme.fg(
+			"dim",
+			"  Voice context refresh uses the selected summarisation model",
+		),
 		"",
 		theme.fg(
 			"dim",
@@ -340,10 +391,10 @@ function formatVoiceDetails(
 
 function formatFooter(activeTab: SettingsTab): string {
 	if (activeTab === "usage")
-		return "  Tab to switch sections · R to refresh · Ctrl+R to use reset";
+		return "  Tab/Shift+Tab to switch sections · R to refresh · Ctrl+R to use reset";
 	if (activeTab === "about")
-		return "  Tab to switch sections · G/C/D/I to open links · Esc to close";
-	return "  Tab to switch sections · Esc to close";
+		return "  Tab/Shift+Tab to switch sections · G/C/D/I to open links · Esc to close";
+	return "  Tab/Shift+Tab to switch sections · Esc to close";
 }
 
 function withSettingsFooter(lines: string[], theme: Theme): string[] {
@@ -352,7 +403,7 @@ function withSettingsFooter(lines: string[], theme: Theme): string[] {
 		if (next[index]?.includes("Enter/Space")) {
 			next[index] = theme.fg(
 				"dim",
-				"  Enter/Space to change · Esc to close · Tab to switch sections",
+				"  Enter/Space to change · Esc to close · Tab/Shift+Tab to switch sections",
 			);
 			break;
 		}
@@ -366,13 +417,49 @@ function withConfigScopeDetails(
 	scope: CodexConversionConfigScope,
 ): string[] {
 	const next = [...lines];
-	const scopeIndex = next.findIndex((line) => line.includes("Settings"));
+	const scopeIndex = next.findIndex((line) => line.includes("Editing"));
 	if (scopeIndex < 0) return next;
 	const detail = scope === "folder"
-		? "Changes here update this project only and leave global defaults unchanged."
-		: "Changes here update global defaults. Projects with their own .pi/pi-codex-conversion.json keep their settings.";
-	next.splice(scopeIndex + 1, 0, theme.fg("dim", `  ${detail}`));
+		? "Changes here update this project."
+		: "Changes here update global settings.";
+	next.splice(scopeIndex + 1, 0, theme.fg("dim", "  " + detail));
 	return next;
+}
+
+function withContextWindowsWarning(lines: string[], theme: Theme): string[] {
+	const next = [...lines];
+	const settingIndex = next.findIndex((line) =>
+		line.includes("Context management (experimental)")
+	);
+	if (settingIndex < 0) return next;
+	next.splice(
+		settingIndex,
+		0,
+		theme.fg(
+			"warning",
+			"  ⚠ Keep Context management enabled when resuming sessions that used it.",
+		),
+	);
+	return next;
+}
+
+function formatToolsDetails(theme: Theme, configPath: string): string[] {
+	return [
+		theme.fg("dim", "  Custom native helper overrides:"),
+		theme.fg("dim", "  " + configPath),
+	];
+}
+
+function formatExecutionMode(mode: ExecutionMode): string {
+	if (mode === "code") return "Code";
+	if (mode === "notebook") return "Notebook (recommended)";
+	return "Structured";
+}
+
+function parseExecutionMode(value: string): ExecutionMode {
+	if (value === "Code") return "code";
+	if (value === "Notebook (recommended)") return "notebook";
+	return "normal";
 }
 
 function withSettingsDetails(lines: string[], details: string[]): string[] {

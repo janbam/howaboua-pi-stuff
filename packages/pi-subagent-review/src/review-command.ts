@@ -5,6 +5,7 @@ import { buildReviewConversationSummary } from "./conversation-summary.js";
 import {
 	announceReviewFindingsReady,
 	announceReviewSummaryStarted,
+	type ReviewDeveloperMessages,
 	sendReviewFindings,
 	sendReviewPreface,
 } from "./messages.js";
@@ -29,6 +30,7 @@ import type { NavigateWithSummaryModel } from "./tree-summary.js";
 export function registerReviewCommand(
 	pi: ExtensionAPI,
 	navigateWithSummaryModel: NavigateWithSummaryModel,
+	developerMessages?: ReviewDeveloperMessages,
 ) {
 	pi.registerCommand(REVIEW_COMMAND, {
 		description:
@@ -109,7 +111,12 @@ export function registerReviewCommand(
 				);
 				return;
 			}
-			sendReviewPreface(pi, ctx, { freshLoop: parsedArgs.startLoop });
+			sendReviewPreface(
+				pi,
+				ctx,
+				{ freshLoop: parsedArgs.startLoop },
+				developerMessages,
+			);
 
 			if (parsedArgs.startLoop) {
 				const targetId =

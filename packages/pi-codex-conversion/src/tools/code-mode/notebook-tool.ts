@@ -4,6 +4,7 @@ import { Type } from "typebox";
 import { getExperimentalToolSampling } from "../tool-sampling.ts";
 import { canExecuteNotebookControlInsideExec } from "../notebook-mode/control-contract.ts";
 import type { SharedCodeModeRuntime } from "./shared-runtime.ts";
+import { notebookRenderers } from "./notebook-rendering.ts";
 import type {
 	NotebookControlRequest,
 	NotebookControlResult,
@@ -11,12 +12,27 @@ import type {
 	ToolExecutionContext,
 } from "./types.ts";
 
-export const NOTEBOOK_PARAMETERS = Type.Object({
-	action: StringEnum(["status", "list", "checkpoint", "save", "load", "pin", "unpin", "release", "prune", "restart", "diagnostics", "reset"]),
-	query: Type.Optional(Type.String()),
-	name: Type.Optional(Type.String()),
-	names: Type.Optional(Type.Array(Type.String(), { minItems: 1 })),
-});
+export const NOTEBOOK_PARAMETERS = Type.Union([
+	Type.Object({
+		action: StringEnum(["status", "list"]),
+		query: Type.Optional(Type.String()),
+	}, { additionalProperties: false }),
+	Type.Object({
+		action: StringEnum(["checkpoint", "restart", "diagnostics", "reset"]),
+	}, { additionalProperties: false }),
+	Type.Object({
+		action: StringEnum(["save", "load"]),
+		name: Type.String(),
+	}, { additionalProperties: false }),
+	Type.Object({
+		action: StringEnum(["pin", "unpin", "release"]),
+		names: Type.Array(Type.String(), { minItems: 1 }),
+	}, { additionalProperties: false }),
+	Type.Object({
+		action: Type.Literal("prune"),
+		query: Type.String(),
+	}, { additionalProperties: false }),
+]);
 
 const NOTEBOOK_DESCRIPTION = "Control persistent notebook state: status inspects memory/bindings by query glob; checkpoint; pin/unpin/release names; prune unpinned matches; list/save/load profiles; restart; diagnostics; reset";
 
@@ -35,6 +51,7 @@ export function registerNotebookTool(pi: ExtensionAPI, runtime: SharedCodeModeRu
 		description: NOTEBOOK_DESCRIPTION,
 		promptSnippet: "Inspect, recover, or control notebook state",
 		parameters: NOTEBOOK_PARAMETERS,
+		...notebookRenderers,
 		...(constrainedSampling ? { constrainedSampling } : {}),
 		async execute(_id, params, signal, _onUpdate, ctx) {
 			const result = await executeNotebookControl(runtime, params, {

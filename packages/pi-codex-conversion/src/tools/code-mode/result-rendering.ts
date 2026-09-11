@@ -12,7 +12,10 @@ import {
 } from "./render-content.js";
 import type { CodeModeRenderTracker } from "./render-tracker.js";
 import { formatNotebookMemory } from "./tool-result.js";
-import { renderTraceAndOutput } from "./trace-rendering.js";
+import {
+	type CodeModeNestedRenderStore,
+	renderTraceAndOutput,
+} from "./trace-rendering.js";
 import type {
 	CodeModeRenderContext,
 	CodeModeRenderTheme,
@@ -37,14 +40,25 @@ export function renderTrackedCodeModeResult(
 	theme: CodeModeRenderTheme,
 	context: CodeModeRenderContext | undefined,
 	tracker: CodeModeRenderTracker,
+	renderStore: CodeModeNestedRenderStore,
 	tools: CodeModeToolDefinition[] = [],
 	richRendering = true,
+	minimalOutput = false,
 ): Component {
 	if (!options.isPartial && context?.toolCallId) {
 		const details = asDetails(result.details);
 		tracker.finish(context.toolCallId, details.status === "yielded" ? "yielded" : "done");
 	}
-	return renderCodeModeResult(result, options, theme, context, tools, richRendering);
+	return renderCodeModeResult(
+		result,
+		options,
+		theme,
+		context,
+		tools,
+		renderStore,
+		richRendering,
+		minimalOutput,
+	);
 }
 
 function renderCodeModeResult(
@@ -53,7 +67,9 @@ function renderCodeModeResult(
 	theme: CodeModeRenderTheme,
 	context: CodeModeRenderContext | undefined,
 	tools: CodeModeToolDefinition[],
+	renderStore: CodeModeNestedRenderStore,
 	richRendering: boolean,
+	minimalOutput: boolean,
 ): Component {
 	const details = asDetails(result.details);
 	const content = details.notification || details.status === undefined ? result.content : result.content.slice(1);
@@ -84,11 +100,15 @@ function renderCodeModeResult(
 		|| Boolean(details.scriptError && !scriptErrorRenderedByTrace)
 		|| details.notification === true
 		|| images.length > 0;
-	const output = showOutput && (options.expanded || options.isPartial)
-		? renderTextAndImages(renderedText, [], theme)
-		: showOutput
-			? renderTextAndImages(previewText(renderedText, theme), [], theme)
-			: new Container();
+	const hidePreview = minimalOutput && !options.expanded
+		&& !context?.isError && !details.scriptError && !details.notification;
+	const displayText = !showOutput ? "" : hidePreview
+		? [
+			previewText(text ? theme.fg(tone, text) : "", theme, true),
+			status ? theme.fg(tone, status) : "",
+		].filter(Boolean).join("\n")
+		: options.expanded || options.isPartial ? renderedText : previewText(renderedText, theme);
+	const output = showOutput ? renderTextAndImages(displayText, [], theme) : new Container();
 	const body = renderTraceAndOutput(
 		details.traces ?? [],
 		details.droppedTraceCount ?? 0,
@@ -99,6 +119,7 @@ function renderCodeModeResult(
 		theme,
 		context,
 		emittedImages,
+		renderStore,
 	);
 	if (!details.notebookMemory || !notebookMemoryText) return body;
 	const container = new Container();

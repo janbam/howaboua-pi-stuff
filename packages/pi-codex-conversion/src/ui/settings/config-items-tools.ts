@@ -1,111 +1,46 @@
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import {
-	type CodexConversionConfig,
-	DEFAULT_CODEX_CONVERSION_CONFIG,
-	normalizeWebSearchModel,
-	WEB_SEARCH_MODELS,
-} from "../../adapter/activation/config.ts";
-import { getCodexConversionConfigPath } from "../../adapter/activation/config-store.ts";
-import { type ConfigSetting, setting, toggle } from "./config-items-shared.ts";
+import type { CodexConversionConfig } from "../../adapter/activation/config.ts";
+import { type ConfigSetting, toggle } from "./config-items-shared.ts";
 
 export function buildToolsSettings(
 	config: CodexConversionConfig,
-	theme: Theme,
-	configPath: string = getCodexConversionConfigPath(),
 ): ConfigSetting[] {
 	return [
 		toggle(
+			"autoReasoning",
+			"Auto reasoning (Astra only)",
+			config.tools.autoReasoning,
+			(enabled, current) => ({ ...current, tools: { ...current.tools, autoReasoning: enabled } }),
+			"Let Astra adjust reasoning during a task, never below your starting level, then restore it when finished.",
+		),
+		toggle(
 			"viewImageFallback",
-			"Text Image Descriptions",
+			"Image descriptions fallback",
 			config.tools.viewImageFallback,
 			(enabled, current) => ({
 				...current,
 				tools: { ...current.tools, viewImageFallback: enabled },
 			}),
+			"Use a vision model to describe images for text-only models instead of rejecting image requests.",
 		),
-		toggle("webRun", "Web search", config.tools.webRun, (enabled, current) => ({
-			...current,
-			tools: { ...current.tools, webRun: enabled },
-		})),
-		setting(
-			{
-				id: "webSearchModel",
-				label: "Web search model",
-				currentValue: config.openai.webSearchModel,
-				values: [...WEB_SEARCH_MODELS],
-			},
-			(value, current) => ({
-				...current,
-				openai: {
-					...current.openai,
-					webSearchModel:
-						normalizeWebSearchModel(value) ??
-						DEFAULT_CODEX_CONVERSION_CONFIG.openai.webSearchModel,
-				},
-			}),
-		),
-		toggle(
-			"imageGeneration",
-			"Image generation",
-			config.tools.imageGeneration,
-			(enabled, current) => ({
-				...current,
-				tools: { ...current.tools, imageGeneration: enabled },
-			}),
-		),
-		setting({
-			id: "activateOnlyHeader",
-			label: theme.fg("dim", "Activate Only"),
-			currentValue: "",
-		}),
 		toggle(
 			"applyPatchOnly",
-			"apply_patch",
+			"Standalone apply_patch",
 			config.tools.applyPatchOnly,
 			(enabled, current) => ({
 				...current,
 				tools: { ...current.tools, applyPatchOnly: enabled },
 			}),
+			"Expose apply_patch without the full adapter.",
 		),
 		toggle(
 			"viewImageOnly",
-			"view_image",
+			"Standalone view_image",
 			config.tools.viewImageOnly,
 			(enabled, current) => ({
 				...current,
 				tools: { ...current.tools, viewImageOnly: enabled },
 			}),
+			"Expose view_image without the full adapter. Text-only models also need Image descriptions fallback.",
 		),
-		toggle(
-			"webRunOnly",
-			"web_run",
-			config.tools.webRunOnly,
-			(enabled, current) => ({
-				...current,
-				tools: { ...current.tools, webRunOnly: enabled },
-			}),
-		),
-		toggle(
-			"imageGenerationOnly",
-			"imagegen",
-			config.tools.imageGenerationOnly,
-			(enabled, current) => ({
-				...current,
-				tools: { ...current.tools, imageGenerationOnly: enabled },
-			}),
-		),
-		setting({
-			id: "customRustBinariesHelp",
-			label: theme.fg(
-				"dim",
-				"For compatibility with custom Rust binaries, edit:",
-			),
-			currentValue: "",
-		}),
-		setting({
-			id: "customRustBinariesPath",
-			label: theme.fg("dim", configPath),
-			currentValue: "",
-		}),
 	];
 }

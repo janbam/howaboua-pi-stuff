@@ -4,6 +4,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 import type { CodeModeToolPreflightRunner } from "./nested-tool-preflight.js";
+import type { CodeModeToolCompletion } from "./preflight-protocol.js";
 
 export type CustomToolInputMode = "arg" | "stdin";
 
@@ -14,9 +15,12 @@ export interface CodeModeToolIdentity {
 
 export interface CodeModeToolMetadata {
 	name: string;
+	topLevelName?: string | undefined;
 	toolName?: CodeModeToolIdentity | undefined;
 	usage: string;
 	description?: string | undefined;
+	promptSnippet?: string | undefined;
+	promptGuidelines?: string[] | undefined;
 	output?: string | undefined;
 	deferLoading: boolean;
 	yieldTimeMs?: number | undefined;
@@ -33,6 +37,11 @@ export interface CustomToolDefinition extends CodeModeToolMetadata {
 export interface ProgrammaticCodeModeToolDefinition
 	extends CodeModeToolMetadata {
 	kind: "function" | "freeform";
+	blocking?: boolean | undefined;
+	isBlocking?(input: unknown): boolean;
+	discoverWhenDeferred?: boolean | undefined;
+	translatePromptMetadata?: boolean | undefined;
+	executionMode?: "sequential" | "parallel" | undefined;
 	inputSchema?: unknown;
 	invoke(
 		input: unknown,
@@ -61,9 +70,11 @@ export interface ToolExecutionContext {
 	toolCallId?: string | undefined;
 	extensionContext?: ExtensionContext | undefined;
 	preflight?: CodeModeToolPreflightRunner | undefined;
+	completion?: CodeModeToolCompletion | undefined;
 	onUpdate?: ((result: AgentToolResult<unknown>) => void) | undefined;
 	captureResult?: ((result: RuntimeToolResult) => void) | undefined;
 	refreshTrace?: (() => void) | undefined;
+	setBlocked?: ((blockerId: string, active: boolean) => void) | undefined;
 }
 
 export interface CodeModeRenderTheme {
@@ -74,8 +85,15 @@ export interface CodeModeRenderTheme {
 export interface CodeModeNestedRenderContext {
 	toolCallId?: string | undefined;
 	cwd?: string | undefined;
+	lastComponent?: Component | undefined;
+	state?: Record<string, unknown> | undefined;
+	executionStarted?: boolean | undefined;
+	argsComplete?: boolean | undefined;
+	isPartial?: boolean | undefined;
 	expanded?: boolean | undefined;
+	showImages?: boolean | undefined;
 	isError?: boolean | undefined;
+	isBlocked?: boolean | undefined;
 	args?: unknown;
 	invalidate?: (() => void) | undefined;
 }
@@ -97,7 +115,7 @@ export interface RuntimeToolTrace {
 	id: string;
 	name: string;
 	input: unknown;
-	status: "running" | "done" | "error";
+	status: "running" | "blocked" | "done" | "error";
 	result?: RuntimeToolResult | undefined;
 	error?: string | undefined;
 }

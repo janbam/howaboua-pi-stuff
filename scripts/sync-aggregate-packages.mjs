@@ -7,9 +7,13 @@ const root = process.cwd();
 const packagesDir = join(root, "packages");
 const aggregateDirs = new Set(["pi-stuff", "pi-skills", "pi-extensions"]);
 const bundleExcludedPackages = new Set([
-  "@howaboua/pi-codex-conversion",
+	"@howaboua/pi-browser",
+	"@howaboua/pi-codex-conversion",
+	"@howaboua/pi-codex-imagegen",
+	"@howaboua/pi-dynamic-tools",
   "@howaboua/pi-skill-omarchy-help",
   "@howaboua/pi-subdir-agents",
+	"@howaboua/pi-codex-web-run",
 ]);
 const packages = listActivePackageDirs(root)
   .filter((dir) => !aggregateDirs.has(dir))
@@ -37,11 +41,17 @@ function safeIdentifier(packageName) {
 function writeExtensionAggregate(dir, filter) {
   rmSync(join(packagesDir, dir, "extensions"), { recursive: true, force: true });
   const extensionEntries = packages.filter(filter).filter((entry) => has("extensions", entry));
-  const imports = extensionEntries.map(
-    (entry) =>
-      `import ${safeIdentifier(entry.pkg.name)} from "${entry.pkg.name}";`,
-  );
-  const calls = extensionEntries.map((entry) => `\tawait ${safeIdentifier(entry.pkg.name)}(pi);`);
+  const imports = [
+    `import registerPackageChangelog from "./changelog.js";`,
+    ...extensionEntries.map(
+      (entry) =>
+        `import ${safeIdentifier(entry.pkg.name)} from "${entry.pkg.name}";`,
+    ),
+  ];
+  const calls = [
+    `\tregisterPackageChangelog(pi);`,
+    ...extensionEntries.map((entry) => `\tawait ${safeIdentifier(entry.pkg.name)}(pi);`),
+  ];
   copyFileSync(
     join(root, "scripts", "templates", "extension-changelog.ts"),
     join(packagesDir, dir, "changelog.ts"),
@@ -50,7 +60,7 @@ function writeExtensionAggregate(dir, filter) {
     join(packagesDir, dir, "index.ts"),
     `import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";\n${imports.join("\n")}\n\nexport default async function (pi: ExtensionAPI) {\n${calls.join("\n")}\n}\n`,
   );
-  return ["./changelog.ts", "./index.ts"];
+  return ["./index.ts"];
 }
 
 function dependencyResourcePath(dependencyName, resource) {

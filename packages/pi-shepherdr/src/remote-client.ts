@@ -3,12 +3,20 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import type { HerdrConnection } from "./herdr-client.js";
-import type { RemoteMachineConfig } from "./machines-config.js";
+import type { SshMachine } from "./machine-catalog.js";
 import type { AssistantReader } from "./session-reader.js";
-import type { HerdrEvent, LatestAssistant } from "./types.js";
+import type {
+	HerdrEvent,
+	LatestAssistant,
+	PaneInfo,
+	PeerDelivery,
+	PeerMessage,
+	SessionView,
+} from "./types.js";
 
-const BRIDGE_VERSION = 1;
+const BRIDGE_VERSION = 6;
 const REMOTE_HELPER = "~/.pi/agent/shepherdr.mjs";
+const REMOTE_PEER_HELPER = "~/.pi/agent/shepherdr-peer.mjs";
 const MAX_FRAME_BYTES = 8 * 1024 * 1024;
 const MAX_DIAGNOSTIC_BYTES = 8 * 1024;
 const DEPLOY_TIMEOUT_MS = 20_000;
@@ -73,26 +81,28 @@ function executablePath(path: string): string {
 		: shellQuote(path);
 }
 
-function remoteCommand(config: RemoteMachineConfig): string {
+function remoteCommand(config: SshMachine): string {
 	const args = [
 		"exec",
-		shellQuote(config.node),
+		"node",
 		executablePath(REMOTE_HELPER),
-		...(config.socket ? ["--socket", shellQuote(config.socket)] : []),
-		...(config.session ? ["--session", shellQuote(config.session)] : []),
+		"--session",
+		shellQuote(config.session),
 	];
 	return args.join(" ");
 }
 
 function spawnConnector(
-	config: RemoteMachineConfig,
+	config: SshMachine,
 	command: string,
 ): ChildProcessWithoutNullStreams {
-	const [program, ...args] = config.command;
-	if (!program) throw new Error("remote machine command is empty");
-	return spawn(program, [...args, command], {
-		stdio: ["pipe", "pipe", "pipe"],
-	});
+	return spawn(
+		"ssh",
+		["-T", "-o", "BatchMode=yes", "--", config.target, command],
+		{
+			stdio: ["pipe", "pipe", "pipe"],
+		},
+	);
 }
 
 function appendBounded(current: string, chunk: Buffer): string {
@@ -103,14 +113,15 @@ function appendBounded(current: string, chunk: Buffer): string {
 }
 
 async function deploy(
-	config: RemoteMachineConfig,
+	config: SshMachine,
 	source: Buffer,
+	target: string,
 ): Promise<void> {
 	const command = [
-		shellQuote(config.node),
+		"node",
 		"-e",
 		shellQuote(DEPLOY_SOURCE),
-		shellQuote(REMOTE_HELPER),
+		shellQuote(target),
 	].join(" ");
 	const child = spawnConnector(config, command);
 	let stdout = "";
@@ -179,13 +190,19 @@ export class RemoteHerdrClient implements HerdrConnection, AssistantReader {
 	}
 
 	static async connect(
-		config: RemoteMachineConfig,
+		config: SshMachine,
 		onClose: (error: Error) => void,
 	): Promise<RemoteHerdrClient> {
-		const source = await readFile(
-			fileURLToPath(new URL("./remote/shepherdr.mjs", import.meta.url)),
-		);
-		await deploy(config, source);
+		const [source, peerSource] = await Promise.all([
+			readFile(
+				fileURLToPath(new URL("./remote/shepherdr.mjs", import.meta.url)),
+			),
+			readFile(
+				fileURLToPath(new URL("./remote/shepherdr-peer.mjs", import.meta.url)),
+			),
+		]);
+		await deploy(config, peerSource, REMOTE_PEER_HELPER);
+		await deploy(config, source, REMOTE_HELPER);
 		const child = spawnConnector(config, remoteCommand(config));
 		const client = new RemoteHerdrClient(child, onClose);
 		try {
@@ -208,31 +225,62 @@ export class RemoteHerdrClient implements HerdrConnection, AssistantReader {
 		)) as T;
 	}
 
+	async sendMessage(
+		agent: PaneInfo,
+		message: PeerMessage,
+	): Promise<PeerDelivery> {
+		const result = await this.call({ op: "message", agent, message }, 26_000);
+		if (
+			!result ||
+			typeof result !== "object" ||
+			!("command" in result) ||
+			typeof result.command !== "boolean"
+		)
+			throw new Error(
+				"Invalid peer acknowledgement; inspect the target before retrying",
+			);
+		return { command: result.command };
+	}
+
 	async subscribe(
 		subscriptions: object[],
 		onEvent: (event: HerdrEvent) => void,
 		onDisconnect: (error?: Error) => void,
+		signal?: AbortSignal,
 	): Promise<() => void> {
+		signal?.throwIfAborted();
 		const id = randomUUID();
 		this.subscriptions.set(id, { onEvent, onDisconnect });
-		try {
-			await this.call({ id, op: "subscribe", subscriptions }, 11_000);
-		} catch (error) {
-			this.subscriptions.delete(id);
-			throw error;
-		}
-		return () => {
+		const unsubscribe = () => {
+			signal?.removeEventListener("abort", unsubscribe);
 			if (!this.subscriptions.delete(id) || this.closed) return;
 			void this.call({ op: "unsubscribe", subscription: id }).catch(
 				() => undefined,
 			);
 		};
+		try {
+			const ready = this.call({ id, op: "subscribe", subscriptions }, 11_000);
+			signal?.addEventListener("abort", unsubscribe, { once: true });
+			if (signal?.aborted) unsubscribe();
+			await ready;
+			signal?.throwIfAborted();
+		} catch (error) {
+			unsubscribe();
+			throw error;
+		}
+		return unsubscribe;
 	}
 
 	async latest(path?: string): Promise<LatestAssistant | undefined> {
-		return (await this.call({ op: "latest", path })) as
-			| LatestAssistant
-			| undefined;
+		return (await this.view(path)).assistant;
+	}
+
+	async view(path?: string): Promise<SessionView> {
+		return (await this.call({ op: "view", path })) as SessionView;
+	}
+
+	async keybindings(): Promise<Record<string, unknown>> {
+		return (await this.call({ op: "keybindings" })) as Record<string, unknown>;
 	}
 
 	async directory(

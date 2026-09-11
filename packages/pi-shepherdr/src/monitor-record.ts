@@ -16,6 +16,18 @@ function optionalString(
 		: false;
 }
 
+function optionalNullableString(
+	value: Record<string, unknown>,
+	field: string,
+): string | null | undefined | false {
+	const candidate = value[field];
+	return candidate === undefined ||
+		candidate === null ||
+		typeof candidate === "string"
+		? candidate
+		: false;
+}
+
 function stableActivity(value: unknown): StableAgentActivity | undefined {
 	if (typeof value !== "object" || value === null) return undefined;
 	const activity = value as Record<string, unknown>;
@@ -28,9 +40,24 @@ function stableActivity(value: unknown): StableAgentActivity | undefined {
 	}
 	if (activity["phase"] !== "working") return undefined;
 	const task = optionalString(activity, "task");
+	const attemptId = optionalString(activity, "attemptId");
+	const expectedUserAfter = optionalNullableString(
+		activity,
+		"expectedUserAfter",
+	);
 	return task === false
 		? undefined
-		: { phase: "working", ...(task ? { task } : {}) };
+		: attemptId === false
+			? undefined
+			: expectedUserAfter === false ||
+					(expectedUserAfter !== undefined && !task)
+				? undefined
+				: {
+						phase: "working",
+						...(attemptId ? { attemptId } : {}),
+						...(expectedUserAfter !== undefined ? { expectedUserAfter } : {}),
+						...(task ? { task } : {}),
+					};
 }
 
 function parsedActivity(value: unknown): AgentActivity | undefined {
@@ -39,10 +66,15 @@ function parsedActivity(value: unknown): AgentActivity | undefined {
 	if (typeof value !== "object" || value === null) return undefined;
 	const activity = value as Record<string, unknown>;
 	const previous = stableActivity(activity["previous"]);
+	const expectedUserAfter = optionalNullableString(
+		activity,
+		"expectedUserAfter",
+	);
 	if (
 		activity["phase"] !== "submitting" ||
 		typeof activity["attemptId"] !== "string" ||
 		typeof activity["task"] !== "string" ||
+		expectedUserAfter === false ||
 		!previous
 	) {
 		return undefined;
@@ -52,24 +84,7 @@ function parsedActivity(value: unknown): AgentActivity | undefined {
 		phase: "submitting",
 		previous,
 		task: activity["task"],
-	};
-}
-
-function legacyActivity(
-	record: Record<string, unknown>,
-): AgentActivity | undefined {
-	if (!isAgentStatus(record["lastStatus"])) return undefined;
-	const task = optionalString(record, "task");
-	if (task === false) return undefined;
-	if (record["lastStatus"] === "working") {
-		return { phase: "working", ...(task ? { task } : {}) };
-	}
-	if (!task) return { phase: "settled", status: record["lastStatus"] };
-	return {
-		attemptId: `restored:${String(record["terminalId"])}`,
-		phase: "submitting",
-		previous: { phase: "settled", status: record["lastStatus"] },
-		task,
+		...(expectedUserAfter !== undefined ? { expectedUserAfter } : {}),
 	};
 }
 
@@ -79,6 +94,7 @@ export function parseMonitoredAgent(
 	if (typeof value !== "object" || value === null) return undefined;
 	const record = value as Record<string, unknown>;
 	if (
+		(record["scope"] !== "task" && record["scope"] !== "persistent") ||
 		typeof record["paneId"] !== "string" ||
 		typeof record["terminalId"] !== "string" ||
 		typeof record["workspaceId"] !== "string" ||
@@ -89,7 +105,7 @@ export function parseMonitoredAgent(
 	const cwd = optionalString(record, "cwd");
 	const lastAssistantId = optionalString(record, "lastAssistantId");
 	const name = optionalString(record, "name");
-	const activity = parsedActivity(record["activity"]) ?? legacyActivity(record);
+	const activity = parsedActivity(record["activity"]);
 	if (
 		cwd === false ||
 		lastAssistantId === false ||
@@ -99,6 +115,7 @@ export function parseMonitoredAgent(
 		return undefined;
 	}
 	return {
+		scope: record["scope"],
 		activity,
 		paneId: record["paneId"],
 		terminalId: record["terminalId"],
@@ -113,10 +130,12 @@ export function parseMonitoredAgent(
 export function recordForPanel(
 	panel: PaneInfo,
 	activity: AgentActivity,
+	scope: MonitoredAgent["scope"],
 	lastAssistantId?: string,
 ): MonitoredAgent {
 	const cwd = panel.foreground_cwd ?? panel.cwd;
 	return {
+		scope,
 		activity,
 		paneId: panel.pane_id,
 		terminalId: panel.terminal_id,
@@ -133,6 +152,7 @@ export function sameMonitorRecord(
 	right: MonitoredAgent,
 ): boolean {
 	return (
+		left.scope === right.scope &&
 		left.paneId === right.paneId &&
 		left.terminalId === right.terminalId &&
 		left.workspaceId === right.workspaceId &&

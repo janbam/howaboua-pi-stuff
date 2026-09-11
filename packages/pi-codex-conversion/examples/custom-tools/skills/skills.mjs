@@ -214,16 +214,96 @@ export function discoverVisibleSkills(
 	return sortSkills([...byName.values()]);
 }
 
+function withoutMarkdownSuffix(name) {
+	return name.replace(/\.md$/i, "");
+}
+
+function normalizedPath(name) {
+	return name.replaceAll("\\", "/");
+}
+
+function stripPathPrefix(name, prefix) {
+	return name.toLowerCase().startsWith(prefix.toLowerCase())
+		? name.slice(prefix.length)
+		: name;
+}
+
+function referenceCandidates(name, skill) {
+	const normalized = normalizedPath(name);
+	const packageRelative = stripPathPrefix(
+		stripPathPrefix(normalized, "./references/"),
+		"references/",
+	);
+	const skillRelative = stripPathPrefix(packageRelative, `${skill.name}/references/`);
+	return [...new Set([
+		name,
+		withoutMarkdownSuffix(name),
+		normalized,
+		withoutMarkdownSuffix(normalized),
+		packageRelative,
+		withoutMarkdownSuffix(packageRelative),
+		skillRelative,
+		withoutMarkdownSuffix(skillRelative),
+	])];
+}
+
+function findSkillByName(skills, name) {
+	return skills.find((skill) => skill.name === name)
+		?? skills.find((skill) => skill.name === withoutMarkdownSuffix(name));
+}
+
+function resolveSkillRead(skills, name, references) {
+	const direct = findSkillByName(skills, name);
+	if (direct) return { skill: direct, references };
+	const normalized = normalizedPath(name);
+	for (const skill of skills) {
+		if (normalized.toLowerCase() === `${skill.name}/skill.md`) {
+			return { skill, references };
+		}
+		const prefix = `${skill.name}/references/`;
+		if (normalized.toLowerCase().startsWith(prefix)) {
+			const reference = normalized.slice(prefix.length);
+			if (reference) {
+				return {
+					skill,
+					references: [...new Set([reference, ...references])],
+				};
+			}
+		}
+	}
+	if (!isAbsolute(name)) return undefined;
+	const requestedPath = resolve(name);
+	for (const skill of skills) {
+		if (requestedPath === resolve(skill.path)) return { skill, references };
+		const reference = referenceFiles(skill).find((path) => resolve(path) === requestedPath);
+		if (reference) {
+			return {
+				skill,
+				references: [...new Set([reference, ...references])],
+			};
+		}
+	}
+}
+
+function isOwnSkillDocument(reference, skill) {
+	const normalized = normalizedPath(reference).toLowerCase();
+	return normalized === "skill.md"
+		|| normalized === `${skill.name}/skill.md`
+		|| (isAbsolute(reference) && resolve(reference) === resolve(skill.path));
+}
+
 export function parseRequest(input) {
 	if (typeof input !== "string") throw new Error("skills expects a string command");
 	const parts = input.trim().split(/\s+/).filter(Boolean);
 	const [action, ...arguments_] = parts;
 	if (!action || action === "list") return { action: "list", categories: [...new Set(arguments_)] };
-	if (action === "read" && arguments_.length === 1) {
-		return { action, name: arguments_[0] };
+	if (action === "read" && arguments_.length >= 1) {
+		return { action, name: arguments_[0], references: [...new Set(arguments_.slice(1))] };
 	}
-	if (action === "read") throw new Error('read expects exactly one skill name: "read <exact-skill-name>"');
-	throw new Error('Expected "list", "list <category>...", or "read <exact-skill-name>"');
+	if (action === "read") {
+		throw new Error('read expects one skill name and optional reference names: "read <exact-skill-name> [reference...]"');
+	}
+	throw new Error('Expected "list", "list <category>...", or "read <exact-skill-name> [reference...]"');
 }
 
 function formatSkillList(skills, requestedCategories = []) {
@@ -309,9 +389,52 @@ export function packageFiles(skill) {
 	});
 }
 
-function formatSkill(skill) {
+function formatSkillPaths(skill) {
 	const paths = packageFiles(skill);
-	return `${skill.body}\n\n---\nSkill paths (${paths.length}):\n${paths.map((path) => `- ${path}`).join("\n")}`;
+	return `---\nSkill paths (${paths.length}):\n${paths.map((path) => `- ${path}`).join("\n")}`;
+}
+
+function formatSkill(skill) {
+	return `${skill.body}\n\n${formatSkillPaths(skill)}`;
+}
+
+function referenceFiles(skill) {
+	const root = resolve(skill.directory, "references");
+	return packageFiles(skill).filter((path) => isWithin(root, path) && path.toLowerCase().endsWith(".md") && statSync(path).isFile());
+}
+
+function readReferences(skill, references, skills) {
+	const root = resolve(skill.directory, "references");
+	const available = new Map(referenceFiles(skill).map((path) => [
+		relative(root, path).replaceAll(sep, "/").replace(/\.md$/i, ""),
+		path,
+	]));
+	const selected = [];
+	const seen = new Set();
+	for (const requestedReference of references) {
+		const absoluteReference = isAbsolute(requestedReference)
+			? [...available].find(([, path]) => resolve(path) === resolve(requestedReference))?.[0]
+			: undefined;
+		const reference = absoluteReference
+			?? referenceCandidates(requestedReference, skill).find((candidate) => available.has(candidate));
+		const path = available.get(reference);
+		if (!path) {
+			const separate = resolveSkillRead(skills, requestedReference, []);
+			if (separate && separate.skill !== skill) {
+				const command = ["read", separate.skill.name, ...separate.references].join(" ");
+				throw new Error(`"${requestedReference}" is a separate skill, not a reference of "${skill.name}". Read it separately with "${command}"`);
+			}
+			const choices = [...available.keys()].join(", ") || "none";
+			throw new Error(`Unknown reference "${requestedReference}" for skill "${skill.name}". Available: ${choices}`);
+		}
+		if (seen.has(reference)) continue;
+		seen.add(reference);
+		selected.push({ reference, content: readFileSync(path, "utf8").trim() });
+	}
+	const content = selected.length === 1
+		? selected[0].content
+		: selected.map(({ reference, content: body }) => `--- ${reference} ---\n${body}`).join("\n\n");
+	return `${content}\n\n${formatSkillPaths(skill)}`;
 }
 
 function enforceOutputLimit(output) {
@@ -328,11 +451,14 @@ export function run(input, globalRoot = defaultSkillsDir(), sessionRoot = global
 	if (request.action === "list") {
 		return enforceOutputLimit(formatSkillList(skills, request.categories));
 	}
-	const skill = skills.find(({ name }) => name === request.name);
-	if (!skill) {
+	const target = resolveSkillRead(skills, request.name, request.references);
+	if (!target) {
 		throw new Error(`Unknown skill "${request.name}". Available: ${skills.map(({ name }) => name).join(", ") || "none"}`);
 	}
-	return enforceOutputLimit(formatSkill(skill));
+	const references = target.references.filter((reference) => !isOwnSkillDocument(reference, target.skill));
+	return enforceOutputLimit(references.length
+		? readReferences(target.skill, references, skills)
+		: formatSkill(target.skill));
 }
 
 function isMainModule() {

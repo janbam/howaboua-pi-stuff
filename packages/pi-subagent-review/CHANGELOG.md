@@ -1,5 +1,21 @@
 # @howaboua/pi-subagent-review
 
+## 0.2.21
+
+- Restore full extension prompt preparation when continuing into a new context window or starting review triage.
+
+  - Keep tool instructions current through Pi's normal startup hooks without resetting the Notebook.
+  - Let active context management own review-loop navigation summaries.
+
+## 0.2.20
+
+- Preserve extension-owned messages while delivering true developer-role policy through compatible Pi Codex Responses adapters.
+
+  - Add an optional custom-message API that retains caller rendering and restoration fields.
+  - Route Shepherdr's unclaimed worker events and orchestration toggles through it, preserving ordinary Pi delivery when unavailable.
+  - Send review preface/triage policy and realtime voice start/end guidance as developer messages without elevating raw reviewer findings, spoken delegations, or transcript tails.
+  - Keep persisted developer messages in context across model switches, using ordinary Pi conversion on incompatible models.
+
 ## 0.2.19
 
 ### Changes

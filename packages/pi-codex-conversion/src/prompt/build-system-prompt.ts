@@ -42,9 +42,10 @@ const PI_DEFAULT_GUIDELINES = new Set([
 ]);
 
 const EXEC_SESSION_GUIDELINE = "For unfinished exec_command sessions, use write_stdin with yield_time_ms near the command's expected remaining time and lengthen later waits";
+const FOLLOW_THROUGH_GUIDELINE = "Finish the requested work; ask only when missing information changes what you should do.";
 
 const NORMAL_CODEX_GUIDELINES = [
-	"Use exec_command for shell commands, file inspection, builds, and tests; prefer rg / rg --files for discovery and focused commands over truncation",
+	"Use exec_command for shell commands, file inspection, builds, and tests; use rg and rg --files for discovery; filter large output at the source",
 	"Reserve tty=true for input or persistent processes",
 	"Use apply_patch for text-file changes, including creates/deletes/moves; split oversized patches",
 	EXEC_SESSION_GUIDELINE,
@@ -52,28 +53,27 @@ const NORMAL_CODEX_GUIDELINES = [
 ];
 
 const CODE_MODE_GUIDELINES = [
-	"Use tools.exec_command for shell commands; prefer rg and rg --files",
-	"For tools.exec_command cmd, use String.raw only without backticks or ${}; avoid nested quoting; split independent commands into separate calls",
-	"Long command: keep tools.exec_command awaited inside exec; resume the yielded cell_id with wait near completion. Do not request a short child yield and poll its session_id with tools.write_stdin",
-	"Use tty=true only for input or persistent processes",
-	"Use tools.apply_patch(patch) for file edits; split large patches; reserve shell/Python for formatting or bulk rewrites",
+	"Use tools.exec_command for shell commands; prefer rg and rg --files; filter large output at the source",
+	"Use the other JavaScript quote style around quoted text; preserve literal ${...} and backticks in shell, patches, and source",
+	"Await long tools.exec_command calls inside exec; resume their yielded cell_id with wait near completion",
+	"Use tty=true for input and persistent processes",
+	"Patch each file in one tools.apply_patch call, splitting oversized patches sequentially; batch independent files with Promise.allSettled, inspect every result, and resolve failures; reserve shell/Python for formatting and bulk rewrites",
 	"Await dependencies; use Promise.all for independent calls",
-	"Use text() only for concise final output",
+	"Return concise exec output with text()",
 ];
 
 const NOTEBOOK_MODE_GUIDELINES = [
 	"exec is a persistent Deno/TypeScript Jupyter notebook; project globals may come from earlier agents and sessions",
-	"Check notebook status and reuse matching retained globals before rebuilding; inspect description/usage before constructing reusable ones",
-	"Keep one-offs block-local; store cheap reusable state and repeatable helpers on purpose-named globalThis properties as unpinned scratch, pin only important prune-resistant state; give helpers concise description/usage with a safe inspection recipe",
+	"Check notebook status and reuse matching retained globals; inspect description/usage before creating reusable ones",
+	"Keep one-offs block-local; retain reusable analysis and helpers as named globals with concise description/usage; pin valuable state before pruning",
 	...CODE_MODE_GUIDELINES,
-	"Use notebook status to inspect retained state or memory, release/prune disposable state, and diagnostics after broken state or helpers",
-	"Filter retained data inside exec and return only needed findings; never dump the namespace",
-	"Keep canonical project artifacts in files; tools.exec_command subprocess shell state does not persist",
-	"Keep cross-session helpers self-contained; imports, closures, and live handles may need recreation after restart",
-	"Each result reports memory; use notebook release/prune before pressure becomes critical",
-	"exec calls run sequentially; use wait only to observe or terminate the currently yielded call",
-	"Treat all npm packages as unsafe by default; Notebook startup lists prior project imports, and any unlisted package requires user approval before first use plus an exact-version npm: specifier",
-	"Use Deno APIs and approved npm: imports for persistent computation; prefer Pi/custom tools for project operations with richer contracts, rendering, bounds, or background handles",
+	"Diagnose state or helper failures; repair or prune failed state and verify recovery",
+	"Filter retained data inside exec and return the needed findings",
+	"Keep canonical project artifacts in files; carry shell state across tools.exec_command calls through files or arguments",
+	"Keep retained helpers self-contained; recreate imports, closures, and live handles after restart",
+	"Notebook results report memory; release/prune before pressure becomes critical",
+	"exec calls run sequentially; use wait to observe or terminate the currently yielded call",
+	"Treat Notebook as a persistent Deno REPL: build small programs on retained state across cells",
 ];
 
 const CODE_MODE_REPLACED_GUIDELINES = new Set([
@@ -87,6 +87,7 @@ const REMOVED_GUIDELINES = new Set([
 ]);
 
 const ALL_STATIC_CODEX_GUIDELINES = [
+	FOLLOW_THROUGH_GUIDELINE,
 	...NORMAL_CODEX_GUIDELINES,
 	...CODE_MODE_GUIDELINES,
 	...NOTEBOOK_MODE_GUIDELINES,
@@ -120,6 +121,7 @@ function buildCodexGuidelines(mode: CodexPromptMode = "normal", piPackageRoot?: 
 		: mode === "notebook"
 			? [...NOTEBOOK_MODE_GUIDELINES]
 			: [...CODE_MODE_GUIDELINES];
+	guidelines.unshift(FOLLOW_THROUGH_GUIDELINE);
 	if (piPackageRoot) {
 		guidelines.push(`When work depends on Pi APIs or runtime behavior not established in the current repository, consult the relevant README.md, docs/, or examples/ files under ${piPackageRoot} and follow their references before implementing`);
 	}
@@ -140,7 +142,7 @@ function injectShell(prompt: string, shell?: string): string {
 	}
 	const shellName = shell.replace(/\\/g, "/").split("/").pop()?.toLowerCase();
 	const zshGuidance = shellName === "zsh" || shellName === "zsh.exe"
-		? "; status is read-only, capture $? as rc"
+		? "; capture $? as rc"
 		: "";
 	const shellContext = `Current shell: ${shell}; follow its syntax, quoting, and variable rules${zshGuidance}`;
 	if (/\nCurrent shell:/.test(prompt)) {
@@ -201,7 +203,6 @@ function buildSkillsSection(skills: PromptSkill[]): string {
 	const lines = [
 		"<skills_instructions>",
 		"## Skills",
-		"Skill: local instructions in `SKILL.md` file",
 		"### Available skills",
 	];
 
@@ -212,9 +213,8 @@ function buildSkillsSection(skills: PromptSkill[]): string {
 	lines.push("### How to use skills");
 	lines.push("- Use skill when user names it (`$SkillName` or plain text) or request clearly matches its description");
 	lines.push("- Use the minimal required set of skills. If multiple apply, use them together and state the order briefly");
-	lines.push("- For each selected skill, open its `SKILL.md`, resolve relative paths from the skill directory first, load only the files you need, and prefer existing scripts/assets/templates over recreating them");
-	lines.push("### Fallback");
-	lines.push("- If skill is missing or path cannot be read, say so briefly and continue with best fallback approach");
+	lines.push("- Open each selected `SKILL.md`; resolve relative paths from its directory, load needed references, and reuse available scripts/assets/templates");
+	lines.push("- If a skill or path is unavailable, state it briefly and continue with the best fallback");
 	lines.push("</skills_instructions>");
 	return lines.join("\n");
 }
@@ -316,7 +316,7 @@ function stripPiDocumentation(prompt: string): string {
 }
 
 function replaceHeavyGuidelines(prompt: string, guidelines: string[]): string {
-	const match = prompt.match(/(^Guidelines:\n)([\s\S]*?)(?=\n\n(?:Pi documentation\b|<project_context>|The following skills\b|<skills_instructions>|<available_skills>|Current working directory:|Current date:))/m);
+	const match = prompt.match(/(^Guidelines:\n)([\s\S]*?)(?=\n\n(?:Pi documentation\b|<project_context>|The following skills\b|<skills_instructions>|<available_skills>|Current working directory:|Current date:|Date:))/m);
 	const additions = guidelines.map((line) => `- ${line}`);
 	if (!match || match.index === undefined) {
 		const section = `Guidelines:\n${additions.join("\n")}`;

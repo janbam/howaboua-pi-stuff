@@ -1,5 +1,27 @@
 # @howaboua/pi-subdir-agents
 
+## 0.0.6
+
+- Fixed duplicate AGENTS.md load notifications when the context already appears as an expandable message.
+
+## 0.0.5
+
+- Directory listings load AGENTS.md guidance only for the queried scope, without preloading rules from every child they name. Explicit child access and content-search matches still load the relevant nested guidance.
+
+  Fixed Windows drive-letter paths in content-search matches so they load nested guidance.
+
+## 0.0.4
+
+- Fixed repeated AGENTS.md context injection during repository discovery. Unchanged guidance stays deduplicated; new and edited files still load.
+
+## 0.0.3
+
+- Fixed developer-role AGENTS.md context always displaying in full. Messages now show file paths and expand with Ctrl+O.
+
+## 0.0.2
+
+- Deliver nested AGENTS.md guidance as developer messages when Pi Codex is active, retaining standalone tool-result delivery and branch-aware deduplication.
+
 ## 0.0.1
 
 ### Changes

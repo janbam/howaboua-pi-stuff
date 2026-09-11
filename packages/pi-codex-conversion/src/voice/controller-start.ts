@@ -39,6 +39,39 @@ export interface VoiceControllerRuntime {
 	realtimePeerPlan?: RealtimePeerPlan | undefined;
 }
 
+export interface PreparedRealtimeContext {
+	initialItems: RealtimeInitialMessageItem[] | undefined;
+	summary?: string | undefined;
+}
+
+export async function prepareControllerRealtimeContext(options: {
+	ctx: ExtensionContext;
+	config: CodexConversionConfig;
+	signal?: AbortSignal | undefined;
+	onSummaryStatus?: ((active: boolean) => void) | undefined;
+	sourceLeafId?: string | undefined;
+	forceSummary?: boolean | undefined;
+}): Promise<PreparedRealtimeContext> {
+	let summary: string | undefined;
+	const initialItems = await buildRealtimeInitialItems({
+		ctx: options.ctx,
+		config: options.config,
+		sourceLeafId: options.sourceLeafId,
+		forceSummary: options.forceSummary,
+		onSummary: (value) => {
+			summary = value;
+		},
+		...(options.signal ? { signal: options.signal } : {}),
+		...(options.onSummaryStatus
+			? { onSummaryStatus: options.onSummaryStatus }
+			: {}),
+	});
+	return {
+		initialItems,
+		...(summary ? { summary } : {}),
+	};
+}
+
 export async function startControllerMode(options: {
 	runtime: VoiceControllerRuntime;
 	messages: CodexVoiceSessionMessages;
@@ -48,6 +81,7 @@ export async function startControllerMode(options: {
 	realtimePeerPlan?: RealtimePeerPlan | undefined;
 	resume?: boolean | undefined;
 	inputMuted?: boolean | undefined;
+	preparedRealtimeContext?: PreparedRealtimeContext | undefined;
 	signal?: AbortSignal | undefined;
 	prepareRealtimePrompt(ctx: ExtensionContext): string | undefined;
 	stopCurrent(): Promise<void>;
@@ -78,7 +112,8 @@ export async function startControllerMode(options: {
 	runtime.context = options.ctx;
 	runtime.config = options.config;
 	runtime.realtimePeerPlan = options.mode === "realtime" ? options.realtimePeerPlan : undefined;
-	options.messages.setContext(options.ctx);
+	// A prepared refresh replaces only the call, not its queued Pi work.
+	if (!options.preparedRealtimeContext) options.messages.setContext(options.ctx);
 	runtime.state =
 		options.mode === "realtime"
 			? { type: "connecting", mode: "realtime", phase: "authorizing" }
@@ -93,18 +128,16 @@ export async function startControllerMode(options: {
 		options.realtimePeerPlan?.onStatus?.(status);
 	};
 	setStartupStatus("connecting…");
-	let realtimeSummary: string | undefined;
 	try {
 		const startup = await interruptible(
 			Promise.all([
 				resolveCodexVoiceAuth(options.ctx),
 				options.mode === "realtime"
-					? buildRealtimeInitialItems({
+					? options.preparedRealtimeContext
+						? Promise.resolve(options.preparedRealtimeContext)
+						: prepareControllerRealtimeContext({
 							ctx: options.ctx,
 							config: options.config,
-							onSummary: (summary) => {
-								realtimeSummary = summary;
-							},
 							onSummaryStatus: (active) => {
 								setStartupStatus(active ? "summarizing…" : "connecting…");
 							},
@@ -118,7 +151,7 @@ export async function startControllerMode(options: {
 			cancelStart(runtime, startGeneration);
 			return;
 		}
-		const [auth, initialItems] = startup;
+		const [auth, realtimeContext] = startup;
 		if (
 			startGeneration !== runtime.startGeneration ||
 			runtime.state.type !== "connecting"
@@ -129,7 +162,7 @@ export async function startControllerMode(options: {
 				options,
 				auth,
 				realtimePrompt!,
-				initialItems,
+				realtimeContext?.initialItems,
 				startSignal,
 			);
 		if (startSignal.aborted) {
@@ -142,7 +175,8 @@ export async function startControllerMode(options: {
 			if (activeState.type !== "conversation") {
 				return;
 			}
-			if (realtimeSummary) options.messages.contextSummary(realtimeSummary);
+			if (realtimeContext?.summary)
+				options.messages.contextSummary(realtimeContext.summary);
 			if (runtime.announcedMode !== options.mode) {
 				runtime.announcedMode = options.mode;
 				options.messages.modeStarted(options.mode);
@@ -218,7 +252,8 @@ async function startConversation(
 					options.onDrop(session, error);
 			},
 			onStatus: options.onStatus,
-			onTurn: (turn) => { void options.messages.voiceTurn(turn); },
+			onTurn: (session, turn) => { void options.messages.voiceTurn(turn, session); },
+			onEvent: (event) => options.messages.realtimeEvent(event),
 			onUserTranscript: (transcript) =>
 				options.messages.userTranscript(transcript),
 			onTranscriptTail: (transcript) =>

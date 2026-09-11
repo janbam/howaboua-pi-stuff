@@ -54,10 +54,9 @@ Set `defer_loading = false` only for stable, frequently used tools. Promotion ad
 
 Working, disabled templates ship under the package root's `examples/custom-tools/` directory:
 
-- `browser`: controls a logged-in Chromium browser through CDP with bounded Codex `web__run`-style operations; optional SSH routing ships disabled.
+- `browser`: final legacy command-backed CDP example; prefer the maintained `@howaboua/pi-browser` extension.
 - `agents`: starts persistent explorer and reviewer Pi agents in Herdr panels; remote routing requires explicit installer configuration.
-- `herdr_agent`: finds and coordinates Pi agents in Herdr panels; use with `skills` for advanced Herdr orchestration.
-- `skills`: lists Pi's standard global and session skill catalog or reads one exact skill.
+- `skills`: lists Pi's standard global and session skill catalog, reads one exact skill or reads its references by name.
 - `port_info`: cross-platform listener and process diagnostics.
 - `semantic_grep`: queries an existing index owned by an installed and configured `@howaboua/pi-semantic-grep`.
 - `sites` and `sites_documentation`: a curated, private-API bridge to the ChatGPT Sites beta using Pi's OpenAI Codex OAuth; keep both definitions together.

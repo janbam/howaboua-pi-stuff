@@ -4,21 +4,33 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { isSettledStatus } from "./activity.js";
 import { getSnapshot } from "./herdr.js";
-import { type HerdrConnection, isHerdrResponseError } from "./herdr-client.js";
+import { type HerdrConnection, isDispatchRejected } from "./herdr-client.js";
 import { parseMonitorEvent } from "./monitor-event.js";
 import { MonitorEvents } from "./monitor-events.js";
 import { MonitorState, type WorkAttempt } from "./monitor-state.js";
 import type { AssistantReader } from "./session-reader.js";
-import { SettlementReporter, type SettlementRequest } from "./settlement.js";
-import type { HerdrEvent, MonitoredAgent, PaneInfo } from "./types.js";
+import {
+	type ClaimedSettlement,
+	SettlementReporter,
+	type SettlementRequest,
+} from "./settlement.js";
+import type {
+	HerdrEvent,
+	MonitoredAgent,
+	MonitoringIssue,
+	PaneInfo,
+	SessionView,
+} from "./types.js";
 
 interface AgentMonitorOptions {
 	client: HerdrConnection;
 	machine: string;
+	machineLabel: () => string;
 	onChange: () => void;
 	onRefresh: () => void;
 	operatorPrefix: string;
-	onWarning: (message: string) => void;
+	onWarning: (issue: MonitoringIssue) => void;
+	onRecovered: () => void;
 	reader?: AssistantReader;
 	reconnect: boolean;
 	selfPaneId?: string;
@@ -30,7 +42,6 @@ export class AgentMonitor {
 	private readonly onChange: () => void;
 	private readonly onRefresh: () => void;
 	private readonly selfPaneId: string | undefined;
-	private readonly onWarning: (message: string) => void;
 	private readonly state = new MonitorState();
 	private readonly events: MonitorEvents;
 	private readonly settlements: SettlementReporter;
@@ -43,22 +54,28 @@ export class AgentMonitor {
 		this.onChange = options.onChange;
 		this.onRefresh = options.onRefresh;
 		this.selfPaneId = options.selfPaneId;
-		this.onWarning = options.onWarning;
 		this.settlements = new SettlementReporter(
 			pi,
 			this.client,
 			this.state,
-			() => this.persist(),
+			() => {
+				this.persist();
+				this.refreshAfterEvent();
+			},
 			options.reader,
-			this.machine,
-			options.operatorPrefix,
+			{
+				machine: this.machine,
+				label: options.machineLabel,
+				operatorPrefix: options.operatorPrefix,
+			},
 		);
 		this.events = new MonitorEvents({
 			client: this.client,
 			reconnect: options.reconnect,
 			onEvent: (event) => this.handleEvent(event),
-			onReconnect: () => this.reconcileNow(),
-			onWarning: (message) => this.onWarning(message),
+			reconcile: () => this.reconcileNow(),
+			onWarning: options.onWarning,
+			onRecovered: options.onRecovered,
 			targets: () => this.list().map((record) => record.paneId),
 		});
 	}
@@ -95,19 +112,29 @@ export class AgentMonitor {
 		return this.state.list();
 	}
 
-	isMonitored(paneId: string): boolean {
-		return this.state.isMonitored(paneId);
+	async watch(panel: PaneInfo): Promise<MonitoredAgent> {
+		return this.watchPanel(panel, true);
 	}
 
-	async watch(panel: PaneInfo): Promise<MonitoredAgent> {
+	async track(panel: PaneInfo): Promise<MonitoredAgent> {
+		return this.watchPanel(panel, false);
+	}
+
+	private async watchPanel(
+		panel: PaneInfo,
+		reportSettled: boolean,
+	): Promise<MonitoredAgent> {
 		if (panel.pane_id === this.selfPaneId) {
 			throw new Error("refusing to monitor the controlling Pi session");
 		}
 		const reply = await this.settlements.latest(panel);
-		const { record, reportCurrent } = this.state.watch(panel, reply?.id);
+		const { record, reportCurrent } = this.state.watch(
+			panel,
+			reply?.id,
+			reportSettled,
+		);
 		this.persist();
 		await this.events.refresh();
-		await this.reconcile(this.activationGeneration, this.context);
 		if (reportCurrent && isSettledStatus(panel.agent_status)) {
 			await this.report({ record, status: panel.agent_status });
 		}
@@ -117,15 +144,38 @@ export class AgentMonitor {
 	async unwatch(paneId: string): Promise<boolean> {
 		const record = this.state.removePane(paneId);
 		if (!record) return false;
+		this.settlements.releaseAgentClaim(
+			record,
+			new Error(`${paneId} was unwatched before its work settled`),
+		);
 		this.persist();
 		await this.events.refresh();
 		return true;
 	}
 
-	beginWork(paneId: string, task: string): WorkAttempt | undefined {
-		const attempt = this.state.beginWork(paneId, task);
+	beginWork(
+		paneId: string,
+		task: string,
+		expectedUserAfter?: string | null,
+	): WorkAttempt | undefined {
+		const attempt = this.state.beginWork(paneId, task, expectedUserAfter);
 		if (attempt) this.persist();
 		return attempt;
+	}
+
+	claimWork(
+		attempt: WorkAttempt,
+		signal: AbortSignal,
+	): Promise<ClaimedSettlement> {
+		return this.settlements.claim(attempt, signal);
+	}
+
+	releaseWorkClaim(attempt: WorkAttempt | undefined, error: unknown): void {
+		this.settlements.releaseClaim(attempt, error);
+	}
+
+	view(panel: PaneInfo): Promise<SessionView> {
+		return this.settlements.view(panel);
 	}
 
 	acceptWork(attempt: WorkAttempt | undefined): void {
@@ -140,10 +190,12 @@ export class AgentMonitor {
 		attempt: WorkAttempt | undefined,
 		error: unknown,
 	): Promise<void> {
-		if (isHerdrResponseError(error)) {
+		if (isDispatchRejected(error)) {
 			this.rejectWork(attempt);
 			return;
 		}
+		// An unknown acknowledgement must not leave status processing suspended.
+		this.state.endSubmission(attempt);
 		try {
 			await this.reconcileNow();
 		} catch (reconcileError) {
@@ -156,6 +208,10 @@ export class AgentMonitor {
 
 	async reconcileNow(): Promise<void> {
 		await this.reconcile(this.activationGeneration, this.context);
+	}
+
+	retryMonitoring(): Promise<void> {
+		return this.events.retry();
 	}
 
 	private persist(): void {
@@ -182,10 +238,16 @@ export class AgentMonitor {
 		const snapshot = await getSnapshot(this.client);
 		if (generation !== this.activationGeneration || context !== this.context)
 			return;
-		const { changed, completions } = this.state.reconcile(
+		const { changed, completions, removed } = this.state.reconcile(
 			snapshot,
 			this.selfPaneId,
 		);
+		for (const record of removed) {
+			this.settlements.releaseAgentClaim(
+				record,
+				new Error(`${record.paneId} closed before its work settled`),
+			);
+		}
 		if (changed || persistRestoration) this.persist();
 		else this.onRefresh();
 		for (const completion of completions) {
@@ -199,15 +261,19 @@ export class AgentMonitor {
 		if (parsed.type === "closed") {
 			const record = this.state.removePane(parsed.paneId);
 			if (record) {
+				this.settlements.releaseAgentClaim(
+					record,
+					new Error(`${parsed.paneId} closed before its work settled`),
+				);
 				this.persist();
-				void this.events.refresh();
+				this.refreshAfterEvent();
 			}
 			return;
 		}
 		if (parsed.type === "moved") {
 			if (!this.state.movePane(parsed.previousPaneId, parsed.pane)) return;
 			this.persist();
-			void this.events.refresh();
+			this.refreshAfterEvent();
 			return;
 		}
 		const result = this.state.applyStatus(parsed.paneId, parsed.status);
@@ -220,6 +286,11 @@ export class AgentMonitor {
 					: {}),
 			});
 		}
+	}
+
+	private refreshAfterEvent(): void {
+		// MonitorEvents reports failures through onWarning before rejecting awaited updates.
+		void this.events.refresh().catch(() => undefined);
 	}
 
 	private report(request: SettlementRequest): Promise<void> {

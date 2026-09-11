@@ -23,6 +23,7 @@ export function buildVoiceSettings(
 		setting(
 			{
 				id: "v3Voice",
+				description: "Choose the speaking voice for Codex realtime conversations.",
 				label: "Codex voice",
 				currentValue: formatVoiceName(config.voice.v3Voice),
 				values: REALTIME_V3_VOICES.map(formatVoiceName),
@@ -40,6 +41,7 @@ export function buildVoiceSettings(
 		setting(
 			{
 				id: "autoResumeRealtime",
+				description: "Reconnect automatically if an active realtime voice call drops.",
 				label: "Auto-resume realtime voice",
 				currentValue: config.voice.autoResumeRealtime ? "on" : "off",
 				values: ["off", "on"],
@@ -55,6 +57,7 @@ export function buildVoiceSettings(
 		setting(
 			{
 				id: "delegationAcknowledgements",
+				description: "Let the voice model speak a brief acknowledgement when handing a task to the coding agent.",
 				label: "Speak delegation acknowledgements",
 				currentValue: config.voice.delegationAcknowledgements ? "on" : "off",
 				values: ["off", "on"],
@@ -70,7 +73,8 @@ export function buildVoiceSettings(
 		setting(
 			{
 				id: "forwardReasoningSummaries",
-				label: "Forward reasoning summaries for compatible models",
+				description: "Let voice relay reasoning summaries as progress when the coding agent has no spoken text update.",
+				label: "Speak reasoning summaries",
 				currentValue: config.voice.forwardReasoningSummaries ? "on" : "off",
 				values: ["off", "on"],
 			},
@@ -84,8 +88,28 @@ export function buildVoiceSettings(
 		),
 		setting(
 			{
+				id: "dictationShortcutMode",
+				description: "Hold the shortcut to record and release to finish, or press once to start and again to stop.",
+				label: "Dictation key behavior",
+				currentValue:
+					config.voice.dictationShortcutMode === "push"
+						? "push to dictate"
+						: "toggle",
+				values: ["push to dictate", "toggle"],
+			},
+			(value, current) => ({
+				...current,
+				voice: {
+					...current.voice,
+					dictationShortcutMode: value === "toggle" ? "toggle" : "push",
+				},
+			}),
+		),
+		setting(
+			{
 				id: "voiceContextModel",
-				label: "Voice context model",
+				description: "Choose a model to summarize the coding session for voice startup. Off starts voice without that summary.",
+				label: "Context summarisation model",
 				currentValue: currentContextModel,
 				values: [
 					"off",
@@ -102,7 +126,7 @@ export function buildVoiceSettings(
 					...current,
 					voice:
 						value === "off"
-							? voice
+							? { ...voice, refreshRealtimeAfterCompaction: false }
 							: {
 									...voice,
 									contextModel: selected ?? current.voice.contextModel,
@@ -113,7 +137,8 @@ export function buildVoiceSettings(
 		setting(
 			{
 				id: "voiceContextReasoning",
-				label: "Voice context reasoning",
+				description: "Set reasoning effort for the voice context summary, where the selected model supports it.",
+				label: "Context summarisation reasoning",
 				currentValue: currentContextReasoning,
 				values: [...VOICE_CONTEXT_REASONING_LEVELS],
 			},
@@ -127,19 +152,19 @@ export function buildVoiceSettings(
 		),
 		setting(
 			{
-				id: "dictationShortcutMode",
-				label: "Dictation key behavior",
-				currentValue:
-					config.voice.dictationShortcutMode === "push"
-						? "push to dictate"
-						: "toggle",
-				values: ["push to dictate", "toggle"],
+				id: "refreshRealtimeAfterCompaction",
+				description: "Summarize and start a fresh voice call at each context rollover or compaction. Requires a summarization model.",
+				label: "Refresh voice context",
+				currentValue: config.voice.refreshRealtimeAfterCompaction
+					? "on"
+					: "off",
+				values: ["off", "on"],
 			},
 			(value, current) => ({
 				...current,
 				voice: {
 					...current.voice,
-					dictationShortcutMode: value === "toggle" ? "toggle" : "push",
+					refreshRealtimeAfterCompaction: value === "on",
 				},
 			}),
 		),

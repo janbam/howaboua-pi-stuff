@@ -1,5 +1,198 @@
 # Changelog
 
+## 3.0.33
+
+- Removed redundant tool guidance from Ask, Shepherdr, Skills and Browser. Code and Notebook Mode now show one callable contract per tool, with detailed Browser and agent rules in help.
+
+## 3.0.32
+
+- Fix Notebook's first-run Deno installation in standalone Pi by loading the archive extractor through the extension's static module graph.
+
+- Reduced installation dependencies without removing Notebook or shell-summary features.
+
+  - Removed the general ZIP library and Bash grammar package's native install hook.
+  - Removed the tokenizer dependency and unused encodings while preserving compaction token counts.
+  - Updated OpenAI, Undici, and the shell parser runtime, including transport security fixes.
+
+- Deliver peer messages directly to Pi without submitting unsent human drafts.
+
+  - Preserve slash-command arguments and use the target session's skill and prompt-template expansion.
+  - Return submission-only acknowledgements for registered extension commands instead of waiting for an assistant reply.
+
+  Requires Pi 0.84.4 or newer. Update and reload Shepherdr on both controllers and workers, and Pi Codex Conversion where installed.
+
+- Fixed idle agent reports and manual checkpoint requests to preserve prompt preparation, coalesce concurrent continuations, and process reports arriving during turn settlement.
+
+  - Manual Compact reuses notes saved in the last completed turn for Local, Tree, and Remote notes-only windows, avoiding a redundant checkpoint turn. Explicit compaction instructions still request a checkpoint.
+  - Compact tool output now offers Off, On, and Minimal. Minimal keeps nested tool results and an expand hint while hiding the trailing Code / Notebook text preview until expanded. Existing Off and On settings keep their behavior.
+  - Shepherdr help makes local routing explicit: agent calls default to the host running Pi, while unfiltered discovery searches all machines. Remote calls use profile IDs, not machine labels or hostnames.
+  - Fixed Shepherdr startup after a Herdr executable replacement leaves a stale ` (deleted)` path. Recovery silently uses the replacement at the same location. Command failures remain visible and no longer imply that Herdr is outdated.
+
+- Streamed realtime replies now return their final text to the requesting delegation instead of leaving the entire answer in general session context.
+
+  - Context-window rollover now requests a brief spoken acknowledgement before voice-context refresh, including notes-only mode.
+  - Voice context refresh now preserves the summary and queues arriving spoken requests across call replacement instead of discarding them. Accepted speech finishes on the current call before replacement.
+  - Session diagnostics retain voice call, transcript and delegation identities with text hashes to distinguish event replay from fresh recognition.
+
+## 3.0.31
+
+- Restore full extension prompt preparation when continuing into a new context window or starting review triage.
+
+  - Keep tool instructions current through Pi's normal startup hooks without resetting the Notebook.
+  - Let active context management own review-loop navigation summaries.
+
+- Keep Notebook Mode working in standalone Pi without loading the native ZeroMQ addon that crashes Bun. Notebook uses a TypeScript TCP transport to its Deno kernel; no separate Node installation is required.
+
+## 3.0.30
+
+- Keep compaction checkpoints alongside notes with a Hybrid toggle for Local, Tree and Remote context management.
+
+  - Use Responses V2 where supported and Pi summaries elsewhere; preserve Tree checkpoints and their exact replay tails across archival.
+  - Request a notes checkpoint after completed tool turns before the configured compaction reserve, including after final replies.
+  - Make notes-only `/compact` request a checkpoint and immediate rollover instead of cutting context; reuse notes just saved for the current state.
+  - Give non-Astra models explicit notes and recovery guidance in every context-management mode.
+  - Gather notes, history and compaction settings in a dedicated Context tab under `/codex`.
+  - Explain every setting on selection, including dependencies and non-obvious effects.
+  - Refresh active voice calls with a fresh summary on context handoffs as well as compaction, preserving mute and LAN ownership.
+  - Keep deferred ideas and unrelated tasks in notes for later resumption without treating them as permission to implement.
+  - Apply concise follow-through guidance to all models, including heavy system-prompt rewrite.
+  - Keep reasoning-level bookkeeping out of Pi's default tree view while preserving model updates and replay.
+  - Added nested tool completion subscriptions through `code-mode-hooks`, with original arguments and full results for extension-side tracking without expanding agent output. Existing preflight imports remain supported.
+
+- Tree navigation and `/end` now carry conversation summaries through the active notes backend.
+
+  - The agent turn ends after the requested note write, without a follow-up reply.
+  - Arriving agents receive a branch summary directing them to read the note before resuming.
+  - Default `/end` guidance is task-neutral.
+
+## 3.0.29
+
+- Preserve Pi tools and prompt when a tool allowlist excludes required Codex adapter tools. Report unavailable tools instead of activating an incomplete adapter.
+
+  - Keep excluded Pi tools out of their Code and Notebook projections.
+  - Refresh tool availability before applying context-window settings.
+
+## 3.0.28
+
+- Fixed empty Notebook tool enumeration. `Object.keys(tools)` and membership checks now reflect callable tools; `ALL_TOOLS` remains limited to deferred tools.
+
+## 3.0.27
+
+- Fixed Responses compaction v2 falling back to Pi compaction after native Codex provider registration.
+
+## 3.0.26
+
+- Preserve extension-owned messages while delivering true developer-role policy through compatible Pi Codex Responses adapters.
+
+  - Add an optional custom-message API that retains caller rendering and restoration fields.
+  - Route Shepherdr's unclaimed worker events and orchestration toggles through it, preserving ordinary Pi delivery when unavailable.
+  - Send review preface/triage policy and realtime voice start/end guidance as developer messages without elevating raw reviewer findings, spoken delegations, or transcript tails.
+  - Keep persisted developer messages in context across model switches, using ordinary Pi conversion on incompatible models.
+
+- Added backend-authorized Luna Reserve fallback after Codex quota exhaustion.
+
+  - Show Reserve as a separate, limited allowance in `/codex usage`.
+  - Switch to Luna Reserve and ask the user to continue, without automatic retries or reset-credit redemption.
+  - Restore the original model and reasoning level when ordinary usage recovers, including resumed sessions.
+
+- Simplify Notebook metadata persistence and realtime voice startup without changing saved data, connection behavior, or tool output.
+
+- Expand Pi Codex execution and extension integration.
+
+  - Apply Code and Notebook execution modes across the full configured adapter scope without changing each provider's transport.
+  - Let extensions inject persisted, visibly rendered Responses developer messages with Pi-native delivery controls.
+  - Add experimental no-summary context management with Local JSONL recovery, Tree archives, exact Remote Codex storage, budget reminders, and Code/Notebook controls.
+  - Support GPT-6 Astra with its native Codex catalog and Responses Lite routing.
+  - Fix Remote context management schema rejection on Astra while keeping compact tool descriptions.
+
+- Fixed GPT-6 Astra reasoning changes through Pi’s selector to preserve prompt-cache and WebSocket continuation eligibility, including session resume and native compaction.
+
+- Add optional Astra effort control and clearer auxiliary tool activity.
+
+  - Enable Astra-only reasoning adjustment in Structured, Code and Notebook modes, respecting the user's floor and restoring it after the run.
+  - Show notes, history, notebook and context-window actions with compact outcomes and expandable detail.
+
+- Fixed Codex streams that end immediately after an unterminated terminal SSE event, and cleared stale incomplete-response errors after successful recovery.
+
+- Fix worker settlement, custom model preservation, and prompt-only image generation.
+
+  - Settle Shepherdr workers after Pi expands skill or prompt-template invocations.
+  - Preserve custom Codex models and `models.json` overrides, including after refresh.
+  - Keep optional tool arguments optional in Codex Responses requests while preserving explicit strict sampling.
+  - Treat null image selectors as absent, so prompt-only requests generate rather than edit.
+  - Honor the details toggle in Notebook Mode to hide duplicate output previews.
+  - Show submitted messages without waiting for cached WebSocket warmup, while keeping generation serialized behind it.
+
+## 3.0.25
+
+- - Repeated OpenAI `additional_tools` updates now retain every previously loaded deferred tool.
+  - Updated agent instructions for direct tool workflows, filtered output, and persistent Deno work.
+
+## 3.0.24
+
+- **BREAKING CHANGE:** Removed web search and image generation from Pi Codex's bundled toolkit. Install their standalone extensions to keep using them:
+
+  - `pi install npm:@howaboua/pi-codex-web-run`
+  - `pi install npm:@howaboua/pi-codex-imagegen`
+
+- Updated Code and Notebook Mode instructions to encourage batching independent file edits and composing multi-step tool calls in Deno.
+
+- Simplified the `/codex` settings menu.
+
+- Added a Code and Notebook Mode bridge API. This allows extensions that use Pi TUI to run inside `exec`.
+
+- Added optional dual compaction. OpenAI compaction can run in parallel with Pi-native compaction to allow switching providers in a single session.
+
+- Fixed waiting indicators for extension UI prompts.
+
+- Voice summarisation now runs whenever Pi compacts, then starts a fresh realtime session.
+
+## 3.0.23
+
+### Changes
+
+- [#352](https://github.com/IgorWarzocha/howaboua-pi-stuff/pull/352) [`4e2b773`](https://github.com/IgorWarzocha/howaboua-pi-stuff/commit/4e2b773f8e069f4b61316bccc859faafe3451b9c) Thanks [@IgorWarzocha](https://github.com/IgorWarzocha)! - Keep installed Codex startup and prompt-cache keepalive reliable.
+
+  - Load the package changelog from shipped JavaScript so the extension starts correctly from `node_modules`.
+  - Replace the generic keepalive experiment with bounded global Luna windows and a project-only 25-minute Sol/Terra policy.
+  - Refresh prompt caches independently from cached WebSocket continuation and retention.
+  - Preserve first-party Codex behavior through renamed and proxied Codex routes, and clean isolated keepalive sockets on transport reset.
+
+## 3.0.22
+
+### Changes
+
+- [#349](https://github.com/IgorWarzocha/howaboua-pi-stuff/pull/349) [`ef7656c`](https://github.com/IgorWarzocha/howaboua-pi-stuff/commit/ef7656c2aab3d2aa1cff581bae26dc9b102aece7) Thanks [@IgorWarzocha](https://github.com/IgorWarzocha)! - Restore live Pi speech by streaming visible progress, speaking enabled completed reasoning summaries, and integrating successive updates without replacing active speech.
+
+## 3.0.21
+
+### Changes
+
+- [#346](https://github.com/IgorWarzocha/howaboua-pi-stuff/pull/346) [`bf42276`](https://github.com/IgorWarzocha/howaboua-pi-stuff/commit/bf42276a2fdc10e41ce0d3f48855607ff89e50c8) Thanks [@IgorWarzocha](https://github.com/IgorWarzocha)! - Speak Pi progress and final results as soon as they reach realtime voice instead of waiting for turn completion.
+
+## 3.0.20
+
+### Changes
+
+- [#342](https://github.com/IgorWarzocha/howaboua-pi-stuff/pull/342) [`35182d9`](https://github.com/IgorWarzocha/howaboua-pi-stuff/commit/35182d9a002daded7610cca64c47b25bed3267df) Thanks [@howaclawa](https://github.com/howaclawa)! - Keep realtime voice responsive across typed Pi turns, active speech, and compaction. Speak one meaningful progress update, serialize final results, and queue delegations until native compaction and prewarm finish.
+
+- [#342](https://github.com/IgorWarzocha/howaboua-pi-stuff/pull/342) [`35182d9`](https://github.com/IgorWarzocha/howaboua-pi-stuff/commit/35182d9a002daded7610cca64c47b25bed3267df) Thanks [@howaclawa](https://github.com/howaclawa)! - Make Code and Notebook Mode failures actionable and easier to recover.
+
+  - Surface Deno syntax diagnostics instead of generic execution failures and isolate bridge networking from user bindings.
+  - Encode action-specific notebook control inputs and return targeted recovery for persistent binding redeclarations.
+  - Clarify safe shell interpolation, terminal input, and Deno tool composition in model-facing guidance.
+  - Keep concurrent Code and Notebook sessions from taking optional Git index locks during read-only commands.
+  - Retry idempotent browser reads after delayed Chrome responses without blaming debugger approval, while warning against blind retries of timed-out page mutations.
+  - Return unambiguous tab references, prevent stale element aliases, support common ARIA menu controls, bound reference screenshots, validate browser references and pagination, serialize shared daemon state, release remote object handles, revalidate the requested control immediately before a native click, keep linked CLI entries executable, and expose the complete reference workflow in launcher help.
+  - Focus and verify the identity of referenced editable fields without first dispatching a potentially consequential click.
+  - Keep the Agents custom tool self-contained and remove the superseded Herdr Agent example.
+  - Let the Skills custom tool load one or more routed references directly by name.
+  - Preserve explicit `models.json` endpoints when installing the custom Codex transport and Daybreak model catalog.
+  - Keep package changelogs disabled with the Codex extension in Pi config.
+  - Keep LAN voice certificate startup compatible with asynchronous certificate generation.
+  - Release queued realtime delegations when native compaction fails, is aborted, or any post-compaction step errors.
+  - Defer queued Pi follow-up context until that follow-up begins its realtime handoff.
+
 ## 3.0.19
 
 ### Changes

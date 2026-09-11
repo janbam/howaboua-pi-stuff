@@ -1,30 +1,40 @@
-import type { Theme } from "@earendil-works/pi-coding-agent";
 import {
 	type CodexConversionConfig,
 	DEFAULT_CODEX_CONVERSION_CONFIG,
+	LUNA_CACHE_KEEPALIVE_MINUTES_OPTIONS,
 	normalizeCodexVerbosity,
-	normalizeV2UserMessageRetention,
-	V2_USER_MESSAGE_RETENTION_OPTIONS,
 } from "../../adapter/activation/config.ts";
-import { type ConfigSetting, projectToggle, setting, toggle } from "./config-items-shared.ts";
+import { type ConfigSetting, projectCacheKeepalive, setting, toggle } from "./config-items-shared.ts";
 
 export function buildOpenAISettings(
 	config: CodexConversionConfig,
-	theme: Theme,
 ): ConfigSetting[] {
 	return [
 		toggle("fast", "Fast mode", config.openai.fast, (enabled, current) => ({
 			...current,
 			openai: { ...current.openai, fast: enabled },
-		})),
-		projectToggle(
+		}), "Request priority processing where supported. May use more quota or cost more."),
+		{
+			item: {
+				id: "lunaCacheKeepaliveMinutes",
+				description: "Send idle requests every 2.5 minutes for this duration to keep Luna's prompt cache warm. Uses quota.",
+				label: "Luna cache keepalive (global)",
+				currentValue: config.openai.lunaCacheKeepaliveMinutes === 0
+					? "off"
+					: `${config.openai.lunaCacheKeepaliveMinutes} mins`,
+				values: LUNA_CACHE_KEEPALIVE_MINUTES_OPTIONS.map((minutes) => minutes === 0 ? "off" : `${minutes} mins`),
+			},
+			action: "global-luna-cache-keepalive",
+		},
+		projectCacheKeepalive(
 			"cacheKeepalive",
-			"Experimental cache keepalive",
+			"Sol/Terra cache keepalive (this project)",
 			config.openai.cacheKeepalive,
 		),
 		setting(
 			{
 				id: "verbosity",
+				description: "Set the model's preferred answer detail. This does not change its reasoning effort.",
 				label: "Verbosity",
 				currentValue: config.openai.verbosity,
 				values: ["low", "medium", "high"],
@@ -39,11 +49,6 @@ export function buildOpenAISettings(
 				},
 			}),
 		),
-		setting({
-			id: "transportHeader",
-			label: theme.fg("dim", "Transport"),
-			currentValue: "",
-		}),
 		toggle(
 			"responsesLite",
 			"Proxy Responses Lite",
@@ -52,6 +57,7 @@ export function buildOpenAISettings(
 				...current,
 				openai: { ...current.openai, proxyResponsesLite: enabled },
 			}),
+			"Use Responses Lite for supported models on configured proxies in Code or Notebook mode. Requires proxy support.",
 		),
 		toggle(
 			"forceCachedWebSockets",
@@ -61,10 +67,12 @@ export function buildOpenAISettings(
 				...current,
 				openai: { ...current.openai, forceCachedWebSockets: enabled },
 			}),
+			"Upgrade explicit WebSocket transport to reuse connections between requests. Leaves SSE unchanged.",
 		),
 		setting(
 			{
 				id: "harnessIdentifierHeader",
+				description: "Identify this extension in the request originator header instead of the default Pi identifier.",
 				label: "Harness identifier header",
 				currentValue: config.openai.harnessIdentifierHeader
 					? "pi-codex-conversion <3"
@@ -79,70 +87,37 @@ export function buildOpenAISettings(
 				},
 			}),
 		),
-		setting({
-			id: "compactionHeader",
-			label: theme.fg("dim", "Compaction"),
-			currentValue: "",
-		}),
-		toggle(
-			"responsesCompaction",
-			"Responses compaction V2",
-			config.compaction.responsesCompaction,
-			(enabled, current) => ({
-				...current,
-				compaction: { ...current.compaction, responsesCompaction: enabled },
-			}),
-		),
 		setting(
 			{
-				id: "v2UserMessageRetention",
-				label: "Preserved user messages",
-				currentValue: `${config.compaction.v2UserMessageRetention}k${config.compaction.v2UserMessageRetention === 64 ? " (Codex native)" : ""}`,
-				values: V2_USER_MESSAGE_RETENTION_OPTIONS.map(
-					(value) => `${value}k${value === 64 ? " (Codex native)" : ""}`,
-				),
+				id: "cacheDiagnostics",
+				description: "Show cache and continuation status below the editor, with optional diagnostic logging.",
+				label: "Cache diagnostics",
+				currentValue: formatCacheDiagnostics(config.openai.cacheDiagnostics),
+				values: ["Off", "Status", "Status + log"],
 			},
 			(value, current) => ({
 				...current,
-				compaction: {
-					...current.compaction,
-					v2UserMessageRetention:
-						normalizeV2UserMessageRetention(Number.parseInt(value, 10)) ?? 64,
-				},
-			}),
-		),
-		setting({
-			id: "diagnosticsHeader",
-			label: theme.fg("dim", "Diagnostics"),
-			currentValue: "",
-		}),
-		toggle(
-			"cacheDiagnosticsStatus",
-			"Cache status line",
-			config.openai.cacheDiagnostics !== "off",
-			(enabled, current) => ({
-				...current,
 				openai: {
 					...current.openai,
-					cacheDiagnostics: enabled ? "status" : "off",
-				},
-			}),
-		),
-		toggle(
-			"cacheDiagnosticsLog",
-			"Cache log file",
-			config.openai.cacheDiagnostics === "status-and-log",
-			(enabled, current) => ({
-				...current,
-				openai: {
-					...current.openai,
-					cacheDiagnostics: enabled
-						? "status-and-log"
-						: current.openai.cacheDiagnostics === "off"
-							? "off"
-							: "status",
+					cacheDiagnostics: parseCacheDiagnostics(value),
 				},
 			}),
 		),
 	];
+}
+
+function formatCacheDiagnostics(
+	mode: CodexConversionConfig["openai"]["cacheDiagnostics"],
+): string {
+	if (mode === "status-and-log") return "Status + log";
+	if (mode === "status") return "Status";
+	return "Off";
+}
+
+function parseCacheDiagnostics(
+	value: string,
+): CodexConversionConfig["openai"]["cacheDiagnostics"] {
+	if (value === "Status + log") return "status-and-log";
+	if (value === "Status") return "status";
+	return "off";
 }

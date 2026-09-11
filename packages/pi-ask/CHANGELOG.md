@@ -1,5 +1,21 @@
 # @howaboua/pi-ask
 
+## 0.0.9
+
+- Removed redundant tool guidance from Ask, Shepherdr, Skills and Browser. Code and Notebook Mode now show one callable contract per tool, with detailed Browser and agent rules in help.
+
+## 0.0.8
+
+- Shepherdr now discovers and answers waiting questions invoked inside Code and Notebook Mode.
+
+## 0.0.7
+
+- The `ask` tool now supports steering questions that return immediately, preserve the full response panel, and deliver answers at the next safe boundary using the developer role under active Pi Codex Responses.
+
+## 0.0.6
+
+- Added a Code and Notebook Mode bridge API. This allows extensions that use Pi TUI to run inside `exec`.
+
 ## 0.0.5
 
 ### Changes

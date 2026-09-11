@@ -26,6 +26,8 @@ export interface CodexLanVoiceServer {
 	readonly urls: string[];
 	agentStarted(): void;
 	agentSettled(text?: string): void;
+	uiPromptStarted(title?: string): void;
+	uiPromptEnded(agentRunning: boolean): void;
 	close(): Promise<void>;
 }
 
@@ -39,7 +41,7 @@ export async function startCodexLanVoiceServer(options: {
 	port?: number | undefined;
 	certificateAgentDir: string;
 }): Promise<CodexLanVoiceServer> {
-	const certificate = resolveLanVoiceCertificate(options.certificateAgentDir);
+	const certificate = await resolveLanVoiceCertificate(options.certificateAgentDir);
 	const ownerIsActive = () => options.ctx.sessionManager.getSessionId() === options.ownerSessionId;
 	let activeConversation: { peer: LanHostRealtimePeer; conversation: CodexRealtimeConversation } | undefined;
 	let conversationStart: { abort: AbortController; promise: Promise<void> } | undefined;
@@ -233,6 +235,9 @@ export async function startCodexLanVoiceServer(options: {
 		urls,
 		agentStarted: () => activity.working(),
 		agentSettled: (text) => activity.settled(text),
+		uiPromptStarted: (title) => activity.waiting(title),
+		uiPromptEnded: (agentRunning) =>
+			agentRunning ? activity.working() : activity.settled(),
 		close() {
 			closePromise ??= closeServer();
 			return closePromise;

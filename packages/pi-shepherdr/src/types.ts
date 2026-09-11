@@ -1,15 +1,31 @@
 export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 
+export interface PeerMessage {
+	text: string;
+	sender: string;
+	context?: string;
+}
+
+export interface PeerDelivery {
+	command: boolean;
+}
+
 export type SettledAgentStatus = Exclude<AgentStatus, "working">;
 
 export type StableAgentActivity =
 	| { readonly phase: "settled"; readonly status: SettledAgentStatus }
-	| { readonly phase: "working"; readonly task?: string };
+	| {
+			readonly attemptId?: string;
+			readonly expectedUserAfter?: string | null;
+			readonly phase: "working";
+			readonly task?: string;
+	  };
 
 export type AgentActivity =
 	| StableAgentActivity
 	| {
 			readonly attemptId: string;
+			readonly expectedUserAfter?: string | null;
 			readonly phase: "submitting";
 			readonly previous: StableAgentActivity;
 			readonly task: string;
@@ -29,9 +45,11 @@ export interface PaneInfo {
 	cwd?: string | null;
 	foreground_cwd?: string | null;
 	interactive_ready?: boolean;
+	label?: string | null;
 	launch_pending?: boolean;
 	name?: string | null;
 	pane_id: string;
+	title?: string | null;
 	tab_id: string;
 	terminal_id: string;
 	workspace_id: string;
@@ -56,6 +74,7 @@ export interface SessionSnapshot {
 }
 
 export interface MonitoredAgent {
+	readonly scope: "task" | "persistent";
 	readonly activity: AgentActivity;
 	readonly cwd?: string;
 	readonly lastAssistantId?: string;
@@ -68,9 +87,18 @@ export interface MonitoredAgent {
 
 type MachineConnectionStatus = "connected" | "connecting" | "unavailable";
 
+export interface MonitoringIssue {
+	state: "degraded" | "unavailable";
+	message: string;
+}
+
 export interface MachineStatus {
 	local: boolean;
-	name: string;
+	id: string;
+	label?: string;
+	target?: string;
+	session?: string;
+	monitoringIssue?: MonitoringIssue;
 	reason?: string;
 	status: MachineConnectionStatus;
 }
@@ -81,6 +109,29 @@ export interface LatestAssistant {
 	id: string;
 	stopReason?: string;
 	text: string;
+}
+
+export interface LatestInput {
+	id: string;
+	text: string;
+}
+
+export interface PendingAsk {
+	handoff: boolean;
+	prompts: Array<{
+		body?: string;
+		choices: Array<{ description?: string; label: string }>;
+		multiple: boolean;
+		title: string;
+	}>;
+	toolCallId: string;
+}
+
+export interface SessionView {
+	ask?: PendingAsk;
+	assistant?: LatestAssistant;
+	assistantAfterInput?: boolean;
+	input?: LatestInput;
 }
 
 export interface HerdrEvent {

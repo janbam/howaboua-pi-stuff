@@ -2,7 +2,7 @@
 
 If you're expecting details about the code, you've come to the wrong place. Clone it and ask your Clanka.
 
-Pi already runs GPT models. This extension gives them Codex-shaped tools and prompt handling, then adds web, images, voice, compaction and OpenAI controls without turning the provider request into a schema landfill.
+Pi already runs GPT models. This extension gives them Codex-shaped tools and prompt handling, then adds voice, compaction and OpenAI controls without turning the provider request into a schema landfill.
 
 For the argument and token numbers, read [How I gave Pi 17 tools without loading 17 schemas](https://howaboua.dev/writing/how-i-gave-pi-17-tools-without-loading-17-schemas/). This README is for using the thing.
 
@@ -12,7 +12,7 @@ For the argument and token numbers, read [How I gave Pi 17 tools without loading
 pi install npm:@howaboua/pi-codex-conversion
 ```
 
-Requires Pi 0.82 or newer and Node.js 22.19 or newer. Native helpers for macOS, Linux and Windows are bundled for x64 and arm64.
+Requires Pi 0.84.4 or newer and Node.js 22.19 or newer. Native helpers for macOS, Linux and Windows are bundled for x64 and arm64.
 
 Open `/codex` after installation. The defaults give Codex-like GPT models the structured adapter and leave Code Mode, heavy prompt overwrite and native compaction opt-in. All of them are highly recommended, though. That's what I'm daily-driving and fine-tuning towards.
 
@@ -21,6 +21,7 @@ Open `/codex` after installation. The defaults give Codex-like GPT models the st
 - [What you get](#what-you-get)
 - [Modes](#modes)
 - [Settings](#settings)
+- [Context management](#context-management)
 - [Cache diagnostics](#cache-diagnostics)
 - [Code Mode and custom tools](#code-mode-and-custom-tools)
 - [Voice, dictation and GipPity](#voice-dictation-and-gippity)
@@ -30,23 +31,25 @@ Open `/codex` after installation. The defaults give Codex-like GPT models the st
 
 ## What you get
 
-- Codex-shaped `exec_command`, `write_stdin`, `apply_patch`, `view_image`, `web_run` and `imagegen` tools
-- GPT-5.6 Code Mode with only `exec` and `wait` added by the conversion at provider level
+- Codex-shaped `exec_command`, `write_stdin`, `apply_patch` and `view_image` tools
+- Code and Notebook modes that compose the active toolset behind `exec`
 - foreground, background and interactive shell sessions with resumable output
-- web search, page navigation, image generation/editing and image descriptions for blind models
+- image descriptions for blind models
 - realtime voice, push-to-dictate and the GipPity LAN remote mini WebUI
-- OpenAI verbosity, fast mode, cached transport, usage, reset credits and Responses compaction
+- OpenAI verbosity, fast mode, cached transport, usage, reset credits, context management and Responses compaction
 - compact Pi-native rendering, status and background-shell controls
 
 Pi keeps its sessions, project context, skills and UI. The model gets the dialect it already knows.
+
+Install [`pi-codex-web-run`](../pi-codex-web-run) or [`pi-codex-imagegen`](../pi-codex-imagegen) when you want Codex web search or image generation. They remain ordinary Pi extensions and automatically compose into Code and Notebook Mode.
 
 ## Modes
 
 | Mode | Behaviour |
 | --- | --- |
 | **Structured adapter** | Replaces Pi's default file and shell tools with the Codex-shaped set. This is the default for Codex-like GPT models and configured providers. |
-| **Code Mode** | Exposes `exec` and `wait`; shell, patch, image, web and custom tools compose locally inside `exec`. |
-| **Extra tools only** | Adds individually selected `apply_patch`, `view_image`, `web_run` or `imagegen` tools without replacing the active model's normal setup. |
+| **Code Mode** | Exposes `exec` and `wait`; shell, patch, image and extension tools compose locally inside `exec`. |
+| **Extra tools only** | Adds individually selected `apply_patch` or `view_image` without replacing the active model's normal setup. |
 | **Voice only** | Leaves the active model's prompt, tools, requests, compaction and adapter widgets untouched while retaining voice and dictation. |
 
 Structured mode has no separate text `read`, `edit` or `write` tool. The model inspects files through the shell and edits with `apply_patch`.
@@ -59,32 +62,64 @@ Provider scope can stay on **Codex and configured**, expand to **all providers**
 
 | Tab | Covers |
 | --- | --- |
-| General | Extension mode, provider scope, configured providers and heavy prompt overwrite |
-| Tools | Code Mode, web, images, text image descriptions and activate-only tools |
-| OpenAI | Fast mode, verbosity, transport, cache diagnostics, Responses Lite and compaction |
+| General | Settings scope, execution mode, extension mode, providers and heavy prompt overwrite |
+| Context | Notes, history, Hybrid compaction, Responses V2 and preserved user messages |
+| Tools | Auto reasoning (Astra only), image description fallback and standalone tools |
+| OpenAI | Fast mode, verbosity, transport, cache diagnostics and Responses Lite |
 | Display | Statusline, tool rendering, Code Mode detail and background shells |
-| Voice | LAN server, voice, dictation behaviour, shortcuts and prompt paths |
+| Voice | LAN server, realtime behaviour, context summarisation, dictation, shortcuts and prompt paths |
 | Usage | Codex limits, reset times and banked reset credits |
 | About | GitHub, changelog, Discord and issue links |
 
 Open a tab directly with `/codex tools`, `/codex openai`, `/codex display`, `/codex voice`, `/codex usage` or `/codex about`.
 
-The first `/codex` setting chooses **Defaults** or **Project**. Defaults live in `~/.pi/agent/pi-codex-conversion.json`. Choosing **Project** creates a complete snapshot at `.pi/pi-codex-conversion.json`; every tab and **Edit config** then targets that file. Switching back to Defaults removes the project overrides while preserving its top-level `executionMode` setting. Project settings are read only for trusted folders.
+**Luna Reserve** (`gpt-reserve` in backend usage) is a separate, limited allowance that OpenAI offers to eligible accounts after ordinary Codex quota runs out. After a quota failure, the extension switches only when the backend authorizes Reserve for your account and model, then asks you to send `continue` if you want to use Luna. It never retries on your behalf or redeems a reset credit. Your original model and reasoning level return on the next input after the backend confirms ordinary usage has recovered. Reserve stays out of the ordinary model picker; choosing another model ends automatic return for that branch.
+
+**Auto reasoning (Astra only)** in `/codex tools` lets Astra adjust effort by work phase with `change_reasoning`: a JSON tool in Structured mode, or `tools.change_reasoning` in Code and Notebook modes. Disabled by default (`tools.autoReasoning`). It offers low, medium and high, never below your starting level, and restores that level after the run settles, including retries and compaction. Astra's native configuration updates preserve the existing request prefix; the tool is absent on other models and transports.
+
+The first `/codex` setting chooses **Global** or **This project**. Global settings live in `~/.pi/agent/pi-codex-conversion.json`. Choosing **This project** creates a project snapshot at `.pi/pi-codex-conversion.json`. Every tab and **Edit config** then targets that file. Luna cache keepalive remains global, while Sol and Terra keepalive follows the project. Switching back to Global removes the project overrides. Project settings are read only for trusted folders.
 
 Without folder settings, the project inherits the complete global configuration. `PI_CODEX_FAST=1` or `PI_CODEX_FAST=0` can override Fast Mode for one Pi process, which is useful for independently launched workers. Run `/reload` after changing files by hand.
 
-`tools.customRustBinariesDir` can override any bundled native helper by filename, including `exec_bridge`, `apply_patch`, `view_image`, `web_run`, `imagegen` and `pi-codex-voice`. Build helpers on the target machine, collect the needed binaries in one directory, set that directory in the config, then run `/reload`.
+`tools.customRustBinariesDir` can override any bundled native helper by filename, including `exec_bridge`, `apply_patch`, `view_image` and `pi-codex-voice`. Build helpers on the target machine, collect the needed binaries in one directory, set that directory in the config, then run `/reload`.
 
 The optional **Heavy system prompt overwrite** removes roughly 40% of Pi's known default scaffold while preserving additions from other extensions. It is off by default.
 
+On GPT-6 Astra over Codex transport, Pi's usual **Shift+Tab** reasoning selector appends a native configuration update instead of changing the request's original effort. This preserves prompt-cache and WebSocket continuation eligibility; cache hits still depend on the server. Updates persist across session resume and native compaction. Other models keep Pi's usual behaviour. Server-side automatic truncation and compaction are incompatible with these updates; the extension's explicit Responses compaction V2 is supported.
+
+Responses compaction V2 stores an encrypted checkpoint for the Codex lane. If you switch providers inside long sessions, enable **Parallel Pi-native compaction** beside it. Each native compaction then runs Pi's normal cumulative summarizer on an isolated request lane and stores the readable result alongside the encrypted checkpoint. Codex replay keeps using the native checkpoint, while other providers receive the Pi summary. This adds summarization cost, so it is off by default.
+
+## Context management
+
+**Context management (experimental)** gives the model history, notes and explicit context-window rollover. A session starts with a persisted purple window marker. `new_context` continues in a new window while the shell, Notebook runtime, workspace and complete Pi JSONL remain intact.
+
+Keep Context management enabled when resuming sessions that used it. Disabling it removes its recovery tools and may rejoin previously separated windows into ordinary Pi context. Notes-only `/compact` is a checkpoint request, not an exit from context management.
+
+Choose its backend under `/codex` → **General**:
+
+- **Off** disables context management.
+- **Local** keeps the current latest-boundary projection, reads prior windows from Pi's JSONL and persists note updates there as model-invisible entries.
+- **Tree** archives completed windows as Pi side branches. Pi's branch summary stays visible in the transcript but out of model context; history search prioritizes it and can still return every archived raw entry.
+- **Remote** uses Codex's history and notes service on `openai-codex-responses`. It uses the native encrypted contract and fails without changing storage modes. Other transports ignore this setting.
+
+**Hybrid compaction** is a separate toggle for Local, Tree and Remote. Off by default, rollover starts without a conversation summary. Turn it on to preserve a compaction checkpoint alongside notes: Responses V2 where supported, Pi's readable summary elsewhere. Tree still archives completed windows and preserves the original checkpoint by reference. Reaching the token threshold requests a notes checkpoint; compaction waits for `new_context`, manual `/compact` or overflow recovery. Native checkpoints remain encrypted and require a compatible transport.
+
+With context management active, choosing a summary in Pi's tree navigator asks the current agent to summarize what happened since the selected conversation boundary, following any summary instructions you provide. The prompt identifies that boundary by a previous summary, context window, note or quoted message, not an internal branch ID. Local and Tree carry the note into the destination without replacing its existing notes. Remote uses its normal notes service. Completing the requested note write ends the agent turn without another reply. The destination receives a branch summary directing the agent to read the note's exact path before resuming. Remote results remain encrypted, so the extension cannot independently verify the saved contents. An interrupted or errored handoff cancels the jump. Choosing **No summary** remains a plain jump. This works with or without Hybrid.
+
+The model receives terse context tools. Local and Tree use flat `history` and `notes` routers on Codex transport and native `history.*` and `notes.*` namespaces on other Responses transports. Remote uses Codex's native namespaces, encrypted sensitive arguments and encrypted tool output. Structured mode also adds `new_context` and `get_context_remaining`. In Code and Notebook Mode, the lifecycle and recovery tools stay direct while `get_context_remaining` is available inside `exec`, matching native exposure.
+
+After each completed assistant/tool turn, usage is checked against the model context size minus Pi's configured compaction reserve (at least 16,384 tokens). At 6,144 tokens remaining before that reserve, a developer message requests a notes checkpoint and `new_context`, including after a final assistant reply. The checkpoint turn keeps the same tools; no tool is interrupted or notes content validated. Pi's server-overflow recovery remains available. Without Hybrid, manual `/compact` asks the agent to save the current state in notes if it hasn't just done so, then call `new_context` immediately. Pi's existing preparation limits and queued-message order still apply. Local and Remote still use a fixed no-summary marker for internal Pi compaction. With Hybrid, Tree also archives manual and overflow checkpoints; overflow waits for the retry tail to settle.
+
+Local and Tree work anywhere the active Pi Codex adapter uses a Responses API. Remote requires Codex transport, without a model-name gate. Other provider APIs ignore context management. Without Hybrid, enabling a backend mid-session starts a fresh model window on the next input. Hybrid retains the current conversation until compaction. Standalone V2 and Parallel Pi-native compaction remain available when Context management is Off.
+
 ## Cache diagnostics
 
-Open `/codex openai` and enable **Cache status line**. **Cache log file** is an additional tier and enables the status automatically. Both are off by default.
+Open `/codex openai` and set **Cache diagnostics** to **Status** or **Status + log**. Diagnostics are off by default.
 
 Pi has one extension-status row, so the existing adapter and optional cache state appear together:
 
 ```text
-Codex adapter V: low • web search • image gen Codex Cache • HIT • WS delta
+Codex adapter V: low • notebook mode Codex Cache • HIT • WS delta
 ```
 
 Pi's built-in footer already shows the latest cache percentage. `Codex Cache` instead explains the transport and continuation decision:
@@ -113,7 +148,7 @@ Logs contain request lane, transport, socket reuse, continuation decision, item 
 
 ## Code Mode and custom tools
 
-Enable **GPT-5.6 Code Mode** in `/codex` → **Tools**. It currently supports OpenAI Codex Luna, Terra and Sol. Configured OpenAI Responses-compatible providers can also use those model IDs or the GPT-5.6 alias with **Proxy Responses Lite** enabled. Other models stay on structured tools.
+Select **Code** or **Notebook (recommended)** under `/codex` → **General**. The selected execution mode applies everywhere the adapter is active, including **all providers** scope. Each provider keeps its normal transport. Compatible Codex models use Responses Lite automatically, while configured OpenAI Responses proxies can opt into it separately with **Proxy Responses Lite**.
 
 The model can compose tools in one freeform JavaScript cell:
 
@@ -122,7 +157,92 @@ const status = await tools.exec_command({ cmd: "git status --short" });
 text(status);
 ```
 
-Pi tools that genuinely need Pi's UI remain ordinary tools. `ask` is the obvious example; pretending an interactive questionnaire is a shell command would be daft.
+Notebook Mode keeps `exec` and `wait`, adds a top-level `notebook` lifecycle tool, and preserves JavaScript or TypeScript bindings in one persistent Deno runtime. The `notebook` tool owns status, checkpoints, restarts, resets and stored profiles.
+
+### Pi extension API
+
+Pi tools that genuinely need Pi's UI can also appear inside Code and Notebook Mode. Install [`pi-ask`](../pi-ask) and `await tools.ask(...)` opens the same interactive panel from a cell.
+
+Register the tool normally, then adapt the same definition for Code and Notebook Mode:
+
+```ts
+import {
+	adaptToolForCodeMode,
+	registerCodeModeExtensionTools,
+} from "@howaboua/pi-codex-conversion/code-mode";
+
+const registration = registerCodeModeExtensionTools(pi, () => [
+	adaptToolForCodeMode(tool, { usage: "await tools.example(input)" }),
+], {
+	isActive: () => extensionRuntime.isActive(),
+});
+extensionRuntime.onActiveChange(() => registration.refresh());
+pi.on("session_shutdown", () => registration.unregister());
+```
+
+The complete bundled example at [`examples/code-mode-extension/`](./examples/code-mode-extension) includes the tool, extension entry point and package manifest. Declare `@howaboua/pi-codex-conversion` 3.0.24 or newer as a peer dependency. Import the API lazily when the extension should still work without Pi Codex.
+
+Extensions can also inject a real Responses `developer` message:
+
+```ts
+import { sendCodexDeveloperMessage } from "@howaboua/pi-codex-conversion/developer-messages";
+
+sendCodexDeveloperMessage(pi, "Re-evaluate the plan before editing.", {
+	deliverAs: "steer",
+	triggerTurn: false,
+});
+```
+
+The message persists in the session and appears in Pi's fixed purple message block, while the active Responses adapter sends its content to the model with role `developer`. The purple wrapper, label and persistence metadata stay model-invisible. `deliverAs` accepts Pi's native `steer`, `followUp` and `nextTurn` modes; `triggerTurn` independently starts an idle turn for the first two modes. The call fails when no compatible Pi Codex Responses adapter is active and never falls back to a user message.
+
+Optional integrations can use `trySendCodexDeveloperMessage` instead. It returns `false` when the broker or a compatible adapter is unavailable, while actual delivery failures still throw.
+
+To retain an extension's own renderer and restoration fields, use `trySendCodexDeveloperCustomMessage(pi, { customType, content, display, details }, options)`. It preserves the custom type, display flag and caller detail fields, adding the reserved `@howaboua/pi-codex-conversion/developer-message` key to a copy of `details`. Content must be nonempty text; details must be a plain object (or omitted). It returns `false` without sending when a compatible broker is unavailable, including older brokers. Lazy integrations should check that this export exists before calling it, then send their ordinary custom message only on absence or `false`; delivery errors throw and must not trigger a second send.
+
+Persisted developer messages retain ordinary Pi conversion after switching to an incompatible model, and regain the developer role on compatible Responses models. Caller-owned custom messages keep their original renderer and restoration fields in either case.
+
+Realtime voice start/end guidance uses this same developer-message path. Spoken delegations and transcript-tail context remain user-role content; lifecycle messages retain their display and never start a turn.
+
+The adapted definition keeps its Pi context, UI, schema and progress updates. JavaScript receives model-usable result content, while the tool's exact result remains available to its ordinary Pi renderer. Code Mode owns the JavaScript call and runs its own nested-tool preflight.
+Tool names that are not JavaScript identifiers receive the same translated name in Code and Notebook Mode, including prompt guidance and `ALL_TOOLS`.
+Use `toolName` for a non-default Responses namespace and `resultValue` when JavaScript needs a structured value instead of the ordinary model-visible result.
+Set `blocking: true` when every call must hold the agent turn until it settles, or pass `blocking: input => boolean` when the choice depends on the invocation. The default allows long-running work to yield to `wait` normally. Set `deferLoading: true` to omit the usage line and expose the tool through `ALL_TOOLS` instead.
+The `usage` line owns the callable contract in Code and Notebook Mode. Include the needed arguments or a help entry point. Only `promptGuidelines` are added beside it, not the native description, snippet or schema. Deferred tools retain full metadata in their discoverable help.
+For a compact routed string surface, set `kind: "freeform"` and provide `prepareInput` to map that string into the normal Pi tool parameters. Execution and rendering still use the same tool.
+Use the optional `isActive` gate when an extension exposes its tool only in a session mode. Keep returning the tool definition from the provider and call `registration.refresh()` when the mode changes. Code Mode also resamples gates at normal session and input boundaries, then keeps its prompt, nested registry and outer tool filtering fixed through that run.
+
+Shipped integrations provide larger examples:
+
+- [`pi-ask`](../pi-ask) uses a blocking Pi UI tool.
+- [`pi-better-skills-tool`](../pi-better-skills-tool) and [`pi-browser`](../pi-browser) map freeform strings into their normal tool parameters.
+- [`pi-codex-web-run`](../pi-codex-web-run) and [`pi-codex-imagegen`](../pi-codex-imagegen) use namespaced tool names and structured Code Mode results.
+- [`pi-shepherdr`](../pi-shepherdr) uses an activation gate, refreshes its registration when state changes and chooses blocking per call.
+
+### Nested tool hooks
+
+Pi's `tool_call` and `tool_result` events see the outer `exec` or `wait`, not its nested calls. Extensions can subscribe separately to preflight and completion through `@howaboua/pi-codex-conversion/code-mode-hooks`. The existing `code-mode-preflight` import remains supported.
+
+```ts
+import {
+  registerCodeModeToolPreflight,
+  registerCodeModeToolCompletion,
+} from "@howaboua/pi-codex-conversion/code-mode-hooks";
+
+const guard = registerCodeModeToolPreflight(pi, async (call) => {
+  // Return { block: true, reason } to reject a nested call before execution.
+});
+const observer = registerCodeModeToolCompletion(pi, async (call) => {
+  // Persist call.toolName, call.toolCallId, call.input, call.status and call.result.
+});
+```
+
+Both registrations expose `available` and `dispose()`, handle either extension load order, and dispose on session shutdown. Completion remains unavailable with older brokers that support only preflight.
+
+Completion runs once when a recognized nested call settles in Code or Notebook Mode. `input` is the original argument before tool preparation. `result` is the full captured Pi tool result, including details and images, or the returned value for tools without a captured result. It is not the bounded trace or compact JavaScript return. Errors have `status: "error"`, an `error` string and `phase: "preflight" | "execution"`; `result` is `undefined` if no result was captured. A failed call can still have partial side effects. Cancellation is visible through `signal.aborted`.
+
+Each subscriber receives independent structured clones of the arguments and result. Callbacks are awaited in registration order, including after cancellation, so they must settle promptly. Subscriber failures and values that cannot be cloned are logged to stderr without changing the tool outcome. Hooks do not expand agent-visible output or replace either registration's purpose: preflight can block, completion only observes.
+
+### TOML custom tools
 
 Custom tools are top-level TOML definitions plus a command that accepts one string. Put them in:
 
@@ -133,9 +253,9 @@ Custom tools are top-level TOML definitions plus a command that accepts one stri
 
 A promoted tool adds one compact usage line to the prompt. A deferred tool adds no tool-specific startup text and remains discoverable through `ALL_TOOLS`. Neither becomes another provider schema. Keep in mind if a tool is deferred, YOU need to remember that it exists and tell your Clanka to invoke it. Otherwise it might never realise it's there.
 
-Working, disabled examples live in [`examples/custom-tools/`](./examples/custom-tools/). They include Herdr coordination, subagents, semantic search, port diagnostics, workflow creation and two lazy skill loaders. See [`CUSTOM-TOOLS.md`](./src/tools/code-mode/CUSTOM-TOOLS.md) for the definition contract.
+Working, disabled examples live in [`examples/custom-tools/`](./examples/custom-tools/). They include legacy browser and agent runners, progressive skills, semantic search, port diagnostics, site management and workflow helpers. See [`CUSTOM-TOOLS.md`](./src/tools/code-mode/CUSTOM-TOOLS.md) for the definition contract.
 
-For skills, keep repository SOPs in normal `.pi/skills/` and general workflows in global `lazy-skills/` behind the example `skills` tool. `--no-skills` is optional. The older additive `more_skills` example remains available if you want to mix & match and still use Pi's skills alongside a bigger catalogue invoked via `more_skills`.
+The legacy `skills` example assumes Pi starts with `--no-skills`. Prefer the maintained [`pi-better-skills-tool`](../pi-better-skills-tool) extension.
 
 ## Voice, dictation and GipPity
 
@@ -149,6 +269,8 @@ Defaults:
 - `Ctrl+Alt+G` toggles the GipPity LAN server
 
 Voice input and output follow the system defaults. Set `voice.inputDevice` or `voice.outputDevice` only to pin an endpoint. Dictation returns one editable transcript to Pi's input.
+
+Fresh installs use Cove for realtime voice and Luna with high reasoning for context summarisation. Realtime calls resume after transport drops. **Refresh voice context** summarizes the outgoing context and starts a fresh voice call at each context rollover or compaction, including notes-only handoffs. It preserves microphone mute and LAN ownership without ending spoken mode. A summarization failure leaves the old call untouched.
 
 The visible realtime prompt lives at `~/.pi/agent/REALTIME-SYSTEM-PROMPT.md`. A trusted project can append `.pi/REALTIME-SYSTEM-PROMPT.md`. Keep coding and project instructions in AGENTS.md rather than duplicating them into the spoken assistant.
 
@@ -189,9 +311,9 @@ The server belongs only to the Pi session that started it and stops when that se
 
 The default scope activates conservatively for Codex-like GPT routes and Responses providers listed under **Additional providers**. Switching to an unrelated model restores Pi's ordinary tools.
 
-Voice, usage, web search, image generation and text image descriptions can use the Pi OpenAI Codex login while another provider's model remains active. This is how a text-only model can receive a small vision model's plain-text image description without caring how it got there.
+Voice, usage and text image descriptions can use the Pi OpenAI Codex login while another provider's model remains active. The standalone web and image-generation extensions use the same login independently.
 
-Native Responses compaction is intentionally narrower: OpenAI Codex and explicitly configured OpenAI/Codex-compatible passthrough providers only. Unsupported states fail visibly or fall back to Pi compaction rather than silently discarding context.
+Native Responses compaction is intentionally narrower: OpenAI Codex and explicitly configured OpenAI/Codex-compatible passthrough providers only. Unsupported states fail visibly or fall back to Pi compaction rather than silently discarding context. A portable summary must be enabled before the native checkpoint that you want to carry across providers.
 
 ## Migrating from Lite
 
@@ -206,6 +328,13 @@ pi install npm:@howaboua/pi-codex-conversion
 
 Your existing `~/.pi/agent/pi-codex-conversion.json` continues to load.
 
+Web search and image generation are now independently installed extensions:
+
+```bash
+pi install npm:@howaboua/pi-codex-web-run
+pi install npm:@howaboua/pi-codex-imagegen
+```
+
 This is also a major change for users of the old canonical package. Legacy PATH mode and its package binaries are gone. Old PATH-mode settings normalize to the structured adapter. Use structured tools or Code Mode custom commands instead.
 
 ## Troubleshooting
@@ -213,8 +342,8 @@ This is also a major change for users of the old canonical package. Legacy PATH 
 - **Voice cannot find a device:** let the setup turn inspect the endpoints, save the selected device IDs, then start voice again.
 - **GipPity cannot open the microphone:** use one of Pi's HTTPS URLs and accept its local certificate. Browsers block microphone access on plain LAN HTTP.
 - **Code Mode cannot start:** its pinned host is prepared lazily and honours normal proxy environment variables. Pi reports setup failures instead of hanging the first execution.
-- **A helper cannot run on this system:** build it from a checkout on the target machine, put it in `tools.customRustBinariesDir`, then run `/reload`. Do not replace system glibc for this.
-- **A configured provider fails:** it must implement the OpenAI Responses contracts required by the enabled feature. Code Mode additionally needs Responses Lite compatibility; native compaction needs the Codex compaction contract.
+- **A bundled helper cannot run on this system:** build the core helper from a checkout on the target machine, put it in `tools.customRustBinariesDir`, then run `/reload`. Do not replace system glibc for this. Web search and image generation are TypeScript extensions and need no platform helper.
+- **A configured provider fails:** it must implement its declared provider API. Proxy Responses Lite and native compaction additionally need their respective backend contracts.
 
 For anything stranger, clone the repository and ask your Clanka:
 

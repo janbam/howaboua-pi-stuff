@@ -1,29 +1,26 @@
+import { StringEnum } from "@earendil-works/pi-ai";
 import { type Static, Type } from "typebox";
 
-export { OTHER_OPTION_LABEL, REPHRASE_REQUEST_RESPONSE } from "./constants.js";
+const ASK_DELIVERIES = ["wait", "steer"] as const;
 
-export const ChoiceSchema = Type.Object({
-	label: Type.String({ description: "Short choice." }),
-	description: Type.Optional(Type.String({ description: "Optional detail." })),
+const ChoiceSchema = Type.Object({
+	label: Type.String(),
+	description: Type.Optional(Type.String()),
 });
 
-export const PromptSchema = Type.Object({
-	title: Type.String({ description: "Short prompt." }),
-	body: Type.Optional(Type.String({ description: "Context or evidence." })),
-	multiple: Type.Optional(Type.Boolean({ description: "Allow multiple." })),
-	choices: Type.Optional(
-		Type.Array(ChoiceSchema, { description: "Choices; omit for free text." }),
-	),
+const PromptSchema = Type.Object({
+	title: Type.String(),
+	body: Type.Optional(Type.String()),
+	multiple: Type.Optional(Type.Boolean()),
+	choices: Type.Optional(Type.Array(ChoiceSchema)),
 });
 
 export const AskParameters = Type.Object({
-	handoff: Type.Optional(
-		Type.Boolean({ description: "Wait for user action." }),
-	),
-	prompts: Type.Array(PromptSchema, { description: "Prompts." }),
+	handoff: Type.Optional(Type.Boolean()),
+	prompts: Type.Array(PromptSchema),
+	delivery: Type.Optional(StringEnum(ASK_DELIVERIES)),
 });
 
-export type AskInput = Static<typeof AskParameters>;
 export type PromptChoice = Static<typeof ChoiceSchema>;
 
 export interface AskPrompt {
@@ -32,6 +29,11 @@ export interface AskPrompt {
 	body?: string;
 	multiple: boolean;
 	choices: PromptChoice[];
+}
+
+export interface PendingAsk {
+	id: string;
+	prompts: AskPrompt[];
 }
 
 export interface AskResponse {

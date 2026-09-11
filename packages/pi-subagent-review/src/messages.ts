@@ -9,6 +9,13 @@ import {
 } from "./constants.js";
 import type { ReviewContext } from "./types.js";
 
+export type ReviewDeveloperMessages = Partial<
+	Pick<
+		typeof import("@howaboua/pi-codex-conversion/developer-messages"),
+		"trySendCodexDeveloperCustomMessage"
+	>
+>;
+
 const REALTIME_VOICE_PROMPT_CHANNEL =
 	"@howaboua/pi-codex-conversion/realtime-voice-prompt/v1";
 const REVIEW_LOOP_PREFACE_MESSAGE = [
@@ -83,16 +90,22 @@ export function sendReviewPreface(
 	pi: ExtensionAPI,
 	ctx: ExtensionCommandContext,
 	options: { freshLoop?: boolean } = {},
+	developerMessages?: ReviewDeveloperMessages,
 ): void {
 	if (!options.freshLoop && getReviewPrefaceMessageId(ctx)) return;
-	pi.sendMessage(
-		{
-			customType: REVIEW_PREFACE_MESSAGE_TYPE,
-			content: REVIEW_LOOP_PREFACE_MESSAGE,
-			display: true,
-		},
-		{ triggerTurn: false },
-	);
+	const message = {
+		customType: REVIEW_PREFACE_MESSAGE_TYPE,
+		content: REVIEW_LOOP_PREFACE_MESSAGE,
+		display: true,
+	};
+	const delivery = { triggerTurn: false };
+	if (
+		typeof developerMessages?.trySendCodexDeveloperCustomMessage ===
+			"function" &&
+		developerMessages.trySendCodexDeveloperCustomMessage(pi, message, delivery)
+	)
+		return;
+	pi.sendMessage(message, delivery);
 }
 
 function buildJjReviewScopeText(

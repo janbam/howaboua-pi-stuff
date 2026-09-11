@@ -4,6 +4,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import registerPackageChangelog from "../changelog.js";
 import {
 	appendProjectVentEntry,
 	getProjectVentPath,
@@ -30,6 +31,8 @@ function clean(input: string): string {
 
 /** Register centralized vent-log migration, persistence, and rendering. */
 export default function ventExtension(pi: ExtensionAPI) {
+	registerPackageChangelog(pi);
+
 	pi.on("session_start", async (_event, ctx) => {
 		const ventPath = getProjectVentPath(ctx.cwd);
 

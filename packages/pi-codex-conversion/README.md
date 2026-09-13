@@ -119,22 +119,22 @@ Open `/codex openai` and set **Cache diagnostics** to **Status** or **Status + l
 Pi has one extension-status row, so the existing adapter and optional cache state appear together:
 
 ```text
-Codex adapter V: low • notebook mode Codex Cache • HIT • WS delta
+Codex • notebook mode Cache • HIT • WS delta
 ```
 
-Pi's built-in footer already shows the latest cache percentage. `Codex Cache` instead explains the transport and continuation decision:
+Pi's built-in footer already shows the latest cache percentage. `Cache` instead explains the transport and continuation decision:
 
 | Status | Meaning |
 | --- | --- |
-| `Codex Cache • waiting` | Enabled; no Codex request observed yet. |
-| `Codex Cache • prewarm ready • WS new` | A new WebSocket was prepared successfully. `WS reused` means an existing socket was prepared. |
-| `Codex Cache • HIT • WS delta` | OpenAI reported cached input and only continuation input was sent. |
-| `Codex Cache • HIT • WS full (body mismatch)` | Delta continuation was unsafe, so the full request was sent, but OpenAI's prompt cache still hit. |
-| `Codex Cache • MISS • WS full (input prefix mismatch)` | The history diverged from the continuation baseline and OpenAI reported no cached input. |
-| `Codex Cache • WS retry 2` | The first WebSocket attempt failed and the adapter is retrying. |
-| `Codex Cache • WS → SSE` | WebSocket recovery ended and the request moved to SSE. |
-| `Codex Cache • compaction • HIT • WS delta` | Native compaction reused the active continuation. |
-| `Codex Cache • WS failed: authentication • invalid_token • 401` | The request failed; diagnostics expose only safe error metadata. |
+| `Cache • waiting` | Enabled; no Codex request observed yet. |
+| `Cache • prewarm ready • WS new` | A new WebSocket was prepared successfully. `WS reused` means an existing socket was prepared. |
+| `Cache • HIT • WS delta` | OpenAI reported cached input and only continuation input was sent. |
+| `Cache • HIT • WS full (body mismatch)` | Delta continuation was unsafe, so the full request was sent, but OpenAI's prompt cache still hit. |
+| `Cache • MISS • WS full (input prefix mismatch)` | The history diverged from the continuation baseline and OpenAI reported no cached input. |
+| `Cache • WS retry 2` | The first WebSocket attempt failed and the adapter is retrying. |
+| `Cache • WS → SSE` | WebSocket recovery ended and the request moved to SSE. |
+| `Cache • compaction • HIT • WS delta` | Native compaction reused the active continuation. |
+| `Cache • WS failed: authentication • invalid_token • 401` | The request failed; diagnostics expose only safe error metadata. |
 
 A cache miss stays visible for three seconds. Events arriving during that hold are not queued; the row then moves directly to the newest state. WebSocket continuation and OpenAI prompt caching are separate, so `WS full` can still produce a cache hit.
 

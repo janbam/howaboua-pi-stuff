@@ -7,7 +7,7 @@ import type {
 } from "../providers/openai-codex/types.ts";
 
 const CACHE_STATUS_KEY = "codex-cache";
-const CACHE_STATUS_TEXT = "Codex Cache";
+const CACHE_STATUS_TEXT = "Cache";
 export const CACHE_MISS_HOLD_MS = 3_000;
 
 interface DiagnosticsLog {

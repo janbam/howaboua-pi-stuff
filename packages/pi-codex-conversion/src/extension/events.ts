@@ -119,6 +119,7 @@ export function registerCodexEvents(
 			cwd: ctx.cwd,
 			projectTrusted: ctx.isProjectTrusted(),
 		});
+		state.fiveHourUsageLeft = undefined;
 		state.weeklyUsageLeft = undefined;
 		state.executionMode = state.config.executionMode;
 		state.activeProviderSystemPrompt = undefined;
@@ -164,6 +165,7 @@ export function registerCodexEvents(
 		state.cwd = ctx.cwd;
 		state.activeProviderSystemPrompt = undefined;
 		state.voiceSystemPromptOverride = undefined;
+		state.fiveHourUsageLeft = undefined;
 		state.weeklyUsageLeft = undefined;
 		state.promptSkills = extractPiPromptSkills(ctx.getSystemPrompt());
 		proxyProvider.applyConfig(state.config, ctx.modelRegistry);

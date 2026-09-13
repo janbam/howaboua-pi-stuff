@@ -1,7 +1,7 @@
 import type { ContextManagementMode } from "./config-contract.ts";
 
 export const STATUS_KEY = "codex-adapter";
-export const STATUS_TEXT = "Codex adapter";
+export const STATUS_TEXT = "Codex";
 
 interface StatusTheme {
 	fg(role: string, text: string): string;
@@ -16,7 +16,7 @@ export function buildExtraToolsOnlyStatusText(tools: string[], theme?: StatusThe
 	return formatStatusText(` • extra tools${tools.length > 0 ? `: ${tools.join(", ")}` : ""}`, theme);
 }
 
-export function buildStatusText(options: { mode?: "normal" | "code" | "notebook" | undefined; verbosity?: string | undefined; fast: boolean; useOnAllModels: boolean; additionalProvider?: boolean | undefined; compaction?: boolean | undefined; contextManagement?: ContextManagementMode | undefined; weeklyUsageLeft?: number | undefined }, theme?: StatusTheme | undefined): string {
+export function buildStatusText(options: { mode?: "normal" | "code" | "notebook" | undefined; verbosity?: string | undefined; fast: boolean; useOnAllModels: boolean; additionalProvider?: boolean | undefined; compaction?: boolean | undefined; contextManagement?: ContextManagementMode | undefined; fiveHourUsageLeft?: number | undefined; weeklyUsageLeft?: number | undefined }, theme?: StatusTheme | undefined): string {
 	const extras = [
 		options.mode === "notebook" ? "notebook mode" : options.mode === "code" ? "code mode" : undefined,
 		options.useOnAllModels ? "all models" : undefined,
@@ -24,14 +24,17 @@ export function buildStatusText(options: { mode?: "normal" | "code" | "notebook"
 		options.contextManagement && options.contextManagement !== "off"
 			? `context ${options.contextManagement}`
 			: undefined,
-		options.compaction ? "compact v2" : undefined,
+		// FORK_MOD: fork hides the compact v2 indicator; restore this entry to re-enable it.
+		// options.compaction ? "compact v2" : undefined,
 		options.fast ? "fast" : undefined,
-		options.weeklyUsageLeft === undefined ? undefined : `weekly: ${Math.round(options.weeklyUsageLeft)}% left`,
+		options.fiveHourUsageLeft === undefined ? undefined : `5h: ${Math.round(options.fiveHourUsageLeft)}%`,
+		options.weeklyUsageLeft === undefined ? undefined : `weekly: ${Math.round(options.weeklyUsageLeft)}%`,
 	]
 		.filter(Boolean)
 		.join(" • ");
-	const verbosity = options.verbosity === "medium" ? "mid" : options.verbosity === "high" ? "hi" : options.verbosity;
-	return formatStatusText(`${verbosity ? ` V: ${verbosity}` : ""}${extras ? ` • ${extras}` : ""}`, theme);
+	// FORK_MOD: fork hides the verbosity level; restore this line to re-enable it.
+	// const verbosity = options.verbosity === "medium" ? "mid" : options.verbosity === "high" ? "hi" : options.verbosity;
+	return formatStatusText(`${extras ? ` • ${extras}` : ""}`, theme);
 }
 
 export const DEFAULT_TOOL_NAMES = ["read", "bash", "edit", "write"];

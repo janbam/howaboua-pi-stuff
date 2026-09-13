@@ -50,7 +50,8 @@ export function registerCodexUi(pi: ExtensionAPI, runtime: CodexExtensionRuntime
 			clearBackgroundWidget();
 			return;
 		}
-		renderBackgroundBashWidget(ctx, runtime.backgroundWidget, runtime.sessions);
+		// FORK_MOD: pass shortcut config so the widget footer can reflect disabled bindings.
+		renderBackgroundBashWidget(ctx, runtime.backgroundWidget, runtime.sessions, runtime.state.config.ui);
 	};
 
 	registerBackgroundBashWidgetShortcuts(pi, runtime.backgroundWidget, runtime.sessions, runtime.state.config.ui, () => !runtime.state.config.voiceFeaturesOnly && runtime.state.config.ui.backgroundShellWidget);

@@ -88,6 +88,28 @@ test("trusted folder config overrides globals without crossing folder or process
 	}
 });
 
+test("empty shortcut binding disables the shortcut instead of falling back to the default", () => {
+	const root = mkdtempSync(join(tmpdir(), "pi-codex-config-shortcuts-"));
+	try {
+		const globalPath = join(root, "agent", "pi-codex-conversion.json");
+		mkdirSync(join(root, "agent"), { recursive: true });
+		writeFileSync(globalPath, JSON.stringify({
+			ui: { backgroundShellToggleShortcut: "" },
+			voice: { realtimeShortcut: "", dictationShortcut: "  " },
+		}), { encoding: "utf8" });
+
+		const config = readEffectiveCodexConversionConfig({ cwd: root, projectTrusted: true, globalConfigPath: globalPath, env: {} });
+		// Explicit empty strings (including whitespace-only) disable their shortcut; untouched keys keep the defaults.
+		assert.equal(config.ui.backgroundShellToggleShortcut, "");
+		assert.equal(config.voice.realtimeShortcut, "");
+		assert.equal(config.voice.dictationShortcut, "");
+		assert.equal(config.ui.backgroundShellPrevShortcut, DEFAULT_CODEX_CONVERSION_CONFIG.ui["backgroundShellPrevShortcut"]);
+		assert.equal(config.voice.muteShortcut, DEFAULT_CODEX_CONVERSION_CONFIG.voice.muteShortcut);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
 test("folder scope materializes a full snapshot and returns cleanly to global inheritance", () => {
 	const root = mkdtempSync(join(tmpdir(), "pi-codex-config-scope-"));
 	try {

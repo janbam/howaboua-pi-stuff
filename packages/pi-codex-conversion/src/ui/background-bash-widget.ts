@@ -12,6 +12,11 @@ export interface BackgroundBashWidgetState {
 	ctx?: ExtensionContext | undefined;
 }
 
+export type BackgroundShellShortcuts = Pick<
+	CodexConversionConfig["ui"],
+	"backgroundShellCloseShortcut" | "backgroundShellNextShortcut" | "backgroundShellPrevShortcut" | "backgroundShellToggleShortcut"
+>;
+
 function truncate(text: string, maxLength: number): string {
 	return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
 }
@@ -47,7 +52,7 @@ function resolveActiveSessionId(state: BackgroundBashWidgetState, snapshots: Exe
 	return fallback;
 }
 
-export function renderBackgroundBashWidget(ctx: ExtensionContext, state: BackgroundBashWidgetState, sessions: ExecSessionManager): void {
+export function renderBackgroundBashWidget(ctx: ExtensionContext, state: BackgroundBashWidgetState, sessions: ExecSessionManager, shortcuts: BackgroundShellShortcuts): void {
 	if (ctx.mode !== "tui") return;
 	const snapshots = sessions.listSessions(OUTPUT_TAIL_CHARS);
 	if (snapshots.length === 0) {
@@ -78,7 +83,18 @@ export function renderBackgroundBashWidget(ctx: ExtensionContext, state: Backgro
 		lines.push(`${theme.fg("muted", "│")} ${theme.fg("dim", `session ${active.id} · updated ${ageLabel(active.updatedAt)} ago`)}`);
 	}
 
-	lines.push(`${theme.fg("muted", "╰─")} ${theme.fg("dim", "alt+q/e select · alt+w fold/open · alt+r close")}`);
+	// FORK_MOD: footer hint mirrors the actually enabled bindings; an empty config value disables a shortcut and drops its hint segment.
+	const { backgroundShellToggleShortcut: toggle, backgroundShellPrevShortcut: prev, backgroundShellNextShortcut: next, backgroundShellCloseShortcut: close } = shortcuts;
+	const hints: string[] = [];
+	if (prev && next) hints.push(`${prev}/${next} select`);
+	else {
+		if (prev) hints.push(`${prev} prev session`);
+		if (next) hints.push(`${next} next session`);
+	}
+	if (toggle) hints.push(`${toggle} fold/open`);
+	if (close) hints.push(`${close} close`);
+	const hintSuffix = hints.length > 0 ? ` ${theme.fg("dim", hints.join(" · "))}` : "";
+	lines.push(`${theme.fg("muted", "╰─")}${hintSuffix}`);
 	ctx.ui.setWidget(BACKGROUND_BASH_WIDGET_ID, lines, { placement: "aboveEditor" });
 }
 
@@ -86,57 +102,66 @@ export function registerBackgroundBashWidgetShortcuts(
 	pi: ExtensionAPI,
 	state: BackgroundBashWidgetState,
 	sessions: ExecSessionManager,
-	config: Pick<CodexConversionConfig["ui"], "backgroundShellCloseShortcut" | "backgroundShellNextShortcut" | "backgroundShellPrevShortcut" | "backgroundShellToggleShortcut">,
+	config: BackgroundShellShortcuts,
 	isEnabled: () => boolean,
 ): void {
 	function rerender(ctx: ExtensionContext): void {
 		if (!isEnabled()) return;
 		state.ctx = ctx;
-		renderBackgroundBashWidget(ctx, state, sessions);
+		renderBackgroundBashWidget(ctx, state, sessions, config);
 	}
 
-	pi.registerShortcut(config.backgroundShellToggleShortcut as "alt+w", {
-		description: "Fold or open Codex background shell widget",
-		handler: async (ctx) => {
-			if (!isEnabled()) return;
-			state.folded = !state.folded;
-			rerender(ctx);
-		},
-	});
-	pi.registerShortcut(config.backgroundShellPrevShortcut as "alt+q", {
-		description: "Previous Codex background shell",
-		handler: async (ctx) => {
-			if (!isEnabled()) return;
-			const snapshots = sessions.listSessions();
-			const count = snapshots.length;
-			if (count > 0) {
-				const activeIndex = Math.max(0, snapshots.findIndex((session) => session.id === state.activeSessionId));
-				state.activeSessionId = snapshots[(activeIndex + count - 1) % count]!.id;
-			}
-			rerender(ctx);
-		},
-	});
-	pi.registerShortcut(config.backgroundShellNextShortcut as "alt+e", {
-		description: "Next Codex background shell",
-		handler: async (ctx) => {
-			if (!isEnabled()) return;
-			const snapshots = sessions.listSessions();
-			const count = snapshots.length;
-			if (count > 0) {
-				const activeIndex = Math.max(0, snapshots.findIndex((session) => session.id === state.activeSessionId));
-				state.activeSessionId = snapshots[(activeIndex + 1) % count]!.id;
-			}
-			rerender(ctx);
-		},
-	});
-	pi.registerShortcut(config.backgroundShellCloseShortcut as "alt+r", {
-		description: "Close active Codex background shell",
-		handler: async (ctx) => {
-			if (!isEnabled()) return;
-			const snapshots = sessions.listSessions();
-			const snapshot = snapshots.find((session) => session.id === state.activeSessionId) ?? snapshots[0];
-			if (snapshot) sessions.terminateSession(snapshot.id);
-			rerender(ctx);
-		},
-	});
+	// FORK_MOD: an empty binding disables the shortcut; skip registration entirely.
+	if (config.backgroundShellToggleShortcut) {
+		pi.registerShortcut(config.backgroundShellToggleShortcut as "alt+w", {
+			description: "Fold or open Codex background shell widget",
+			handler: async (ctx) => {
+				if (!isEnabled()) return;
+				state.folded = !state.folded;
+				rerender(ctx);
+			},
+		});
+	}
+	if (config.backgroundShellPrevShortcut) {
+		pi.registerShortcut(config.backgroundShellPrevShortcut as "alt+q", {
+			description: "Previous Codex background shell",
+			handler: async (ctx) => {
+				if (!isEnabled()) return;
+				const snapshots = sessions.listSessions();
+				const count = snapshots.length;
+				if (count > 0) {
+					const activeIndex = Math.max(0, snapshots.findIndex((session) => session.id === state.activeSessionId));
+					state.activeSessionId = snapshots[(activeIndex + count - 1) % count]!.id;
+				}
+				rerender(ctx);
+			},
+		});
+	}
+	if (config.backgroundShellNextShortcut) {
+		pi.registerShortcut(config.backgroundShellNextShortcut as "alt+e", {
+			description: "Next Codex background shell",
+			handler: async (ctx) => {
+				if (!isEnabled()) return;
+				const snapshots = sessions.listSessions();
+				const count = snapshots.length;
+				if (count > 0) {
+					const activeIndex = Math.max(0, snapshots.findIndex((session) => session.id === state.activeSessionId));
+					state.activeSessionId = snapshots[(activeIndex + 1) % count]!.id;
+				}
+				rerender(ctx);
+			},
+		});
+	}
+	if (config.backgroundShellCloseShortcut) {
+		pi.registerShortcut(config.backgroundShellCloseShortcut as "alt+r", {
+			description: "Close active Codex background shell",
+			handler: async (ctx) => {
+				if (!isEnabled()) return;
+				const snapshots = sessions.listSessions();
+				const snapshot = snapshots.find((session) => session.id === state.activeSessionId) ?? snapshots[0];
+				if (snapshot) sessions.terminateSession(snapshot.id);
+				rerender(ctx);
+			},
+		});
+	}
 }

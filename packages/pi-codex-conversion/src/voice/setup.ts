@@ -53,6 +53,8 @@ export function buildVoiceSetupInstructions(options: {
 	].join("\n");
 }
 
+// FORK_MOD: an empty binding means the shortcut is disabled; render that instead of a blank key.
 export function formatVoiceShortcut(value: string): string {
+	if (!value) return "disabled";
 	return value.split("+").map((part) => part === "ctrl" ? "Ctrl" : part === "alt" ? "Alt" : part === "shift" ? "Shift" : part === "space" ? "Space" : part.toUpperCase()).join("+");
 }

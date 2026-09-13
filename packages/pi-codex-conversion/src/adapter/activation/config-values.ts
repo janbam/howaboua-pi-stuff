@@ -8,8 +8,9 @@ export function normalizeBoolean(value: unknown, fallback: boolean): boolean {
 	return typeof value === "boolean" ? value : fallback;
 }
 
-export function normalizeString(value: unknown, fallback: string): string {
-	return typeof value === "string" && value.trim() ? value.trim() : fallback;
+// FORK_MOD: unlike a plain string normalizer, an empty string is a meaningful shortcut value — it disables the binding — so only non-strings fall back to the default.
+export function normalizeShortcutString(value: unknown, fallback: string): string {
+	return typeof value === "string" ? value.trim() : fallback;
 }
 
 export function normalizeOptionalString(value: unknown): string | undefined {

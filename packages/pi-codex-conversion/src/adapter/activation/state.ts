@@ -28,6 +28,7 @@ export interface AdapterState {
 	activeProviderSystemPrompt?: string | undefined;
 	pendingActiveProviderPromptCapture?: boolean | undefined;
 	voiceSystemPromptOverride?: string | undefined;
+	fiveHourUsageLeft?: number | undefined;
 	weeklyUsageLeft?: number | undefined;
 	config: CodexConversionConfig;
 	executionMode: ExecutionMode;

@@ -142,6 +142,14 @@ export function codexWeeklyUsageLeft(snapshot: CodexUsageSnapshot): number | und
 	return 100 - Math.max(0, Math.min(100, weekly.usedPercent));
 }
 
+// The non-weekly window is the 5-hour rolling limit; weekly-only plans have it in secondary after parseRateLimit's shift.
+export function codexFiveHourUsageLeft(snapshot: CodexUsageSnapshot): number | undefined {
+	const limit = snapshot.limits.find(({ limitId }) => limitId === "codex");
+	const fiveHour = [limit?.primary, limit?.secondary].find(({ windowMinutes } = {}) => windowMinutes !== undefined && windowMinutes !== WEEKLY_WINDOW_MINUTES);
+	if (fiveHour?.usedPercent === undefined) return undefined;
+	return 100 - Math.max(0, Math.min(100, fiveHour.usedPercent));
+}
+
 export function parseCodexRateLimitResetConsumePayload(payload: unknown): CodexRateLimitResetConsumeResult {
 	const root = isRecord(payload) ? payload : {};
 	const code = stringValue(root["code"]!);

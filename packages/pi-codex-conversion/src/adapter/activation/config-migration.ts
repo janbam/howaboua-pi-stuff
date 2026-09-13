@@ -85,6 +85,7 @@ export function migrateCodexConversionConfigIfNeeded(value: unknown): { migrated
 	return { migrated: true, config };
 }
 
+// FORK_MOD: unlike a plain string default, an empty shortcut value is meaningful — it disables the binding — so keep it.
 function stringValue(value: unknown, fallback: string): string {
-	return typeof value === "string" && value.trim() ? value.trim() : fallback;
+	return typeof value === "string" ? value.trim() : fallback;
 }

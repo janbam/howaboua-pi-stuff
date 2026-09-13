@@ -24,7 +24,7 @@ import {
 	normalizeIntegerInRange,
 	normalizeNotebookProfile,
 	normalizeOptionalString,
-	normalizeString,
+	normalizeShortcutString,
 	normalizeVoiceContextModel,
 } from "./config-values.ts";
 import { normalizeExecutionMode } from "./execution-mode.ts";
@@ -117,19 +117,19 @@ export function normalizeCodexConversionConfig(
 				ui["backgroundShellWidget"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.ui["backgroundShellWidget"],
 			),
-			backgroundShellToggleShortcut: normalizeString(
+			backgroundShellToggleShortcut: normalizeShortcutString(
 				ui["backgroundShellToggleShortcut"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.ui["backgroundShellToggleShortcut"],
 			),
-			backgroundShellPrevShortcut: normalizeString(
+			backgroundShellPrevShortcut: normalizeShortcutString(
 				ui["backgroundShellPrevShortcut"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.ui["backgroundShellPrevShortcut"],
 			),
-			backgroundShellNextShortcut: normalizeString(
+			backgroundShellNextShortcut: normalizeShortcutString(
 				ui["backgroundShellNextShortcut"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.ui["backgroundShellNextShortcut"],
 			),
-			backgroundShellCloseShortcut: normalizeString(
+			backgroundShellCloseShortcut: normalizeShortcutString(
 				ui["backgroundShellCloseShortcut"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.ui["backgroundShellCloseShortcut"],
 			),
@@ -184,19 +184,19 @@ export function normalizeCodexConversionConfig(
 				voice["forwardReasoningSummaries"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.voice.forwardReasoningSummaries,
 			),
-			dictationShortcut: normalizeString(
+			dictationShortcut: normalizeShortcutString(
 				voice["dictationShortcut"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.voice.dictationShortcut,
 			),
-			realtimeShortcut: normalizeString(
+			realtimeShortcut: normalizeShortcutString(
 				voice["realtimeShortcut"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.voice.realtimeShortcut,
 			),
-			muteShortcut: normalizeString(
+			muteShortcut: normalizeShortcutString(
 				voice["muteShortcut"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.voice.muteShortcut,
 			),
-			serverShortcut: normalizeString(
+			serverShortcut: normalizeShortcutString(
 				voice["serverShortcut"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.voice.serverShortcut,
 			),

@@ -51,34 +51,44 @@ export function registerCodexVoiceShortcuts(
 		releaseFallbackTimer = setTimeout(() => finishPushDictation(ctx), delay);
 	};
 
-	pi.registerShortcut(dictationShortcut, {
-		description: "Codex push-to-dictate",
-		handler: (ctx) => enqueue(ctx, async () => {
-			const mode = getConfig().voice.dictationShortcutMode;
-			if (mode === "toggle") {
-				dictationKeyDown = undefined;
-				clearReleaseFallback();
-				await actions.toggleDictation(ctx);
-			} else {
-				dictationKeyDown = keyIdentity(dictationShortcut);
-				armReleaseFallback(ctx, INITIAL_RELEASE_FALLBACK_MS);
-				await actions.startDictation(ctx);
-			}
-		}),
-	});
+	// FORK_MOD: an empty binding disables the shortcut; skip registration entirely (matchesKey never matches "", so raw-input handling stays inert).
+	if (dictationShortcut) {
+		pi.registerShortcut(dictationShortcut, {
+			description: "Codex push-to-dictate",
+			handler: (ctx) => enqueue(ctx, async () => {
+				const mode = getConfig().voice.dictationShortcutMode;
+				if (mode === "toggle") {
+					dictationKeyDown = undefined;
+					clearReleaseFallback();
+					await actions.toggleDictation(ctx);
+				} else {
+					dictationKeyDown = keyIdentity(dictationShortcut);
+					armReleaseFallback(ctx, INITIAL_RELEASE_FALLBACK_MS);
+					await actions.startDictation(ctx);
+				}
+			}),
+		});
+	}
 
-	pi.registerShortcut(realtimeShortcut, {
-		description: "Toggle Codex realtime voice",
-		handler: (ctx) => enqueue(ctx, () => actions.toggleRealtime(ctx)),
-	});
-	pi.registerShortcut(muteShortcut, {
-		description: "Toggle Codex realtime microphone mute",
-		handler: (ctx) => enqueue(ctx, async () => actions.toggleInputMute(ctx)),
-	});
-	pi.registerShortcut(serverShortcut, {
-		description: "Toggle Codex LAN voice server",
-		handler: (ctx) => enqueue(ctx, () => actions.toggleServer(ctx)),
-	});
+	// FORK_MOD: same disable rule for the toggle-style voice shortcuts.
+	if (realtimeShortcut) {
+		pi.registerShortcut(realtimeShortcut, {
+			description: "Toggle Codex realtime voice",
+			handler: (ctx) => enqueue(ctx, () => actions.toggleRealtime(ctx)),
+		});
+	}
+	if (muteShortcut) {
+		pi.registerShortcut(muteShortcut, {
+			description: "Toggle Codex realtime microphone mute",
+			handler: (ctx) => enqueue(ctx, async () => actions.toggleInputMute(ctx)),
+		});
+	}
+	if (serverShortcut) {
+		pi.registerShortcut(serverShortcut, {
+			description: "Toggle Codex LAN voice server",
+			handler: (ctx) => enqueue(ctx, () => actions.toggleServer(ctx)),
+		});
+	}
 
 	pi.on("session_start", (_event, ctx) => {
 		removeTerminalInput?.();

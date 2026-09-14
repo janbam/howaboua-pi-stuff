@@ -16,7 +16,8 @@ import {
 } from "./payload.ts";
 
 const RESET_CREDITS_CACHE_MS = 5_000;
-const USAGE_LEFT_CACHE_MS = 5 * 60_000;
+// FORK_MOD: cache usage for 1 min instead of 5; sparse refresh triggers left idle sessions with stale quota for hours.
+const USAGE_LEFT_CACHE_MS = 60_000;
 const USAGE_LEFT_TIMEOUT_MS = 10_000;
 
 type RuntimeModel = Model<Api>;

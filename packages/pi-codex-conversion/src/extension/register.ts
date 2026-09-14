@@ -38,6 +38,9 @@ export async function registerCodexConversion(pi: ExtensionAPI): Promise<void> {
 		const ui = registerCodexUi(pi, runtime);
 		registerCodexCommand(pi, runtime.state, runtime.voice, runtime.lanVoice, (config, ctx, previousConfig) => {
 			const executionModeChanged = config.executionMode !== previousConfig.executionMode;
+			const promptConfigChanged =
+				config.prompt.heavySystemPromptOverwrite !== previousConfig.prompt.heavySystemPromptOverwrite
+				|| config.prompt.appendSystemPromptFile !== previousConfig.prompt.appendSystemPromptFile;
 			const contextManagementChanged =
 				config.compaction.contextManagement !==
 				previousConfig.compaction.contextManagement;
@@ -72,10 +75,15 @@ export async function registerCodexConversion(pi: ExtensionAPI): Promise<void> {
 			if (hasCodexCacheKeepalivePlanChanged(ctx.model?.id, previousConfig.openai, config.openai)) {
 				runtime.cancelCacheKeepalive();
 			}
+			if (promptConfigChanged) {
+				// A changed prompt policy invalidates provider and voice prompt snapshots immediately.
+				runtime.state.activeProviderSystemPrompt = undefined;
+				runtime.state.voiceSystemPromptOverride = undefined;
+			}
 			if (
 				config.voiceFeaturesOnly !== previousConfig.voiceFeaturesOnly
 				|| executionModeChanged
-				|| config.prompt.heavySystemPromptOverwrite !== previousConfig.prompt.heavySystemPromptOverwrite
+				|| promptConfigChanged
 				|| config.openai.fast !== previousConfig.openai.fast
 				|| config.openai.harnessIdentifierHeader !== previousConfig.openai.harnessIdentifierHeader
 				|| contextManagementChanged

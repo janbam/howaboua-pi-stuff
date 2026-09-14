@@ -4,6 +4,11 @@ import { migrateCodexConversionConfigIfNeeded } from "../src/adapter/activation/
 import { normalizeCodexConversionConfig } from "../src/adapter/activation/config.ts";
 
 test("legacy persisted config shapes migrate to the current groups", () => {
+	assert.equal(normalizeCodexConversionConfig({}).prompt.appendSystemPromptFile, true);
+	assert.equal(normalizeCodexConversionConfig({
+		prompt: { appendSystemPromptFile: false },
+	}).prompt.appendSystemPromptFile, false);
+
 	const flat = migrateCodexConversionConfigIfNeeded({
 		useOnAllModels: true,
 		useAdapterProviders: false,

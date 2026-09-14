@@ -62,7 +62,7 @@ Provider scope can stay on **Codex and configured**, expand to **all providers**
 
 | Tab | Covers |
 | --- | --- |
-| General | Settings scope, execution mode, extension mode, providers and heavy prompt overwrite |
+| General | Settings scope, execution mode, extension mode, providers and prompt controls |
 | Context | Notes, history, Hybrid compaction, Responses V2 and preserved user messages |
 | Tools | Auto reasoning (Astra only), image description fallback and standalone tools |
 | OpenAI | Fast mode, verbosity, transport, cache diagnostics and Responses Lite |
@@ -84,6 +84,8 @@ Without folder settings, the project inherits the complete global configuration.
 `tools.customRustBinariesDir` can override any bundled native helper by filename, including `exec_bridge`, `apply_patch`, `view_image` and `pi-codex-voice`. Build helpers on the target machine, collect the needed binaries in one directory, set that directory in the config, then run `/reload`.
 
 The optional **Heavy system prompt overwrite** removes roughly 40% of Pi's known default scaffold while preserving additions from other extensions. It is off by default.
+
+When `CODEX_APPEND_SYSTEM.md` exists in Pi's agent directory (normally `~/.pi/agent`, or `PI_CODING_AGENT_DIR` when set), the active Codex prompt adapter appends its contents after Pi's fully constructed and converted system prompt. Disable **Append CODEX_APPEND_SYSTEM.md** under `/codex` → **General** when an appendix should not apply; the setting is on by default and follows the selected Global or project settings scope.
 
 On GPT-6 Astra over Codex transport, Pi's usual **Shift+Tab** reasoning selector appends a native configuration update instead of changing the request's original effort. This preserves prompt-cache and WebSocket continuation eligibility; cache hits still depend on the server. Updates persist across session resume and native compaction. Other models keep Pi's usual behaviour. Server-side automatic truncation and compaction are incompatible with these updates; the extension's explicit Responses compaction V2 is supported.
 

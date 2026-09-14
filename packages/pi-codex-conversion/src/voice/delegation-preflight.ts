@@ -15,11 +15,13 @@ export async function prepareVoiceDelegation(
 	const buildCurrent = () => {
 		if (!isAdapterRuntime(resolveCodexRuntimePlanForState(ctx, state))) return undefined;
 		const basePrompt = state.activeProviderSystemPrompt ?? ctx.getSystemPrompt();
+		// Remove the known personal tail before tool refresh can turn the prompt into an unrecognized derivative.
+		const promptWithoutAppendix = runtime.stripEmittedCodexPromptAppendix(basePrompt);
 		const promptOptions = state.config.prompt.heavySystemPromptOverwrite
 			? { cwd: ctx.cwd }
 			: undefined;
 		const systemPrompt = runtime.codexSystemPrompt(
-			codeMode.refreshPromptTools(basePrompt, ctx),
+			codeMode.refreshPromptTools(promptWithoutAppendix, ctx),
 			ctx,
 			undefined,
 			promptOptions,

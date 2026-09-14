@@ -45,7 +45,10 @@ export const LUNA_CACHE_KEEPALIVE_MINUTES_OPTIONS: readonly LunaCacheKeepaliveMi
 export interface CodexConversionConfig {
 	executionMode: ExecutionMode;
 	voiceFeaturesOnly: boolean;
-	prompt: { heavySystemPromptOverwrite: boolean };
+	prompt: {
+		heavySystemPromptOverwrite: boolean;
+		appendSystemPromptFile: boolean;
+	};
 	scope: { allProviders: AllProvidersMode; additionalProviders: string[] };
 	tools: {
 		autoReasoning: boolean;
@@ -109,7 +112,10 @@ export interface CodexConversionConfig {
 export const DEFAULT_CODEX_CONVERSION_CONFIG: CodexConversionConfig = {
 	executionMode: "normal",
 	voiceFeaturesOnly: false,
-	prompt: { heavySystemPromptOverwrite: false },
+	prompt: {
+		heavySystemPromptOverwrite: false,
+		appendSystemPromptFile: true,
+	},
 	scope: { allProviders: "off", additionalProviders: [] },
 	tools: {
 		autoReasoning: false,

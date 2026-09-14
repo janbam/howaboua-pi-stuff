@@ -11,6 +11,7 @@ import type { AdapterState } from "../adapter/activation/state.ts";
 import { rewriteCodexPrewarmProviderRequest, rewriteCodexProviderRequest, supportsCodexDeveloperMessages } from "../adapter/provider-request.ts";
 import { getPiCodexRuntimeShell } from "../adapter/prompt/runtime-shell.ts";
 import { isProviderContextExcludedMessage } from "../adapter/prompt/context-filter.ts";
+import { readCodexAppendSystemPrompt } from "../prompt/append-system-prompt.ts";
 import { buildCodexSystemPrompt, type PiSystemPromptOptions } from "../prompt/build-system-prompt.ts";
 import { closeOpenAICodexKeepaliveWebSocketSession, closeOpenAICodexWebSocketSessions, prewarmOpenAICodexWebSocket } from "../providers/openai-codex-custom-provider.ts";
 import { resetOpenAICodexWebSocketSessions } from "../providers/openai-codex/websocket.ts";
@@ -53,6 +54,8 @@ export interface CodexExtensionRuntime {
 	projectContextMessages(ctx: CodexContext, messages?: readonly AgentMessage[]): AgentMessage[];
 	execEnv(config?: CodexConversionConfig): NodeJS.ProcessEnv;
 	codexSystemPrompt(basePrompt: string, ctx: CodexContext, skills?: AdapterState["promptSkills"], systemPromptOptions?: PiSystemPromptOptions): string;
+	/** Removes an appendix previously emitted by this runtime before another prompt transformation. */
+	stripEmittedCodexPromptAppendix(prompt: string): string;
 	startPrewarm(ctx: CodexContext, systemPrompt?: string, prepared?: boolean): Promise<CodexPrewarmResult> | undefined;
 	startCompactionPrewarm(ctx: CodexContext): Promise<CodexPrewarmResult> | undefined;
 	startKeepalivePrewarm(ctx: CodexContext): Promise<CodexPrewarmResult> | undefined;
@@ -121,6 +124,7 @@ export function createCodexExtensionRuntime(pi: ExtensionAPI): CodexExtensionRun
 	let activePrewarmKind: "ordinary" | "compaction" | "keepalive" | undefined;
 	let cacheKeepaliveTimer: ReturnType<typeof setTimeout> | undefined;
 	let cacheKeepaliveEpoch = 0;
+	const emittedCodexPromptAppendices = new Map<string, string>();
 	const diagnostics = createLazyCodexDiagnostics();
 	let cacheEnvironmentWarningsReported = false;
 	const buildPrewarmPlan = (
@@ -398,13 +402,36 @@ export function createCodexExtensionRuntime(pi: ExtensionAPI): CodexExtensionRun
 		projectContextMessages,
 		codexSystemPrompt(basePrompt, ctx, skills = state.promptSkills, systemPromptOptions) {
 			const plan = resolveCodexRuntimePlanForState(ctx, state);
-			return buildCodexSystemPrompt(basePrompt, {
+			// Resolve the personal tail only inside active Codex prompt construction.
+			const codexAppendSystemPrompt = state.config.prompt.appendSystemPromptFile
+				? readCodexAppendSystemPrompt()
+				: undefined;
+			const previousCodexAppendSystemPrompt = emittedCodexPromptAppendices.get(basePrompt);
+			const prompt = buildCodexSystemPrompt(basePrompt, {
 				skills,
 				shell: getPiCodexRuntimeShell(ctx),
 				mode: plan.prompt ?? "normal",
 				heavySystemPromptOverwrite: state.config.prompt.heavySystemPromptOverwrite,
+				codexAppendSystemPrompt,
+				previousCodexAppendSystemPrompt,
 				systemPromptOptions,
 			});
+			if (codexAppendSystemPrompt) {
+				// Recognize only tails this runtime emitted, while bounding retained prompt snapshots.
+				emittedCodexPromptAppendices.delete(prompt);
+				emittedCodexPromptAppendices.set(prompt, codexAppendSystemPrompt);
+				if (emittedCodexPromptAppendices.size > 8) {
+					const oldestPrompt = emittedCodexPromptAppendices.keys().next().value;
+					if (oldestPrompt !== undefined) emittedCodexPromptAppendices.delete(oldestPrompt);
+				}
+			}
+			return prompt;
+		},
+		stripEmittedCodexPromptAppendix(prompt) {
+			const appendix = emittedCodexPromptAppendices.get(prompt);
+			if (!appendix) return prompt;
+			const suffix = `\n\n${appendix}`;
+			return prompt.endsWith(suffix) ? prompt.slice(0, -suffix.length) : prompt;
 		},
 		startPrewarm(ctx, systemPrompt, prepared) {
 			return startPrewarm(ctx, systemPrompt, prepared);

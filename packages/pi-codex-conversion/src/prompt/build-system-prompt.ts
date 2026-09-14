@@ -395,16 +395,43 @@ export function buildCodexSystemPrompt(
 		shell?: string | undefined;
 		mode?: CodexPromptMode | undefined;
 		heavySystemPromptOverwrite?: boolean | undefined;
+		codexAppendSystemPrompt?: string | undefined;
+		previousCodexAppendSystemPrompt?: string | undefined;
 		systemPromptOptions?: PiSystemPromptOptions | undefined;
 	} = {},
 ): string {
+	const appendix = options.codexAppendSystemPrompt?.trim();
+	const previousAppendix = options.previousCodexAppendSystemPrompt?.trim();
+	const sourcePrompt = stripTrailingCodexAppendix(
+		basePrompt,
+		previousAppendix ?? appendix,
+	);
+	let prompt: string;
 	if (options.heavySystemPromptOverwrite && options.systemPromptOptions) {
-		return buildHeavyCodexSystemPrompt(basePrompt, {
+		prompt = buildHeavyCodexSystemPrompt(sourcePrompt, {
 			skills: options.skills ?? [],
 			shell: options.shell,
 			mode: options.mode,
 			systemPromptOptions: options.systemPromptOptions,
 		});
+	} else {
+		prompt = injectShell(injectSkills(injectGuidelines(sourcePrompt, options.mode), options.skills ?? []), options.shell);
 	}
-	return injectShell(injectSkills(injectGuidelines(basePrompt, options.mode), options.skills ?? []), options.shell);
+
+	// Keep the user-owned Codex appendix after every converted and mode-specific section.
+	if (!appendix) return prompt;
+	return `${prompt.trimEnd()}\n\n${appendix}`;
+}
+
+/** Removes only the appendix previously attached at this prompt boundary. */
+function stripTrailingCodexAppendix(
+	prompt: string,
+	appendix: string | undefined,
+): string {
+	if (!appendix) return prompt;
+	const trimmed = prompt.trimEnd();
+	const suffix = `\n\n${appendix}`;
+	return trimmed.endsWith(suffix)
+		? trimmed.slice(0, -suffix.length).trimEnd()
+		: prompt;
 }

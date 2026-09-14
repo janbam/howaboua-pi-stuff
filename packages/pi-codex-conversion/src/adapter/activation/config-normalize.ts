@@ -70,6 +70,10 @@ export function normalizeCodexConversionConfig(
 				prompt["heavySystemPromptOverwrite"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.prompt.heavySystemPromptOverwrite,
 			),
+			appendSystemPromptFile: normalizeBoolean(
+				prompt["appendSystemPromptFile"],
+				DEFAULT_CODEX_CONVERSION_CONFIG.prompt.appendSystemPromptFile,
+			),
 		},
 		scope: {
 			allProviders:

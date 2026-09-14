@@ -3,11 +3,13 @@ import {
 	type CodexConversionConfig,
 	normalizeProviderList,
 } from "../../adapter/activation/config.ts";
+import { getCodexAppendSystemPromptPath } from "../../prompt/append-system-prompt.ts";
 import { editorCommand } from "./config-editor.ts";
 import {
 	type ConfigSetting,
 	setting,
 	TextSettingSubmenu,
+	toggle,
 } from "./config-items-shared.ts";
 
 export function buildAdapterSettings(
@@ -87,6 +89,19 @@ export function buildAdapterSettings(
 					heavySystemPromptOverwrite: value !== "off",
 				},
 			}),
+		),
+		toggle(
+			"appendSystemPromptFile",
+			"Append CODEX_APPEND_SYSTEM.md",
+			config.prompt.appendSystemPromptFile,
+			(enabled, current) => ({
+				...current,
+				prompt: {
+					...current.prompt,
+					appendSystemPromptFile: enabled,
+				},
+			}),
+			`Append ${getCodexAppendSystemPromptPath()} after the converted system prompt when the file exists.`,
 		),
 		{
 			item: {

@@ -1,5 +1,9 @@
 # @howaboua/pi-vent
 
+## 0.2.11
+
+- Store project vent logs under ~/.pi/agent/vent and migrate repo-local logs without losing existing central history.
+
 ## 0.2.10
 
 ### Changes

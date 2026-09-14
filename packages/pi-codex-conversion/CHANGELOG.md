@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.35
+
+- Append `CODEX_APPEND_SYSTEM.md` to active converted system prompts, with a General-menu toggle to disable it.
+
+- pi-codex-conversion: set a shortcut binding to an empty string to disable that shortcut instead of falling back to its default
+
+- pi-codex-conversion: status line shows 5h usage next to weekly usage with compact labels: "Codex" without "adapter", no verbosity level, no compact v2 indicator, and no "left" suffix on usage
+
+- pi-codex-conversion: status-line usage cache refreshes every minute instead of five, keeping displayed quota closer to live state
+
 ## 3.0.34
 
 - Fixed expanded exec_command rows to show the complete command.

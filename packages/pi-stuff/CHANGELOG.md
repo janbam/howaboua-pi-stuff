@@ -1,5 +1,11 @@
 # @howaboua/pi-stuff
 
+## 0.0.82
+
+- Include bundled package updates:
+
+  - @howaboua/pi-vent: Store project vent logs under ~/.pi/agent/vent and migrate repo-local logs without losing existing central history.
+
 ## 0.0.81
 
 - Include bundled package updates:

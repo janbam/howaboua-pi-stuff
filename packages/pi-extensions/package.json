@@ -1,6 +1,6 @@
 {
 	"name": "@howaboua/pi-extensions",
-	"version": "0.0.74",
+	"version": "0.0.75",
 	"description": "all Howaboua Pi extensions",
 	"type": "module",
 	"keywords": [
@@ -27,7 +27,7 @@
 		"@howaboua/pi-smart-btw": "0.2.6",
 		"@howaboua/pi-subagent-review": "0.2.21",
 		"@howaboua/pi-unicode-charts": "0.1.0",
-		"@howaboua/pi-vent": "0.2.10"
+		"@howaboua/pi-vent": "0.2.11"
 	},
 	"files": [
 		"README.md",

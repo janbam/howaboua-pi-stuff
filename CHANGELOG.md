@@ -52,23 +52,15 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-cache-hit-predictor/CHANGELOG.md)
 
-### @howaboua/pi-codex-conversion — 3.0.34
+### @howaboua/pi-codex-conversion — 3.0.35
 
-- Fixed expanded exec_command rows to show the complete command.
+- Append `CODEX_APPEND_SYSTEM.md` to active converted system prompts, with a General-menu toggle to disable it.
 
-- Fixed context continuity, voice replies, and patch preservation.
+- pi-codex-conversion: set a shortcut binding to an empty string to disable that shortcut instead of falling back to its default
 
-  - V2 compaction preserves the preceding request's reasoning configuration, then starts a fresh baseline without stale overrides. Astra's temporary effort survives continued work across context windows.
-  - Worker updates now accept up to 8 KiB without truncation announcements or offers to read the rest.
-  - Reasoning-summary forwarding now recognizes GPT-6 models.
-  - Replies resume in voice after a context-window rollover, and carried transcripts no longer falsely report that the user ended the call.
-  - Reconnecting voice no longer reposts a cached Voice Context summary.
-  - Added an opt-in plain command output toggle for Code and Notebook modes under `/codex Tools`, keeping command metadata while printing output without JSON escaping.
-  - Notebook cell results report heap and RSS figures only under memory pressure; routine figures remain available through notebook status.
-  - Code and Notebook modes show running-command continuation instructions once per response, preserving the distinction between shell sessions and exec cells.
-  - Notebook syntax errors now point to the original cell source, with generated-code diagnostics labeled separately.
-  - `apply_patch` now preserves existing line endings, unchanged context text, and trailing blank lines, and supports same-drive relative Windows paths.
-  - `apply_patch` rejects repeated source-file sections before writing; multiple hunks in one update remain supported.
+- pi-codex-conversion: status line shows 5h usage next to weekly usage with compact labels: "Codex" without "adapter", no verbosity level, no compact v2 indicator, and no "left" suffix on usage
+
+- pi-codex-conversion: status-line usage cache refreshes every minute instead of five, keeping displayed quota closer to live state
 
 [Full changelog](./packages/pi-codex-conversion/CHANGELOG.md)
 
@@ -102,14 +94,11 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-explore-subagents/CHANGELOG.md)
 
-### @howaboua/pi-extensions — 0.0.74
+### @howaboua/pi-extensions — 0.0.75
 
 - Include bundled package updates:
 
-  - @howaboua/pi-better-skills-tool: The skills tool now reads mixed skills and unique cross-skill references in one call. Ambiguous reference names report their qualified choices.
-  - @howaboua/pi-gippity-control: Fixed context continuity, voice replies, and patch preservation. - V2 compaction preserves the preceding request's reasoning configuration, then starts a fresh baseline without stale overrides. Astra's temporary effort survives continued work across context windows. - Worker updates now accept up to 8 KiB without truncation announcements or offers to read the rest. - Reasoning-summary forwarding now recognizes GPT-6 models. - Replies resume in voice after a context-window rollover, and carried transcripts no longer falsely report that the user ended the call. - Reconnecting voice no longer reposts a cached Voice Context summary. - Added an opt-in plain command output toggle for Code and Notebook modes under `/codex Tools`, keeping command metadata while printing output without JSON escaping. - Notebook cell results report heap and RSS figures only under memory pressure; routine figures remain available through notebook status. - Code and Notebook modes show running-command continuation instructions once per response, preserving the distinction between shell sessions and exec cells. - Notebook syntax errors now point to the original cell source, with generated-code diagnostics labeled separately. - `apply_patch` now preserves existing line endings, unchanged context text, and trailing blank lines, and supports same-drive relative Windows paths. - `apply_patch` rejects repeated source-file sections before writing; multiple hunks in one update remain supported.
-  - @howaboua/pi-shepherdr: Fixed context continuity, voice replies, and patch preservation. - V2 compaction preserves the preceding request's reasoning configuration, then starts a fresh baseline without stale overrides. Astra's temporary effort survives continued work across context windows. - Worker updates now accept up to 8 KiB without truncation announcements or offers to read the rest. - Reasoning-summary forwarding now recognizes GPT-6 models. - Replies resume in voice after a context-window rollover, and carried transcripts no longer falsely report that the user ended the call. - Reconnecting voice no longer reposts a cached Voice Context summary. - Added an opt-in plain command output toggle for Code and Notebook modes under `/codex Tools`, keeping command metadata while printing output without JSON escaping. - Notebook cell results report heap and RSS figures only under memory pressure; routine figures remain available through notebook status. - Code and Notebook modes show running-command continuation instructions once per response, preserving the distinction between shell sessions and exec cells. - Notebook syntax errors now point to the original cell source, with generated-code diagnostics labeled separately. - `apply_patch` now preserves existing line endings, unchanged context text, and trailing blank lines, and supports same-drive relative Windows paths. - `apply_patch` rejects repeated source-file sections before writing; multiple hunks in one update remain supported.
-  - @howaboua/pi-shepherdr: Shepherdr now adds exact-target recovery guidance to agent-not-found errors without changing accepted agent names or pane IDs.
+  - @howaboua/pi-vent: Store project vent logs under ~/.pi/agent/vent and migrate repo-local logs without losing existing central history.
 
 [Full changelog](./packages/pi-extensions/CHANGELOG.md)
 
@@ -236,14 +225,11 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-smart-btw/CHANGELOG.md)
 
-### @howaboua/pi-stuff — 0.0.81
+### @howaboua/pi-stuff — 0.0.82
 
 - Include bundled package updates:
 
-  - @howaboua/pi-better-skills-tool: The skills tool now reads mixed skills and unique cross-skill references in one call. Ambiguous reference names report their qualified choices.
-  - @howaboua/pi-gippity-control: Fixed context continuity, voice replies, and patch preservation. - V2 compaction preserves the preceding request's reasoning configuration, then starts a fresh baseline without stale overrides. Astra's temporary effort survives continued work across context windows. - Worker updates now accept up to 8 KiB without truncation announcements or offers to read the rest. - Reasoning-summary forwarding now recognizes GPT-6 models. - Replies resume in voice after a context-window rollover, and carried transcripts no longer falsely report that the user ended the call. - Reconnecting voice no longer reposts a cached Voice Context summary. - Added an opt-in plain command output toggle for Code and Notebook modes under `/codex Tools`, keeping command metadata while printing output without JSON escaping. - Notebook cell results report heap and RSS figures only under memory pressure; routine figures remain available through notebook status. - Code and Notebook modes show running-command continuation instructions once per response, preserving the distinction between shell sessions and exec cells. - Notebook syntax errors now point to the original cell source, with generated-code diagnostics labeled separately. - `apply_patch` now preserves existing line endings, unchanged context text, and trailing blank lines, and supports same-drive relative Windows paths. - `apply_patch` rejects repeated source-file sections before writing; multiple hunks in one update remain supported.
-  - @howaboua/pi-shepherdr: Fixed context continuity, voice replies, and patch preservation. - V2 compaction preserves the preceding request's reasoning configuration, then starts a fresh baseline without stale overrides. Astra's temporary effort survives continued work across context windows. - Worker updates now accept up to 8 KiB without truncation announcements or offers to read the rest. - Reasoning-summary forwarding now recognizes GPT-6 models. - Replies resume in voice after a context-window rollover, and carried transcripts no longer falsely report that the user ended the call. - Reconnecting voice no longer reposts a cached Voice Context summary. - Added an opt-in plain command output toggle for Code and Notebook modes under `/codex Tools`, keeping command metadata while printing output without JSON escaping. - Notebook cell results report heap and RSS figures only under memory pressure; routine figures remain available through notebook status. - Code and Notebook modes show running-command continuation instructions once per response, preserving the distinction between shell sessions and exec cells. - Notebook syntax errors now point to the original cell source, with generated-code diagnostics labeled separately. - `apply_patch` now preserves existing line endings, unchanged context text, and trailing blank lines, and supports same-drive relative Windows paths. - `apply_patch` rejects repeated source-file sections before writing; multiple hunks in one update remain supported.
-  - @howaboua/pi-shepherdr: Shepherdr now adds exact-target recovery guidance to agent-not-found errors without changing accepted agent names or pane IDs.
+  - @howaboua/pi-vent: Store project vent logs under ~/.pi/agent/vent and migrate repo-local logs without losing existing central history.
 
 [Full changelog](./packages/pi-stuff/CHANGELOG.md)
 
@@ -270,12 +256,9 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-unicode-charts/CHANGELOG.md)
 
-### @howaboua/pi-vent — 0.2.10
+### @howaboua/pi-vent — 0.2.11
 
-### Changes
-
-- [#106](https://github.com/IgorWarzocha/howaboua-pi-stuff/pull/106) [`c423031`](https://github.com/IgorWarzocha/howaboua-pi-stuff/commit/c4230312f24db0e49c95eafff959109d74017c3d) Thanks [@IgorWarzocha](https://github.com/IgorWarzocha)!:
-  - Rewrite package documentation around current installation, configuration, usage, and behavior.
+- Store project vent logs under ~/.pi/agent/vent and migrate repo-local logs without losing existing central history.
 
 [Full changelog](./packages/pi-vent/CHANGELOG.md)
 

@@ -4,7 +4,8 @@ export type CodexVerbosity = "low" | "medium" | "high";
 export type CacheDiagnosticsMode = "off" | "status" | "status-and-log";
 export type CompactToolsMode = "off" | "on" | "minimal";
 export type LunaCacheKeepaliveMinutes = 0 | 5 | 10 | 15;
-export type AllProvidersMode = "off" | "on" | "extras";
+/** Selects which providers receive the full adapter or standalone extra tools. */
+export type AllProvidersMode = "off" | "on" | "extras" | "codex-plus-extras";
 export type ContextManagementMode = "off" | "local" | "tree" | "remote";
 export type V2UserMessageRetention = 16 | 32 | 64;
 export const MIN_NOTEBOOK_HEAP_MIB = 256;

@@ -254,6 +254,36 @@ test("execution mode and Responses Lite transport resolve independently", () => 
 	);
 });
 
+test("mixed provider scope keeps the Codex adapter and limits additional providers to enabled extras", () => {
+	const config = createAdapterState({
+		executionMode: "code",
+		scope: { allProviders: "codex-plus-extras", additionalProviders: ["responses-proxy", "opencode-go"] },
+		tools: { ...DEFAULT_CODEX_CONVERSION_CONFIG.tools, applyPatchOnly: true },
+	}).config;
+
+	// Codex qualification must win even while a standalone tool is enabled.
+	const codex = resolveCodexRuntimePlan(
+		createContext({ provider: "openai-codex", api: "openai-codex-responses", id: "gpt-6-astra", baseUrl: CANONICAL_CODEX_BASE_URL }) as never,
+		config,
+	);
+	assert.deepEqual({ kind: codex.kind, prompt: codex.prompt, tools: codex.toolNames }, { kind: "code", prompt: "code", tools: ["exec", "wait"] });
+
+	// List membership grants the same prompt-neutral extras regardless of provider API.
+	for (const model of [
+		{ provider: "responses-proxy", api: "openai-responses", id: "claude-sonnet" },
+		{ provider: "opencode-go", api: "anthropic-messages", id: "claude-sonnet" },
+	]) {
+		const plan = resolveCodexRuntimePlan(createContext(model) as never, config);
+		assert.deepEqual({ kind: plan.kind, prompt: plan.prompt, tools: plan.toolNames }, { kind: "extras", prompt: undefined, tools: ["apply_patch"] });
+	}
+
+	// Without standalone toggles, only Codex-qualified models remain active.
+	const withoutExtras = { ...config, tools: { ...config.tools, applyPatchOnly: false } };
+	assert.equal(resolveCodexRuntimePlan(createContext({ provider: "openai-codex", api: "openai-codex-responses", id: "gpt-6-astra" }) as never, withoutExtras).kind, "code");
+	assert.equal(resolveCodexRuntimePlan(createContext({ provider: "opencode-go", api: "anthropic-messages", id: "claude-sonnet" }) as never, withoutExtras).kind, "inactive");
+	assert.equal(resolveCodexRuntimePlan(createContext({ provider: "unlisted", api: "anthropic-messages", id: "claude-sonnet" }) as never, config).kind, "inactive");
+});
+
 test("native Responses compaction stays scoped to OpenAI Codex and explicit providers", () => {
 	const config = createAdapterState({
 		scope: { allProviders: "on", additionalProviders: ["my-provider"] },

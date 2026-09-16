@@ -224,7 +224,9 @@ async function setLanVoiceServerEnabled(lanVoice: CodexLanVoiceServerController,
 }
 
 function formatAllProvidersMode(value: CodexConversionConfig["scope"]["allProviders"]): string {
-	return value === "extras" ? "only extras" : value;
+	if (value === "extras") return "only extras";
+	if (value === "codex-plus-extras") return "Codex + additional extras";
+	return value;
 }
 
 function formatCodexSettings(config: CodexConversionConfig): string {

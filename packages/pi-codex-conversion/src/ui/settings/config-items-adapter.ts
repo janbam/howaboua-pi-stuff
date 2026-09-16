@@ -35,10 +35,10 @@ export function buildAdapterSettings(
 		setting(
 			{
 				id: "allProviders",
-				description: "Choose which models use the adapter. Extra tools only exposes standalone tools without replacing the prompt.",
+				description: "Codex + additional extras gives Codex-qualified models the full adapter and Additional providers only enabled standalone tools, even when they are Responses-compatible. Extra tools never replace the prompt.",
 				label: "Provider scope",
 				currentValue: formatAllProvidersMode(config.scope.allProviders),
-				values: ["Codex and configured", "all providers", "extra tools only"],
+				values: ["Codex and configured", "Codex + additional extras", "all providers", "extra tools only"],
 			},
 			(value, current) => ({
 				...current,
@@ -51,13 +51,13 @@ export function buildAdapterSettings(
 		setting(
 			{
 				id: "additionalProviders",
-				description: "Provider IDs for compatible Responses endpoints, including passthrough proxies, that should use the adapter.",
+				description: "Provider IDs that receive the full adapter under Codex and configured, or standalone extras under Codex + additional extras.",
 				label: "Additional providers",
 				currentValue: config.scope.additionalProviders.join(", "),
 				submenu: (currentValue, done) =>
 					new TextSettingSubmenu(
 						"Additional providers",
-						"Comma-separated provider ids that should use the adapter.",
+						"Comma-separated provider ids controlled by Provider scope.",
 						currentValue,
 						(value) => done(normalizeCodexProviderText(value)),
 						() => done(),
@@ -123,6 +123,7 @@ function formatAllProvidersMode(
 ): string {
 	if (value === "on") return "all providers";
 	if (value === "extras") return "extra tools only";
+	if (value === "codex-plus-extras") return "Codex + additional extras";
 	return "Codex and configured";
 }
 
@@ -131,6 +132,7 @@ function parseAllProvidersMode(
 ): CodexConversionConfig["scope"]["allProviders"] {
 	if (value === "all providers") return "on";
 	if (value === "extra tools only") return "extras";
+	if (value === "Codex + additional extras") return "codex-plus-extras";
 	return "off";
 }
 

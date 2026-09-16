@@ -54,7 +54,7 @@ Install [`pi-codex-web-run`](../pi-codex-web-run) or [`pi-codex-imagegen`](../pi
 
 Structured mode has no separate text `read`, `edit` or `write` tool. The model inspects files through the shell and edits with `apply_patch`.
 
-Provider scope can stay on **Codex and configured**, expand to **all providers**, or use **extra tools only**.
+Provider scope can stay on **Codex and configured**, expand to **all providers**, or use **extra tools only**. **Codex + additional extras** keeps the full adapter for Codex-qualified models and exposes only the enabled standalone tools to Additional providers. This includes Responses-compatible Additional providers that would receive the full adapter under **Codex and configured**; the mixed scope deliberately gives them extras without replacing their prompt.
 
 ## Settings
 

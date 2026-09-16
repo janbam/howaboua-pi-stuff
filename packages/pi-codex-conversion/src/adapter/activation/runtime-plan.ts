@@ -76,9 +76,13 @@ const ALL_ADAPTER_TOOL_NAMES = [
 	...CONTEXT_MANAGEMENT_TOOL_NAMES,
 ];
 
-function configuredProvider(ctx: RuntimeContext, config: CodexConversionConfig): boolean {
+function listedAdditionalProvider(ctx: RuntimeContext, config: CodexConversionConfig): boolean {
 	const provider = ctx.model?.provider?.trim().toLowerCase();
-	return Boolean(provider && isResponsesContext(ctx) && config.scope.additionalProviders.includes(provider));
+	return Boolean(provider && config.scope.additionalProviders.includes(provider));
+}
+
+function configuredProvider(ctx: RuntimeContext, config: CodexConversionConfig): boolean {
+	return isResponsesContext(ctx) && listedAdditionalProvider(ctx, config);
 }
 
 function proxySupportsResponsesLite(ctx: RuntimeContext, config: CodexConversionConfig): boolean {
@@ -119,7 +123,11 @@ export function resolveCodexRuntimePlan(
 	config: CodexConversionConfig,
 	executionMode?: ExecutionMode,
 ): CodexRuntimePlan {
+	const scope = config.scope.allProviders;
 	const isConfigured = configuredProvider(ctx, config);
+	const isListedAdditionalProvider = listedAdditionalProvider(ctx, config);
+	const codexLike = isCodexLikeModel(ctx.model);
+	const mixedScope = scope === "codex-plus-extras";
 	const codexTransport = isCodexTransportContext(ctx);
 	const effectiveOpenAICodex = codexTransport || isConfigured;
 	const ownedToolNames = [
@@ -142,16 +150,20 @@ export function resolveCodexRuntimePlan(
 		contextManagementHybrid: false,
 		autoReasoning: false,
 	};
+	// Keep the mixed policy disjoint: Codex-qualified models own the full adapter while list membership grants only standalone tools.
 	const extras = hasExtras(config)
-		&& (config.scope.allProviders === "extras"
-			|| (config.voiceFeaturesOnly && config.scope.allProviders === "on")
-			|| (config.scope.allProviders === "off" && (isConfigured || isCodexLikeModel(ctx.model))));
+		&& (mixedScope
+			? isListedAdditionalProvider && !codexLike
+			: scope === "extras"
+				|| (config.voiceFeaturesOnly && scope === "on")
+				|| (scope === "off" && (isConfigured || codexLike)));
 	if (extras) {
 		return { ...base, kind: "extras", toolNames: extraToolNames(ctx, config), prompt: undefined, transport: "responses" };
 	}
 	if (config.voiceFeaturesOnly) return { ...base, kind: "inactive", toolNames: [], prompt: undefined, transport: undefined };
 
-	const active = config.scope.allProviders === "on" || isConfigured || isCodexLikeModel(ctx.model);
+	// In mixed scope, configured Responses providers deliberately stop qualifying for prompt and transport adaptation.
+	const active = mixedScope ? codexLike : scope === "on" || isConfigured || codexLike;
 	if (!active) return { ...base, kind: "inactive", toolNames: [], prompt: undefined, transport: undefined };
 	const configuredContextManagementMode = isResponsesContext(ctx)
 		? config.compaction.contextManagement

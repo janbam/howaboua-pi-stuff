@@ -45,11 +45,20 @@ function isToolCallOnlyAssistantMessage(message: unknown): boolean {
 }
 
 function isAbortError(error: unknown): boolean {
-	return error instanceof Error && (
-		error.name === "AbortError"
-		|| error.name === "ABORT_ERR"
-		|| (error as Error & { code?: unknown }).code === "ABORT_ERR"
-	);
+	// The host installer wraps fetch failures, so an aborted stale download
+	// arrives with the AbortError as `cause`; walk the chain to stay silent.
+	const seen = new Set<unknown>();
+	let current = error;
+	while (current && typeof current === "object" && !seen.has(current)) {
+		seen.add(current);
+		// Match Error and DOMException alike; fetch rejects with DOMException.
+		const name = (current as { name?: unknown }).name;
+		const code = (current as { code?: unknown }).code;
+		if (name === "AbortError" || name === "ABORT_ERR" || code === "ABORT_ERR")
+			return true;
+		current = (current as { cause?: unknown }).cause;
+	}
+	return false;
 }
 
 export function prepareCodeModeHost(codeMode: CodeModeRegistration, ctx: ExtensionContext): void {

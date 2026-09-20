@@ -60,6 +60,9 @@ export async function installCodeModeHost(options: InstallCodeModeHostOptions): 
 			if (!response.ok) throw new Error(`download failed: ${response.status} ${response.statusText}`);
 			bytes = Buffer.from(await response.arrayBuffer());
 		} catch (error) {
+			// A mode switch or shutdown aborts stale host startup; keep the abort
+			// identity so the caller can stay silent instead of notifying.
+			if (signal?.aborted) throw error;
 			throw new Error(`failed to download ${assetUrl}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
 		}
 		if (createHash("sha256").update(bytes).digest("hex") !== expectedSha256) {

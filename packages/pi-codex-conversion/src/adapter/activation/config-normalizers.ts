@@ -23,7 +23,7 @@ export function normalizeAllProvidersMode(
 ): AllProvidersMode | undefined {
 	if (value === true) return "on";
 	if (value === false) return "off";
-	return value === "off" || value === "on" || value === "extras"
+	return value === "off" || value === "on" || value === "extras" || value === "codex-plus-extras"
 		? value
 		: undefined;
 }

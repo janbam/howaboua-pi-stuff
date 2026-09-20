@@ -18,6 +18,7 @@ test("legacy persisted config shapes migrate to the current groups", () => {
 	assert.equal(flat.migrated, true);
 	const normalized = normalizeCodexConversionConfig(flat.config);
 	assert.deepEqual(normalized.scope, { allProviders: "on", additionalProviders: [] });
+	assert.equal(normalizeCodexConversionConfig({ scope: { allProviders: "codex-plus-extras" } }).scope.allProviders, "codex-plus-extras");
 	assert.equal(normalized.openai.fast, true);
 	for (const [stored, expected] of [
 		[true, "on"], [false, "off"],

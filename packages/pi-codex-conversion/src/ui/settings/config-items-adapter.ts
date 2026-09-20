@@ -35,10 +35,10 @@ export function buildAdapterSettings(
 		setting(
 			{
 				id: "allProviders",
-				description: "Codex + additional extras gives Codex-qualified models the full adapter and Additional providers only enabled standalone tools, even when they are Responses-compatible. Extra tools never replace the prompt.",
+				description: "Codex + Extra tools gives Codex and Responses-compatible Additional providers the full adapter, and other Additional providers only enabled standalone tools. Extra tools never replace the prompt.",
 				label: "Provider scope",
 				currentValue: formatAllProvidersMode(config.scope.allProviders),
-				values: ["Codex and configured", "Codex + additional extras", "all providers", "extra tools only"],
+				values: ["Codex and configured", "Codex + Extra tools", "all providers", "extra tools only"],
 			},
 			(value, current) => ({
 				...current,
@@ -51,7 +51,7 @@ export function buildAdapterSettings(
 		setting(
 			{
 				id: "additionalProviders",
-				description: "Provider IDs that receive the full adapter under Codex and configured, or standalone extras under Codex + additional extras.",
+				description: "Provider IDs that receive the full adapter when Responses-compatible, or standalone extras under Codex + Extra tools when using another API.",
 				label: "Additional providers",
 				currentValue: config.scope.additionalProviders.join(", "),
 				submenu: (currentValue, done) =>
@@ -123,7 +123,7 @@ function formatAllProvidersMode(
 ): string {
 	if (value === "on") return "all providers";
 	if (value === "extras") return "extra tools only";
-	if (value === "codex-plus-extras") return "Codex + additional extras";
+	if (value === "codex-plus-extras") return "Codex + Extra tools";
 	return "Codex and configured";
 }
 
@@ -132,7 +132,7 @@ function parseAllProvidersMode(
 ): CodexConversionConfig["scope"]["allProviders"] {
 	if (value === "all providers") return "on";
 	if (value === "extra tools only") return "extras";
-	if (value === "Codex + additional extras") return "codex-plus-extras";
+	if (value === "Codex + Extra tools") return "codex-plus-extras";
 	return "off";
 }
 

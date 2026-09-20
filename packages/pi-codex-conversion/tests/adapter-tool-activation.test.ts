@@ -254,7 +254,7 @@ test("execution mode and Responses Lite transport resolve independently", () => 
 	);
 });
 
-test("mixed provider scope keeps the Codex adapter and limits additional providers to enabled extras", () => {
+test("mixed provider scope gives Responses providers the adapter and other listed providers enabled extras", () => {
 	const config = createAdapterState({
 		executionMode: "code",
 		scope: { allProviders: "codex-plus-extras", additionalProviders: ["responses-proxy", "opencode-go"] },
@@ -268,18 +268,24 @@ test("mixed provider scope keeps the Codex adapter and limits additional provide
 	);
 	assert.deepEqual({ kind: codex.kind, prompt: codex.prompt, tools: codex.toolNames }, { kind: "code", prompt: "code", tools: ["exec", "wait"] });
 
-	// List membership grants the same prompt-neutral extras regardless of provider API.
-	for (const model of [
-		{ provider: "responses-proxy", api: "openai-responses", id: "claude-sonnet" },
-		{ provider: "opencode-go", api: "anthropic-messages", id: "claude-sonnet" },
-	]) {
-		const plan = resolveCodexRuntimePlan(createContext(model) as never, config);
-		assert.deepEqual({ kind: plan.kind, prompt: plan.prompt, tools: plan.toolNames }, { kind: "extras", prompt: undefined, tools: ["apply_patch"] });
-	}
+	// Responses compatibility keeps the full configured-provider adapter.
+	const responses = resolveCodexRuntimePlan(
+		createContext({ provider: "responses-proxy", api: "openai-responses", id: "claude-sonnet" }) as never,
+		config,
+	);
+	assert.deepEqual({ kind: responses.kind, prompt: responses.prompt, tools: responses.toolNames }, { kind: "code", prompt: "code", tools: ["exec", "wait"] });
 
-	// Without standalone toggles, only Codex-qualified models remain active.
+	// A listed provider on another API receives prompt-neutral extras instead.
+	const nonResponses = resolveCodexRuntimePlan(
+		createContext({ provider: "opencode-go", api: "anthropic-messages", id: "claude-sonnet" }) as never,
+		config,
+	);
+	assert.deepEqual({ kind: nonResponses.kind, prompt: nonResponses.prompt, tools: nonResponses.toolNames }, { kind: "extras", prompt: undefined, tools: ["apply_patch"] });
+
+	// Without standalone toggles, full adapter qualification remains and non-Responses providers become inactive.
 	const withoutExtras = { ...config, tools: { ...config.tools, applyPatchOnly: false } };
 	assert.equal(resolveCodexRuntimePlan(createContext({ provider: "openai-codex", api: "openai-codex-responses", id: "gpt-6-astra" }) as never, withoutExtras).kind, "code");
+	assert.equal(resolveCodexRuntimePlan(createContext({ provider: "responses-proxy", api: "openai-responses", id: "claude-sonnet" }) as never, withoutExtras).kind, "code");
 	assert.equal(resolveCodexRuntimePlan(createContext({ provider: "opencode-go", api: "anthropic-messages", id: "claude-sonnet" }) as never, withoutExtras).kind, "inactive");
 	assert.equal(resolveCodexRuntimePlan(createContext({ provider: "unlisted", api: "anthropic-messages", id: "claude-sonnet" }) as never, config).kind, "inactive");
 });

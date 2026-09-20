@@ -150,10 +150,11 @@ export function resolveCodexRuntimePlan(
 		contextManagementHybrid: false,
 		autoReasoning: false,
 	};
-	// Keep the mixed policy disjoint: Codex-qualified models own the full adapter while list membership grants only standalone tools.
+	const mixedFullAdapter = codexLike || isConfigured;
+	// Split listed providers by protocol: Responses providers keep the adapter, while other APIs receive only standalone tools.
 	const extras = hasExtras(config)
 		&& (mixedScope
-			? isListedAdditionalProvider && !codexLike
+			? isListedAdditionalProvider && !mixedFullAdapter
 			: scope === "extras"
 				|| (config.voiceFeaturesOnly && scope === "on")
 				|| (scope === "off" && (isConfigured || codexLike)));
@@ -162,8 +163,8 @@ export function resolveCodexRuntimePlan(
 	}
 	if (config.voiceFeaturesOnly) return { ...base, kind: "inactive", toolNames: [], prompt: undefined, transport: undefined };
 
-	// In mixed scope, configured Responses providers deliberately stop qualifying for prompt and transport adaptation.
-	const active = mixedScope ? codexLike : scope === "on" || isConfigured || codexLike;
+	// Preserve the existing configured-provider adapter path in mixed scope; only non-Responses providers fall back to extras.
+	const active = mixedScope ? mixedFullAdapter : scope === "on" || isConfigured || codexLike;
 	if (!active) return { ...base, kind: "inactive", toolNames: [], prompt: undefined, transport: undefined };
 	const configuredContextManagementMode = isResponsesContext(ctx)
 		? config.compaction.contextManagement

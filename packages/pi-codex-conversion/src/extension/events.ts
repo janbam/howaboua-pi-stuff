@@ -11,6 +11,7 @@ import { hasNoSkillsFlag } from "../adapter/prompt/skills.ts";
 import { onCodeModeExtensionToolsRefresh } from "../code-mode-extension-tools.ts";
 import { extractPiPromptSkills, resolvePromptSkills } from "../prompt/build-system-prompt.ts";
 import type { CodeModeProxyProviderRegistration } from "../providers/code-mode-proxy-provider.ts";
+import type { OpenAICodexCustomProviderRegistration } from "../providers/openai-codex-custom-provider.ts";
 import { maybeWarnLocalCheckoutVersion } from "../adapter/local-version-warning.ts";
 import { clearApplyPatchRenderState } from "../tools/apply-patch/tool.ts";
 import type { CodeModeRegistration } from "../tools/code-mode/tools.ts";
@@ -75,6 +76,7 @@ export function registerCodexEvents(
 	tools: CodexToolRegistration,
 	ui: CodexUiController,
 	codeMode: CodeModeRegistration,
+	codexProvider: OpenAICodexCustomProviderRegistration,
 	proxyProvider: CodeModeProxyProviderRegistration,
 ): void {
 	const { state, tracker, sessions } = runtime;
@@ -135,6 +137,7 @@ export function registerCodexEvents(
 		state.executionMode = state.config.executionMode;
 		state.activeProviderSystemPrompt = undefined;
 		state.voiceSystemPromptOverride = undefined;
+		codexProvider.applyEnabled(state.adapterEnabled);
 		proxyProvider.applyConfig(state.config, ctx.modelRegistry);
 		state.promptSkills = extractPiPromptSkills(ctx.getSystemPrompt());
 		if (!state.adapterEnabled || state.config.voiceFeaturesOnly) {
@@ -221,6 +224,7 @@ export function registerCodexEvents(
 		if (previousMode === "notebook" || state.executionMode === "notebook") appendNotebookTreeEpoch(pi);
 		await codeMode.shutdownHost();
 		state.adapterEnabled = readSessionAdapterEnabled(ctx);
+		codexProvider.applyEnabled(state.adapterEnabled);
 		proxyProvider.applyConfig(state.config, ctx.modelRegistry);
 		const plan = syncAdapter(pi, ctx, state);
 		state.contextWindows.ensureInitialized(
@@ -312,6 +316,7 @@ export function registerCodexEvents(
 		await runShutdownStep(failures, () => sessions.shutdown());
 		await runShutdownStep(failures, () => tools.shutdown());
 		await runShutdownStep(failures, () => proxyProvider.shutdown());
+		await runShutdownStep(failures, () => codexProvider.shutdown());
 		await runShutdownStep(failures, () => codeMode.shutdown());
 		state.developerMessages.clear();
 		state.contextWindows.reset();

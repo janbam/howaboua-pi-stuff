@@ -35,6 +35,7 @@ interface ApplyPatchRenderContextLike {
 	executionStarted?: boolean | undefined;
 	expanded?: boolean | undefined;
 	argsComplete?: boolean | undefined;
+	isError?: boolean | undefined;
 }
 
 type ApplyPatchToolDefinition = ToolDefinition<typeof APPLY_PATCH_PARAMETERS, ApplyPatchToolDetails>;

@@ -9,7 +9,10 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { registerApplyPatchDisplay } from "../src/apply-patch-display.ts";
 import { registerApplyPatchDisplayBroker } from "../src/tools/apply-patch/display-broker.ts";
-import { createApplyPatchTool } from "../src/tools/apply-patch/tool.ts";
+import {
+	clearApplyPatchRenderState,
+	createApplyPatchTool,
+} from "../src/tools/apply-patch/tool.ts";
 
 function displayExtensionApi(bus = createEventBus()) {
 	const handlers = new Map<string, Array<(event: never) => unknown>>();
@@ -199,6 +202,24 @@ test("apply_patch preserves display routing and rejects duplicate resolved sourc
 		assert.match(collapsedFailure, /line-12-tail/);
 		assert.match(collapsedFailure, /replacement-tail/);
 		assert.doesNotMatch(collapsedFailure, /more lines/);
+
+		// Resumed and pre-execution failures have only Pi's persisted error bit, not the process-local cache.
+		clearApplyPatchRenderState();
+		const restoredFailure = tool.renderCall?.(
+			{ input: partialPatch },
+			theme as never,
+			{
+				argsComplete: true,
+				cwd,
+				executionStarted: true,
+				expanded: false,
+				isError: true,
+				toolCallId: "partial-render",
+			} as never,
+		)?.render(1_000).join("\n") ?? "";
+		assert.match(restoredFailure, /line-12-tail/);
+		assert.match(restoredFailure, /replacement-tail/);
+		assert.doesNotMatch(restoredFailure, /more lines/);
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 		conversion.emit("session_shutdown");

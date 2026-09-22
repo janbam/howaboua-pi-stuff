@@ -19,9 +19,10 @@ export async function registerCodexConversion(pi: ExtensionAPI): Promise<void> {
 	const runtime = createCodexExtensionRuntime(pi);
 	runtime.state.contextTree.register(pi);
 	const codeMode = await registerCodexCodeMode(pi, runtime);
+	let cleanupCodexProvider: ReturnType<typeof registerOpenAICodexCustomProvider> | undefined;
 	let cleanupProxyProvider: ReturnType<typeof registerCodeModeProxyProvider> | undefined;
 	try {
-		registerOpenAICodexCustomProvider(pi, {
+		const codexProvider = registerOpenAICodexCustomProvider(pi, {
 			getConfig: () => ({ executionMode: runtime.state.executionMode, openai: runtime.state.config.openai, compaction: runtime.state.config.compaction }),
 			useResponsesLite: (model) => resolveCodexRuntimePlanForState({ model }, runtime.state).transport === "responses-lite",
 			turnState: runtime.state.codexTurnState,
@@ -32,6 +33,7 @@ export async function registerCodexConversion(pi: ExtensionAPI): Promise<void> {
 				runtime.state.pendingActiveProviderPromptCapture = false;
 			},
 		});
+		cleanupCodexProvider = codexProvider;
 		const proxyProvider = registerCodeModeProxyProvider(
 			pi,
 			() => runtime.state.config,
@@ -123,7 +125,9 @@ export async function registerCodexConversion(pi: ExtensionAPI): Promise<void> {
 		}, (enabled, ctx, previousEnabled) => {
 			runtime.cancelCacheKeepalive();
 			runtime.resetTransport(ctx.sessionManager.getSessionId());
+			codexProvider.applyEnabled(enabled);
 			proxyProvider.applyConfig(runtime.state.config, ctx.modelRegistry);
+			void runtime.configureDiagnostics(ctx);
 			ui.applyAdapterEnabled(ctx);
 			reconcileCodeModeHost(
 				ctx,
@@ -132,11 +136,15 @@ export async function registerCodexConversion(pi: ExtensionAPI): Promise<void> {
 				false,
 			);
 		});
-		registerCodexEvents(pi, runtime, tools, ui, codeMode, proxyProvider);
+		registerCodexEvents(pi, runtime, tools, ui, codeMode, codexProvider, proxyProvider);
 	} catch (registrationError) {
 		try {
 			try {
-				cleanupProxyProvider?.shutdown();
+				try {
+					cleanupProxyProvider?.shutdown();
+				} finally {
+					cleanupCodexProvider?.shutdown();
+				}
 			} finally {
 				await codeMode.shutdown();
 			}

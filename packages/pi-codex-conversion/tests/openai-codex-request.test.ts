@@ -28,7 +28,13 @@ import {
 } from "./openai-codex-test-support.ts";
 
 async function assertCodexCatalogComposition() {
-	const { registration } = createRegisteredCodexProvider();
+	const registered = createRegisteredCodexProvider();
+	// Provider removal must expose stock Pi and permit the same adapter provider to return.
+	registered.providerController.applyEnabled(false);
+	assert.equal(registered.providerRegistered(), false);
+	registered.providerController.applyEnabled(true);
+	assert.equal(registered.providerRegistered(), true);
+	const { registration } = registered;
 	const dir = await mkdtemp(join(tmpdir(), "codex-catalog-"));
 	try {
 		const modelsPath = join(dir, "models.json");
@@ -198,7 +204,7 @@ function assertStrictToolConstraints() {
 	assert.equal("strict" in (unsupportedProviderBody.tools as object[])[0]!, false);
 }
 
-test("Codex catalog composition and request serialization preserve user overrides, strict schemas and Fast Mode identity", async () => {
+test("Codex provider lifecycle, catalog composition and requests preserve user overrides, strict schemas and Fast Mode identity", async () => {
 	await assertCodexCatalogComposition();
 	assertCodexRequestShape();
 	assertStrictToolConstraints();

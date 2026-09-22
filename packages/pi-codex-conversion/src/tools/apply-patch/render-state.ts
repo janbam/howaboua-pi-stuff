@@ -138,14 +138,14 @@ function renderFailedCall(text: string, theme: { fg(role: string, text: string):
 	return lines.map((line, index) => failedLineIndexes.has(index) || index === 0 ? theme.fg("error", line) : line).join("\n");
 }
 
-export function renderApplyPatchCallFromState(args: { input?: unknown | undefined }, theme: { fg(role: string, text: string): string; bold(text: string): string }, context?: { toolCallId?: string | undefined; cwd?: string | undefined; expanded?: boolean | undefined; argsComplete?: boolean | undefined; showCollapsedDiff?: boolean | undefined }): string {
+export function renderApplyPatchCallFromState(args: { input?: unknown | undefined }, theme: { fg(role: string, text: string): string; bold(text: string): string }, context?: { toolCallId?: string | undefined; cwd?: string | undefined; expanded?: boolean | undefined; argsComplete?: boolean | undefined; isError?: boolean | undefined; showCollapsedDiff?: boolean | undefined }): string {
 	if (context?.argsComplete === false) return `${theme.fg("dim", "•")} ${theme.bold("Patching")}`;
 	const patchText = typeof args.input === "string" ? args.input : "";
 	if (patchText.trim().length === 0) return `${theme.fg("dim", "•")} ${theme.bold("Patching")}`;
 	const cached = context?.toolCallId ? applyPatchRenderStates.get(context.toolCallId) : undefined;
 	const cwd = context?.cwd ?? cached?.cwd;
 	const effectivePatchText = cached?.patchText ?? patchText;
-	const failed = cached?.status === "partial_failure" || cached?.status === "failed";
+	const failed = context?.isError === true || cached?.status === "partial_failure" || cached?.status === "failed";
 	// Failed calls stay complete even while the row is collapsed, so no rejected edit is hidden.
 	const baseText = context?.expanded || failed
 		? cached?.expanded || renderApplyPatchCall(effectivePatchText, cwd) || effectivePatchText
@@ -158,7 +158,7 @@ export function renderApplyPatchCallFromState(args: { input?: unknown | undefine
 	}
 	return cached?.status === "partial_failure"
 		? renderPartialFailureCall(baseText, theme, cached.failedTargets)
-		: cached?.status === "failed"
-			? renderFailedCall(baseText, theme, cached.failedTargets)
+		: failed
+			? renderFailedCall(baseText, theme, cached?.failedTargets)
 			: baseText;
 }

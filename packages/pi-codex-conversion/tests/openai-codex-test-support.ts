@@ -212,6 +212,9 @@ export function createRegisteredCodexProvider(options?: {
 		registerProvider(provider: Provider) {
 			providers.set(provider.id, provider);
 		},
+		unregisterProvider(providerId: string) {
+			providers.delete(providerId);
+		},
 		on(event: string, handler: (...args: never[]) => unknown) {
 			handlers.set(event, [...(handlers.get(event) ?? []), handler]);
 		},
@@ -223,7 +226,7 @@ export function createRegisteredCodexProvider(options?: {
 		},
 	};
 
-	registerOpenAICodexCustomProvider(pi as never, {
+	const providerController = registerOpenAICodexCustomProvider(pi as never, {
 		getConfig: () => ({
 			executionMode: options?.codeMode ? "code" : "normal",
 			openai: DEFAULT_CODEX_CONVERSION_CONFIG.openai,
@@ -233,5 +236,14 @@ export function createRegisteredCodexProvider(options?: {
 		...(options?.getDiagnostics ? { getDiagnostics: options.getDiagnostics } : {}),
 	});
 	const provider = providers.get("openai-codex")!;
-	return { provider, registration: provider, handlers, renderers, sentMessages, turnState };
+	return {
+		provider,
+		registration: provider,
+		providerController,
+		providerRegistered: () => providers.has("openai-codex"),
+		handlers,
+		renderers,
+		sentMessages,
+		turnState,
+	};
 }

@@ -228,6 +228,7 @@ export function registerCodexEvents(
 		codexProvider.applyEnabled(state.adapterEnabled);
 		proxyProvider.applyConfig(state.config, ctx.modelRegistry);
 		await runtime.configureDiagnostics(ctx);
+		ui.applyAdapterEnabled(ctx);
 		const plan = syncAdapter(pi, ctx, state);
 		state.contextWindows.ensureInitialized(
 			pi,

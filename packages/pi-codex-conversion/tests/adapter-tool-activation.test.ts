@@ -8,6 +8,10 @@ import {
 	registerCodeModeExtensionTools,
 } from "../src/code-mode-extension-tools.ts";
 import type { AdapterState } from "../src/adapter/activation/state.ts";
+import {
+	readSessionAdapterEnabled,
+	writeSessionAdapterEnabled,
+} from "../src/adapter/activation/session-state.ts";
 import { CodexDeveloperMessageBridge } from "../src/adapter/developer-messages.ts";
 import { CodexContextWindowManager } from "../src/context-management/window-manager.ts";
 import { CodexContextWindowKickoff } from "../src/context-management/window-kickoff.ts";
@@ -47,6 +51,7 @@ function createAdapterState(overrides: Partial<AdapterState["config"]> = {}): Ad
 	const contextWindows = new CodexContextWindowManager();
 	const contextKickoff = new CodexContextWindowKickoff(contextWindows);
 	return {
+		adapterEnabled: true,
 		enabled: false,
 		cwd: process.cwd(),
 		promptSkills: [],
@@ -210,6 +215,44 @@ test("adapter activation requires registered tools and follows scope independent
 		namespacedState,
 	);
 	assert.equal(namespaced.activeTools().includes("web_run"), true);
+
+	// The session master switch must override standalone extras and restore the exact prior tool surface.
+	const sessionTools = ["read", "bash", "edit", "write"];
+	const sessionHarness = createToolHarness(sessionTools);
+	const sessionState = createAdapterState({
+		executionMode: "code",
+		scope: { allProviders: "extras", additionalProviders: [] },
+		tools: { ...DEFAULT_CODEX_CONVERSION_CONFIG.tools, applyPatchOnly: true },
+	});
+	const sessionContext = createContext({
+		provider: "unlisted",
+		api: "anthropic-messages",
+		id: "claude-sonnet",
+	});
+	assert.equal(syncAdapter(sessionHarness as never, sessionContext as never, sessionState).kind, "extras");
+	assert.deepEqual(sessionHarness.activeTools(), [...sessionTools, "apply_patch"]);
+	sessionState.adapterEnabled = false;
+	assert.equal(syncAdapter(sessionHarness as never, sessionContext as never, sessionState).kind, "inactive");
+	assert.deepEqual(sessionHarness.activeTools(), sessionTools);
+
+	// Pi's private session entries retain the latest branch-local preference without touching shared config.
+	const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
+	const sessionStore = {
+		sessionManager: { getBranch: () => entries },
+	};
+	assert.equal(readSessionAdapterEnabled(sessionStore as never), true);
+	writeSessionAdapterEnabled({
+		appendEntry(customType: string, data: unknown) {
+			entries.push({ type: "custom", customType, data });
+		},
+	} as never, false);
+	assert.equal(readSessionAdapterEnabled(sessionStore as never), false);
+	writeSessionAdapterEnabled({
+		appendEntry(customType: string, data: unknown) {
+			entries.push({ type: "custom", customType, data });
+		},
+	} as never, true);
+	assert.equal(readSessionAdapterEnabled(sessionStore as never), true);
 });
 
 test("execution mode and Responses Lite transport resolve independently", () => {

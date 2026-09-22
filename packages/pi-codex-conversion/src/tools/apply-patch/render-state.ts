@@ -145,8 +145,10 @@ export function renderApplyPatchCallFromState(args: { input?: unknown | undefine
 	const cached = context?.toolCallId ? applyPatchRenderStates.get(context.toolCallId) : undefined;
 	const cwd = context?.cwd ?? cached?.cwd;
 	const effectivePatchText = cached?.patchText ?? patchText;
-	const baseText = context?.expanded
-		? cached?.expanded ?? renderApplyPatchCall(effectivePatchText, cwd)
+	const failed = cached?.status === "partial_failure" || cached?.status === "failed";
+	// Failed calls stay complete even while the row is collapsed, so no rejected edit is hidden.
+	const baseText = context?.expanded || failed
+		? cached?.expanded || renderApplyPatchCall(effectivePatchText, cwd) || effectivePatchText
 		: context?.showCollapsedDiff
 			? cached?.collapsedDiff ?? formatApplyPatchCollapsedDiff(effectivePatchText, cwd)
 		: cached?.collapsed ?? formatApplyPatchSummary(effectivePatchText, cwd);

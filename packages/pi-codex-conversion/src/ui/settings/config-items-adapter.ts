@@ -3,6 +3,7 @@ import {
 	type CodexConversionConfig,
 	normalizeProviderList,
 } from "../../adapter/activation/config.ts";
+import type { ExecutionMode } from "../../adapter/activation/execution-mode.ts";
 import { getCodexAppendSystemPromptPath } from "../../prompt/append-system-prompt.ts";
 import { editorCommand } from "./config-editor.ts";
 import {
@@ -15,8 +16,32 @@ import {
 export function buildAdapterSettings(
 	config: CodexConversionConfig,
 	theme: Theme,
+	adapterEnabled = true,
 ): ConfigSetting[] {
 	return [
+		{
+			item: {
+				id: "adapterEnabled",
+				label: "Adapter enabled",
+				currentValue: adapterEnabled ? "on" : "off",
+				values: ["off", "on"],
+				description: "Session-only. Off leaves voice and /codex available, but disables prompt and request conversion plus every adapter tool, including standalone extras.",
+			},
+			action: "adapter-enabled",
+		},
+		setting(
+			{
+				id: "executionMode",
+				description: "Structured: standard JSON schemas. Code: JavaScript. Notebook: persistent Deno shell with checkpoints.",
+				label: "Execution mode",
+				currentValue: formatExecutionMode(config.executionMode),
+				values: ["Structured", "Code", "Notebook (recommended)"],
+			},
+			(value, current) => ({
+				...current,
+				executionMode: parseExecutionMode(value),
+			}),
+		),
 		setting(
 			{
 				id: "extensionMode",
@@ -116,6 +141,20 @@ export function buildAdapterSettings(
 			action: "edit-config",
 		},
 	];
+}
+
+/** Formats an execution mode for the General settings selector. */
+function formatExecutionMode(mode: ExecutionMode): string {
+	if (mode === "code") return "Code";
+	if (mode === "notebook") return "Notebook (recommended)";
+	return "Structured";
+}
+
+/** Parses the General settings selector value into the persisted execution mode. */
+function parseExecutionMode(value: string): ExecutionMode {
+	if (value === "Code") return "code";
+	if (value === "Notebook (recommended)") return "notebook";
+	return "normal";
 }
 
 function formatAllProvidersMode(

@@ -100,6 +100,7 @@ export function createCodexExtensionRuntime(pi: ExtensionAPI): CodexExtensionRun
 		voice.piInput(text.trim() ? text : "Continue.");
 	});
 	const state: AdapterState = {
+		adapterEnabled: true,
 		enabled: false,
 		cwd: process.cwd(),
 		promptSkills: [],

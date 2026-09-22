@@ -19,8 +19,9 @@ export function buildConfigSettings(
 	config: CodexConversionConfig,
 	theme: Theme,
 	availableContextModels: VoiceContextModel[] = [],
+	adapterEnabled = true,
 ): ConfigSetting[] {
-	if (tab === "adapter") return buildAdapterSettings(config, theme);
+	if (tab === "adapter") return buildAdapterSettings(config, theme, adapterEnabled);
 	if (tab === "context") return buildContextSettings(config);
 	if (tab === "tools") return buildToolsSettings(config);
 	if (tab === "openai") return buildOpenAISettings(config);

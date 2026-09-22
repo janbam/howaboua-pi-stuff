@@ -81,6 +81,7 @@ test("the provider-scoped proxy stream delegates ordinary Responses models witho
 		streamSimple: (...args: never[]) => AsyncIterable<unknown>;
 	}>();
 	const unregistered: string[] = [];
+	let adapterEnabled = true;
 	const config: CodexConversionConfig = {
 		...DEFAULT_CODEX_CONVERSION_CONFIG,
 		executionMode: "code" as const,
@@ -96,7 +97,7 @@ test("the provider-scoped proxy stream delegates ordinary Responses models witho
 			unregistered.push(name);
 			providers.delete(name);
 		},
-	} as never, () => config);
+	} as never, () => config, () => undefined, () => undefined, () => adapterEnabled);
 
 	assert.equal(providers.size, 0);
 	registration.applyConfig(config, {
@@ -150,6 +151,16 @@ test("the provider-scoped proxy stream delegates ordinary Responses models witho
 	);
 	assert.equal(providers.get("renamed")?.api, "openai-codex-responses");
 
+	// The session master switch must restore providers before any shared config changes.
+	adapterEnabled = false;
+	registration.applyConfig(config, {
+		getAll: () => [{ provider: "proxy", api: "openai-responses" }] as never,
+		getProvider: () => ({ streamSimple: fallbackResponsesStream }) as never,
+		getRegisteredProviderConfig: (name: string) => providers.get(name) as never,
+	});
+	assert.equal(providers.size, 0);
+
+	adapterEnabled = true;
 	config.voiceFeaturesOnly = true;
 	registration.applyConfig(config, {
 		getAll: () => [{ provider: "proxy", api: "openai-responses" }] as never,

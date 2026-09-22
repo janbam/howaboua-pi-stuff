@@ -19,6 +19,7 @@ export interface CodexUiController {
 	invalidateBackgroundWidget(): void;
 	renderBackgroundWidget(): void;
 	invalidateUsageStatus(): void;
+	applyAdapterEnabled(ctx: ExtensionContext): void;
 	applyConfig(config: CodexConversionConfig, ctx: ExtensionContext, previousConfig: CodexConversionConfig): void;
 	refreshUsageStatus(ctx: ExtensionContext): Promise<void>;
 }
@@ -46,7 +47,7 @@ export function registerCodexUi(pi: ExtensionAPI, runtime: CodexExtensionRuntime
 		if (generation !== backgroundWidgetGeneration) return;
 		const ctx = runtime.backgroundWidget.ctx;
 		if (!ctx) return;
-		if (runtime.state.config.voiceFeaturesOnly || !runtime.state.config.ui.backgroundShellWidget) {
+		if (!runtime.state.adapterEnabled || runtime.state.config.voiceFeaturesOnly || !runtime.state.config.ui.backgroundShellWidget) {
 			clearBackgroundWidget();
 			return;
 		}
@@ -54,7 +55,7 @@ export function registerCodexUi(pi: ExtensionAPI, runtime: CodexExtensionRuntime
 		renderBackgroundBashWidget(ctx, runtime.backgroundWidget, runtime.sessions, runtime.state.config.ui);
 	};
 
-	registerBackgroundBashWidgetShortcuts(pi, runtime.backgroundWidget, runtime.sessions, runtime.state.config.ui, () => !runtime.state.config.voiceFeaturesOnly && runtime.state.config.ui.backgroundShellWidget);
+	registerBackgroundBashWidgetShortcuts(pi, runtime.backgroundWidget, runtime.sessions, runtime.state.config.ui, () => runtime.state.adapterEnabled && !runtime.state.config.voiceFeaturesOnly && runtime.state.config.ui.backgroundShellWidget);
 	const renderNativeCompaction = (
 		content: string,
 		kind: NativeCompactionDisplayEntry["kind"],
@@ -93,7 +94,7 @@ export function registerCodexUi(pi: ExtensionAPI, runtime: CodexExtensionRuntime
 		);
 	});
 	runtime.sessions.onSessionChange((reason) => {
-		if (!runtime.backgroundWidget.ctx || runtime.state.config.voiceFeaturesOnly || !runtime.state.config.ui.backgroundShellWidget) return;
+		if (!runtime.backgroundWidget.ctx || !runtime.state.adapterEnabled || runtime.state.config.voiceFeaturesOnly || !runtime.state.config.ui.backgroundShellWidget) return;
 		if (reason === "output") {
 			if (renderTimer) return;
 			const generation = backgroundWidgetGeneration;
@@ -113,7 +114,7 @@ export function registerCodexUi(pi: ExtensionAPI, runtime: CodexExtensionRuntime
 	};
 	const refreshUsageStatus = async (ctx: ExtensionContext) => {
 		const generation = ++usageGeneration;
-		if (!ctx.hasUI || runtime.state.config.voiceFeaturesOnly || !runtime.state.config.ui.statusLine) {
+		if (!ctx.hasUI || !runtime.state.adapterEnabled || runtime.state.config.voiceFeaturesOnly || !runtime.state.config.ui.statusLine) {
 			runtime.state.fiveHourUsageLeft = undefined;
 			runtime.state.weeklyUsageLeft = undefined;
 			return;
@@ -124,6 +125,7 @@ export function registerCodexUi(pi: ExtensionAPI, runtime: CodexExtensionRuntime
 		if (
 			generation !== usageGeneration ||
 			!ctx.hasUI ||
+			!runtime.state.adapterEnabled ||
 			runtime.state.config.voiceFeaturesOnly ||
 			!runtime.state.config.ui.statusLine ||
 			!isAdapterRuntime(plan)
@@ -139,8 +141,17 @@ export function registerCodexUi(pi: ExtensionAPI, runtime: CodexExtensionRuntime
 		renderBackgroundWidget,
 		invalidateUsageStatus,
 		refreshUsageStatus,
+		applyAdapterEnabled(ctx) {
+			if (!runtime.state.adapterEnabled) {
+				invalidateUsageStatus();
+				clearBackgroundWidget();
+				return;
+			}
+			void refreshUsageStatus(ctx);
+			renderBackgroundWidget();
+		},
 		applyConfig(config, ctx, previousConfig) {
-			if (config.voiceFeaturesOnly || !config.ui.statusLine) {
+			if (!runtime.state.adapterEnabled || config.voiceFeaturesOnly || !config.ui.statusLine) {
 				invalidateUsageStatus();
 			} else if (
 				previousConfig.voiceFeaturesOnly ||
@@ -148,7 +159,7 @@ export function registerCodexUi(pi: ExtensionAPI, runtime: CodexExtensionRuntime
 			) {
 				void refreshUsageStatus(ctx);
 			}
-			if (config.voiceFeaturesOnly || !config.ui.backgroundShellWidget) clearBackgroundWidget();
+			if (!runtime.state.adapterEnabled || config.voiceFeaturesOnly || !config.ui.backgroundShellWidget) clearBackgroundWidget();
 			else renderBackgroundWidget();
 		},
 	};

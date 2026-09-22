@@ -62,7 +62,7 @@ Provider scope can stay on **Codex and configured**, expand to **all providers**
 
 | Tab | Covers |
 | --- | --- |
-| General | Settings scope, execution mode, extension mode, providers and prompt controls |
+| General | Settings scope, adapter enablement, execution mode, extension mode, providers and prompt controls |
 | Context | Notes, history, Hybrid compaction, Responses V2 and preserved user messages |
 | Tools | Auto reasoning (Astra only), image description fallback and standalone tools |
 | OpenAI | Fast mode, verbosity, transport, cache diagnostics and Responses Lite |
@@ -78,6 +78,8 @@ Open a tab directly with `/codex tools`, `/codex openai`, `/codex display`, `/co
 **Auto reasoning (Astra only)** in `/codex tools` lets Astra adjust effort by work phase with `change_reasoning`: a JSON tool in Structured mode, or `tools.change_reasoning` in Code and Notebook modes. Disabled by default (`tools.autoReasoning`). It offers low, medium and high, never below your starting level, and restores that level after the run settles, including retries and compaction. Astra's native configuration updates preserve the existing request prefix; the tool is absent on other models and transports.
 
 The first `/codex` setting chooses **Global** or **This project**. Global settings live in `~/.pi/agent/pi-codex-conversion.json`. Choosing **This project** creates a project snapshot at `.pi/pi-codex-conversion.json`. Every tab and **Edit config** then targets that file. Luna cache keepalive remains global, while Sol and Terra keepalive follows the project. Switching back to Global removes the project overrides. Project settings are read only for trusted folders.
+
+**Adapter enabled** is the first General control after **Editing**. Turning it off restores Pi's ordinary prompt, requests, tools, compaction and adapter UI, including removal of standalone extra tools. Voice, dictation and `/codex` remain available. The setting belongs to the current session, is restored when that session resumes and never changes another running session.
 
 Without folder settings, the project inherits the complete global configuration. `PI_CODEX_FAST=1` or `PI_CODEX_FAST=0` can override Fast Mode for one Pi process, which is useful for independently launched workers. Run `/reload` after changing files by hand.
 

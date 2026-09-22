@@ -167,6 +167,7 @@ type ResponsesApi = "openai-responses" | "openai-codex-responses";
 function resolveProviderApis(
 	config: CodexConversionConfig,
 	executionMode: ExecutionMode | undefined,
+	adapterEnabled: boolean,
 	modelRegistry: CodeModeModelRegistry,
 ): Map<string, ResponsesApi> {
 	const resolved = new Map<string, ResponsesApi>();
@@ -179,10 +180,11 @@ function resolveProviderApis(
 		const api: ResponsesApi = model.api === "openai-responses"
 			? "openai-responses"
 			: "openai-codex-responses";
-		const plan = resolveCodexRuntimePlan({ model }, config, executionMode);
+		const plan = resolveCodexRuntimePlan({ model }, config, executionMode, adapterEnabled);
 		const mode = executionMode ?? config.executionMode;
 		const configuredResponsesLite =
 			model.api === "openai-responses" &&
+			adapterEnabled &&
 			!config.voiceFeaturesOnly &&
 			(mode === "code" || mode === "notebook") &&
 			config.openai.proxyResponsesLite &&
@@ -200,6 +202,7 @@ export function registerCodeModeProxyProvider(
 	getConfig: () => CodexConversionConfig,
 	getExecutionMode: () => ExecutionMode | undefined = () => undefined,
 	getAvailableToolNames: () => string[] | undefined = () => undefined,
+	getAdapterEnabled: () => boolean = () => true,
 ): CodeModeProxyProviderRegistration {
 	const registeredProviders = new Map<string, {
 		previous: RegisteredProviderConfig | undefined;
@@ -226,6 +229,7 @@ export function registerCodeModeProxyProvider(
 		const desiredProviders = resolveProviderApis(
 			config,
 			getExecutionMode(),
+			getAdapterEnabled(),
 			modelRegistry,
 		);
 		for (const [provider, api] of desiredProviders) {
@@ -248,6 +252,7 @@ export function registerCodeModeProxyProvider(
 				const plan = resolveCodexRuntimePlanForState(
 					{ model },
 					{
+						adapterEnabled: getAdapterEnabled(),
 						config: getConfig(),
 						executionMode: getExecutionMode() ?? getConfig().executionMode,
 						availableToolNames: getAvailableToolNames(),

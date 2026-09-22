@@ -10,7 +10,7 @@ import { usesRemoteHistoryNotes } from "../context-management/history-notes.ts";
 import { rewriteContextNamespaceTools } from "../context-management/namespace-tools.ts";
 
 function prepareCodexProviderRequest(payload: unknown, ctx: ExtensionContext, state: AdapterState) {
-	if (state.config.voiceFeaturesOnly) return undefined;
+	if (!state.adapterEnabled || state.config.voiceFeaturesOnly) return undefined;
 	const plan = resolveCodexRuntimePlanForState(ctx, state);
 	if (!isAdapterRuntime(plan) || (!plan.effectiveOpenAICodex && !isResponsesContext(ctx))) {
 		return undefined;
@@ -28,7 +28,7 @@ export function supportsCodexDeveloperMessages(
 	ctx: Pick<ExtensionContext, "model">,
 	state: AdapterState,
 ): boolean {
-	if (state.config.voiceFeaturesOnly) return false;
+	if (!state.adapterEnabled || state.config.voiceFeaturesOnly) return false;
 	const plan = resolveCodexRuntimePlanForState(ctx, state);
 	return isAdapterRuntime(plan) && isResponsesContext(ctx);
 }
@@ -49,7 +49,7 @@ export function rewriteCodexProviderHeaders(
 	ctx: ExtensionContext,
 	state: AdapterState,
 ): void {
-	if (state.config.voiceFeaturesOnly) return;
+	if (!state.adapterEnabled || state.config.voiceFeaturesOnly) return;
 	const plan = resolveCodexRuntimePlanForState(ctx, state);
 	if (plan.transport === "responses-lite") {
 		headers[RESPONSES_LITE_HEADER] = "true";

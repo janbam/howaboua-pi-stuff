@@ -223,9 +223,11 @@ export function registerCodexEvents(
 		if (state.contextTree.handleSessionTree(event)) return;
 		if (previousMode === "notebook" || state.executionMode === "notebook") appendNotebookTreeEpoch(pi);
 		await codeMode.shutdownHost();
+		// Reconcile every session-local adapter surface against the newly selected branch.
 		state.adapterEnabled = readSessionAdapterEnabled(ctx);
 		codexProvider.applyEnabled(state.adapterEnabled);
 		proxyProvider.applyConfig(state.config, ctx.modelRegistry);
+		await runtime.configureDiagnostics(ctx);
 		const plan = syncAdapter(pi, ctx, state);
 		state.contextWindows.ensureInitialized(
 			pi,

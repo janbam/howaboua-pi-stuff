@@ -71,7 +71,6 @@ test("apply_patch preserves display routing and rejects duplicate resolved sourc
 			},
 		},
 	]);
-	registration.dispose();
 
 	const cwd = await mkdtemp(join(tmpdir(), "pi-apply-patch-duplicate-"));
 	const path = join(cwd, "duplicate.txt");
@@ -195,6 +194,7 @@ test("apply_patch preserves display routing and rejects duplicate resolved sourc
 				cwd,
 				executionStarted: true,
 				expanded: false,
+				isError: true,
 				toolCallId: "partial-render",
 			} as never,
 		);
@@ -222,6 +222,7 @@ test("apply_patch preserves display routing and rejects duplicate resolved sourc
 		assert.doesNotMatch(restoredFailure, /more lines/);
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
+		registration.dispose();
 		conversion.emit("session_shutdown");
 	}
 });

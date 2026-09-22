@@ -186,8 +186,11 @@ function renderCompactApplyPatchCall(theme: { fg(role: string, text: string): st
 export function createApplyPatchTool(options: ApplyPatchToolOptions = {}): ApplyPatchToolDefinition {
 	const constrainedSampling = getExperimentalToolSampling("apply_patch");
 	const compactRendering = (context?: ApplyPatchRenderContextLike) => shouldCompactApplyPatchDisplay(context?.toolCallId, context?.executionStarted);
+	// Failed calls retain their full input even when the display broker compacts routine patch activity.
 	const defaultRenderCall: ApplyPatchRenderCall = (args, theme, context) =>
-		compactRendering(context) ? renderCompactApplyPatchCall(theme) : renderApplyPatchCallWithOptionalContext(args, theme, context, options);
+		context?.isError || !compactRendering(context)
+			? renderApplyPatchCallWithOptionalContext(args, theme, context, options)
+			: renderCompactApplyPatchCall(theme);
 	const defaultRenderResult: ApplyPatchRenderResult = (result, { isPartial }, theme, context) => {
 		if (isPartial) return renderCompactApplyPatchCall(theme);
 		const partialFailure = isApplyPatchToolDetails(result.details) && result.details.status === "partial_failure";

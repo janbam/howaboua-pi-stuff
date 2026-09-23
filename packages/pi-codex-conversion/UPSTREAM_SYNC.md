@@ -4,8 +4,8 @@ This is the maintainer checklist for syncing the bundled provider with Pi and Op
 
 ## Reference baseline
 
-- Pi packages: `0.80.6`
-- Codex checkout used for the provider comparison: `e7d0e14172`
+- Pi transcript API: published `0.86.0` (`ecac0a9c4`)
+- Codex checkout used for the provider comparison: `8ace915aced81ed841e34fa069b2e489c324731c`
 - Exact apply-patch source revision: [`src/tools/rust/UPSTREAM.apply-patch`](src/tools/rust/UPSTREAM.apply-patch)
 - Exact image utility source revision: [`src/tools/rust/crates/codex-utils-image/UPSTREAM`](src/tools/rust/crates/codex-utils-image/UPSTREAM)
 - Standalone web search: [`../pi-codex-web-run/UPSTREAM_SYNC.md`](../pi-codex-web-run/UPSTREAM_SYNC.md)
@@ -14,8 +14,10 @@ This is the maintainer checklist for syncing the bundled provider with Pi and Op
 ## Implemented portable behavior
 
 - Standard Responses request, retry, error, usage, and terminal-stream handling
-- GPT-5.6 Luna, Terra, and Sol model support
-- GPT-5.6 Code Mode as an opt-in Beta setting backed by Responses Lite
+- Chronological system sections and tool declarations, collapsed for models without mid-conversation system messages
+- Prompt/tool checkpoints across Pi compaction and context-window cuts
+- GPT-6 Astra, Sol and Luna, plus GPT-5.6 Luna, Terra and Sol model support
+- Code and Notebook modes backed by Responses Lite on eligible models
 - Lite instructions and tools represented as input items
 - Lite all-turn reasoning context and standalone tools
 - Lite image validation and resizing
@@ -27,13 +29,21 @@ This is the maintainer checklist for syncing the bundled provider with Pi and Op
 - `generate: false` WebSocket prewarming
 - zstd SSE requests and stale WebSocket rotation
 
+Idle keepalive refreshes the last finalized provider-request prefix on an isolated socket. It retains all extension rewrites, reacquires matching account credentials, and excludes the latest generated assistant tail rather than rebuilding or appending raw response items. Session, model, transport, and configuration changes invalidate that capture.
+
+Pi projects forced prompts onto requests without recording them in the transcript. Final-request capture retains that effective prompt for native compaction; transcript replay uses the persisted structured sections. `SystemMessage.replace` is no longer part of the upstream contract.
+
+Live cache/compaction validation used source commit `e4c75a732`; it has not been repeated against published Pi `0.86.0`.
+
 ## Monitor on each Codex sync
 
 ### Responses Lite model scope
 
-Current behavior is deliberately limited to `gpt-5.6-luna`, `gpt-5.6-terra`, and `gpt-5.6-sol`. Keep the explicit family check until Codex enables Lite for another shipped model. Pi model metadata does not currently expose `use_responses_lite`, so querying the Codex model catalog would add state and network failure modes without improving the current mapping.
+The explicit Lite allowlist covers GPT-6 Astra, Sol and Luna, GPT-5.6 Luna, Terra and Sol, and Daybreak Blue/Red aliases. Pi model metadata does not expose `use_responses_lite`; do not add startup catalogue fetches solely for this gate.
 
-Built-in Lite remains limited to the registered `openai-codex` provider and Luna/Terra/Sol. Explicitly configured `openai-responses` proxies may opt into Lite and the `gpt-5.6` alias; those routes own backend compatibility and use this package's provider overlay.
+The live Codex catalogue verified GPT-6 Sol and Luna with `use_responses_lite` and `supports_reasoning_effort_updates` enabled, 272K default context and 872K maximum context. Both completed live Lite requests and native reasoning updates through this adapter. Cost metadata follows [published Standard API rates](https://developers.openai.com/api/docs/pricing), including cache writes and the long-context tier above 272K input tokens. Reserve and generated keepalive retain their existing GPT-5.6 contracts.
+
+Built-in Lite follows the `openai-codex-responses` transport, including renamed providers. Explicitly configured `openai-responses` proxies may opt into Lite for GPT-6 Astra/Sol/Luna, GPT-5.6 Luna/Terra/Sol and the `gpt-5.6` alias; those routes own backend compatibility and use this package's provider overlay.
 
 Check:
 

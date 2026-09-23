@@ -1,6 +1,6 @@
 {
   "name": "@howaboua/pi-codex-conversion",
-  "version": "3.0.34",
+  "version": "3.0.37",
   "description": "Codex-oriented tool and prompt adapter for pi coding agent",
   "type": "module",
   "repository": {
@@ -77,6 +77,7 @@
     "LICENSE",
     "src/tools/**/bin/**",
     "src/voice/bin/**",
+    "src/voice/rust/vendor/**",
     "code-mode/UPSTREAM_SYNC.md",
     "code-mode/vendor/code-mode-src/LICENSE",
     "code-mode/vendor/code-mode-src/NOTICE",
@@ -112,24 +113,23 @@
     "access": "public"
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": ">=0.84.3",
-    "@earendil-works/pi-coding-agent": ">=0.84.4",
+    "@earendil-works/pi-ai": ">=0.86.0",
+    "@earendil-works/pi-coding-agent": ">=0.87.0",
     "@earendil-works/pi-tui": ">=0.84.3",
     "typebox": "*"
   },
   "devDependencies": {
-    "@earendil-works/pi-agent-core": "0.85.1",
-    "@earendil-works/pi-ai": "0.85.1",
-    "@earendil-works/pi-coding-agent": "0.85.1",
-    "@earendil-works/pi-tui": "0.85.1",
+    "@earendil-works/pi-agent-core": "0.87.0",
+    "@earendil-works/pi-ai": "0.87.0",
+    "@earendil-works/pi-coding-agent": "0.87.0",
+    "@earendil-works/pi-tui": "0.87.0",
     "@types/ws": "^8.18.1",
     "tsx": "^4.23.13",
-    "typebox": "1.3.7",
+    "typebox": "1.3.27",
     "typescript": "^7.0.2"
   },
   "dependencies": {
     "openai": "7.10.0",
-    "partial-json": "^0.1.7",
     "proxy-from-env": "2.1.0",
     "selfsigned": "^5.5.0",
     "smol-toml": "^1.8.0",

@@ -74,9 +74,7 @@ export function registerGippityControl(pi: ExtensionAPI): void {
 		lanVoice.piEvent("message_end", event);
 	});
 	pi.on("message_update", async (event) => {
-		const update = event.assistantMessageEvent;
-		if (update.type === "text_delta" && typeof update.delta === "string")
-			voice.streamDelta(update.delta);
+		voice.streamUpdate(event.assistantMessageEvent);
 		lanVoice.piEvent("message_update", event);
 	});
 	pi.on("input", async (event) => {
@@ -115,7 +113,18 @@ export function registerGippityControl(pi: ExtensionAPI): void {
 	});
 	pi.on("agent_end", async (event) => lanVoice.piEvent("agent_end", event));
 	pi.on("turn_start", async (event) => lanVoice.piEvent("turn_start", event));
-	pi.on("turn_end", async (event) => lanVoice.piEvent("turn_end", event));
+	pi.on("turn_end", async (event) => {
+		// Boundary previews contain the whole context, not browser notification data.
+		lanVoice.piEvent("turn_end", {
+			type: event.type,
+			turnIndex: event.turnIndex,
+			message: event.message,
+			toolResults: event.toolResults,
+			messageEntryId: event.messageEntryId,
+			toolResultEntryIds: event.toolResultEntryIds,
+			outcome: event.outcome,
+		});
+	});
 	pi.on("message_start", async (event) => {
 		if (event.message.role === "user") voice.piUserMessage(event.message);
 		lanVoice.piEvent("message_start", event);

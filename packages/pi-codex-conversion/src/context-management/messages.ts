@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { CustomMessageEntryDraft } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { CodexDeveloperMessageDetails } from "../developer-messages.ts";
 
@@ -9,12 +9,13 @@ export const CONTEXT_WINDOW_COMPACTION_SUMMARY =
 export const CONTEXT_WINDOW_COMPACTION_STRATEGY =
 	"codex-context-window";
 
-export const CONTEXT_WINDOW_REMINDER_THRESHOLD = 6_144;
-export const CONTEXT_WINDOW_MIN_RESERVE = 16_384;
+export const CONTEXT_WINDOW_REMINDER_PERCENT = 85;
+export const CONTEXT_WINDOW_URGENT_PERCENT = 90;
 
 export type ContextManagementMessageKind =
 	| "window"
 	| "reminder"
+	| "urgent"
 	| "fallback";
 
 export interface ContextWindowIdentity {
@@ -55,9 +56,9 @@ Notes persist across windows; history retrieves earlier conversation. Update exi
 ${CONTEXT_WINDOW_BACKLOG_GUIDANCE}
 </context_window_guidance>`;
 
-export function rewriteContextWindowGuidance(content: string, astra: boolean): string {
+export function rewriteContextWindowGuidance(content: string, concise: boolean): string {
 	return content.replace(/^<context_window_guidance>[\s\S]*?<\/context_window_guidance>/,
-		astra ? CONTEXT_WINDOW_GUIDANCE : CONTEXT_WINDOW_EXPLICIT_GUIDANCE);
+		concise ? CONTEXT_WINDOW_GUIDANCE : CONTEXT_WINDOW_EXPLICIT_GUIDANCE);
 }
 
 export function renderContextWindowMessage(
@@ -77,9 +78,9 @@ export function renderContextWindowMessage(
 	return `${CONTEXT_WINDOW_GUIDANCE}\n\n${lines.join("\n")}`;
 }
 
-export function renderContextWindowReminder(remainingTokens: number): string {
+export function renderContextWindowReminder(remainingPercent: number, urgent: boolean): string {
 	return `<context_window_reminder>
-Only ${Math.max(0, Math.floor(remainingTokens))} context tokens remain before the compaction reserve. Checkpoint the active request, state and known history IDs in notes, then call new_context before continuing work.
+${urgent ? "Urgent: " : ""}${remainingPercent}% remaining. Checkpoint the active request, state and known history IDs in notes, then call new_context ${urgent ? "now, before other work" : "before continuing work"}.
 </context_window_reminder>`;
 }
 
@@ -107,6 +108,7 @@ export function isCodexContextManagementMessageDetails(
 		record["protocol"] === 1 &&
 		(record["kind"] === "window" ||
 			record["kind"] === "reminder" ||
+			record["kind"] === "urgent" ||
 			record["kind"] === "fallback") &&
 		typeof record["firstWindowId"] === "string" &&
 		record["firstWindowId"] !== "" &&
@@ -147,34 +149,26 @@ export function isContextWindowCompactionDetails(
 	);
 }
 
-export function sendContextWindowMessage(
-	pi: ExtensionAPI,
+export function createContextWindowMessage(
 	content: string,
 	kind: ContextManagementMessageKind,
 	identity: ContextWindowIdentity,
-	options: { triggerTurn: boolean },
 	trimPreviousWindow = false,
-): void {
-	pi.sendMessage<CodexContextManagementMessageDetails>(
-		{
-			customType: CODEX_CONTEXT_WINDOW_MESSAGE_TYPE,
-			content,
-			display: true,
-			details: {
+): CustomMessageEntryDraft & { details: CodexContextManagementMessageDetails } {
+	return {
+		type: "custom_message",
+		customType: CODEX_CONTEXT_WINDOW_MESSAGE_TYPE,
+		content,
+		display: true,
+		details: {
+			protocol: 1,
+			id: randomUUID(),
+			contextManagement: {
 				protocol: 1,
-				id: randomUUID(),
-				contextManagement: {
-					protocol: 1,
-					kind,
-					...identity,
-					...(trimPreviousWindow
-						? { trimPreviousWindow: true as const }
-						: {}),
-				},
+				kind,
+				...identity,
+				...(trimPreviousWindow ? { trimPreviousWindow: true as const } : {}),
 			},
 		},
-		options.triggerTurn
-			? { deliverAs: "steer", triggerTurn: true }
-			: { triggerTurn: false },
-	);
+	};
 }

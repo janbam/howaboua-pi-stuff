@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { ProviderHeaders } from "@earendil-works/pi-ai";
+import { getCurrentSystemMessage, type ProviderHeaders } from "@earendil-works/pi-ai";
 import { ContextWindowBudget, type ContextRemaining } from "./window-budget.ts";
 import { rewriteWindowPayload, rewriteWindowHeaders } from "./window-request.ts";
 import type {
 	CompactionResult,
+	CustomMessageEntryDraft,
 	ExtensionAPI,
 	ExtensionContext,
 	ExtensionEvent,
@@ -26,7 +27,7 @@ import {
 	isContextWindowCompactionDetails,
 	renderContextWindowMessage,
 	renderManualContextCheckpoint,
-	sendContextWindowMessage,
+	createContextWindowMessage,
 } from "./messages.ts";
 import {
 	buildTreeArchiveIndex,
@@ -62,6 +63,7 @@ export class CodexContextWindowManager {
 		windowId: string;
 		phase: "running" | "settled";
 		saved: boolean;
+		settledEntryId?: string;
 	} | undefined;
 	private readonly loadThreadHint: ThreadHintLoader;
 	private readonly beforeWindowStart: ((ctx: ExtensionContext, options: Pick<StartContextWindowOptions, "sourceLeafId" | "signal">) => Promise<void>) | undefined;
@@ -89,6 +91,10 @@ export class CodexContextWindowManager {
 	}
 
 	beginTurn(ctx: ExtensionContext): void {
+		// Retries and boundary continuations share the current prepared activity.
+		if (this.turnNotes?.phase === "running" &&
+			this.turnNotes.sessionId === ctx.sessionManager.getSessionId() &&
+			this.turnNotes.windowId === this.identity?.currentWindowId) return;
 		this.turnNotes = this.identity ? {
 			sessionId: ctx.sessionManager.getSessionId(),
 			windowId: this.identity.currentWindowId,
@@ -108,6 +114,7 @@ export class CodexContextWindowManager {
 			return;
 		}
 		turn.phase = "settled";
+		turn.settledEntryId = lastAssistant.id;
 	}
 
 	trackNoteWrite(ctx: ExtensionContext): () => void {
@@ -152,9 +159,22 @@ export class CodexContextWindowManager {
 		pi: ExtensionAPI,
 		ctx: ExtensionContext,
 		active: boolean,
+		selectedTreeLeafId?: string | null,
 	): void {
 		if (!active) return;
-		this.restore(ctx.sessionManager.getBranch());
+		const turn = this.turnNotes;
+		const branch = ctx.sessionManager.getBranch();
+		this.restore(branch);
+		// Only an explicit return to this completed turn can retain its checkpoint credit.
+		if (selectedTreeLeafId && turn?.phase === "settled" && turn.saved &&
+			turn.settledEntryId === selectedTreeLeafId &&
+			turn.sessionId === ctx.sessionManager.getSessionId() &&
+			turn.windowId === this.identity?.currentWindowId &&
+			branch.some((entry) => entry.id === selectedTreeLeafId && entry.type === "message" &&
+				entry.message.role === "assistant" &&
+				(entry.message.stopReason === "stop" || entry.message.stopReason === "length"))) {
+			this.turnNotes = turn;
+		}
 		if (this.identity) return;
 		const windowId = randomUUID();
 		this.sendWindowMessage(
@@ -198,15 +218,20 @@ export class CodexContextWindowManager {
 		}
 		if (mode === "tree") {
 			const index = buildTreeArchiveIndex(allEntries, activeEntries);
-			const projected = !hybridCompaction && (index.archives.length === 0 || index.invalidManifest) && boundaryIndex >= 0
-				? messages.slice(boundaryIndex)
+			const projected = !hybridCompaction &&
+				(index.archives.length === 0 || index.invalidManifest) &&
+				boundaryIndex >= 0 &&
+				!hasRealCompactionAfterWindowBoundary(activeEntries)
+				? checkpointWindow(messages, boundaryIndex)
 				: messages;
 			this.rolloverPending = undefined;
 			return filterTreeArchiveSummaries(projected, index);
 		}
 		if (boundaryIndex < 0) return [...messages];
 		this.rolloverPending = undefined;
-		return hybridCompaction ? [...messages] : messages.slice(boundaryIndex);
+		return hybridCompaction || hasRealCompactionAfterWindowBoundary(activeEntries)
+			? [...messages]
+			: checkpointWindow(messages, boundaryIndex);
 	}
 
 	scheduleHybridCompaction(): boolean {
@@ -298,17 +323,17 @@ export class CodexContextWindowManager {
 	}
 
 	recordBudget(
-		pi: ExtensionAPI,
 		ctx: ExtensionContext,
 		active: boolean,
 		contextTokens?: number,
-	): void {
+	): CustomMessageEntryDraft | undefined {
 		if (!active || !this.identity || this.rolloverPending) return;
+		const turn = this.turnNotes;
+		if (turn?.phase === "running" && turn.saved &&
+			turn.sessionId === ctx.sessionManager.getSessionId() &&
+			turn.windowId === this.identity.currentWindowId) return;
 		const reminder = this.budget.record(ctx, this.identity, contextTokens);
-		if (reminder) sendContextWindowMessage(
-			pi, reminder.content, reminder.kind, this.identity,
-			{ triggerTurn: true },
-		);
+		if (reminder) return createContextWindowMessage(reminder.content, reminder.kind, this.identity);
 	}
 
 	remaining(ctx: ExtensionContext, contextTokens?: number): ContextRemaining {
@@ -324,6 +349,7 @@ export class CodexContextWindowManager {
 		| { compaction: CompactionResult<ContextWindowCompactionDetails> }
 		| undefined {
 		if (hybridCompaction) return event.reason === "threshold" ? { cancel: true } : undefined;
+		if (event.reason === "overflow") return undefined;
 		if (event.reason === "manual") {
 			if (!this.identity) return { cancel: true };
 			this.manualCheckpoint = {
@@ -359,18 +385,19 @@ export class CodexContextWindowManager {
 		if (idle && !pending.customInstructions?.trim() && turn?.phase === "settled" && turn.saved &&
 			turn.sessionId === ctx.sessionManager.getSessionId() &&
 			turn.windowId === pending.identity.currentWindowId) return true;
-		sendContextWindowMessage(pi, renderManualContextCheckpoint(pending.customInstructions),
-			"reminder", pending.identity, { triggerTurn: !idle });
+		pi.sendMessage(createContextWindowMessage(renderManualContextCheckpoint(pending.customInstructions),
+			"reminder", pending.identity), idle ? { triggerTurn: false } : { deliverAs: "steer", triggerTurn: true });
 		if (idle && !tryStartCodexPreparedIdleKickoff(pi, ctx))
 			pi.sendUserMessage("Continue.", { deliverAs: "steer" });
 		return false;
 	}
 
 	recordCompaction(details: unknown): void {
-		if (
-			isContextWindowCompactionDetails(details) &&
-			details.windowId === this.trimPendingWindowId
-		)
+		if (!isContextWindowCompactionDetails(details)) {
+			this.budget.reset();
+			// A real checkpoint supersedes any pending notes-only trim.
+			this.trimPendingWindowId = undefined;
+		} else if (details.windowId === this.trimPendingWindowId)
 			this.trimPendingWindowId = undefined;
 	}
 
@@ -412,16 +439,38 @@ export class CodexContextWindowManager {
 		this.trimPendingWindowId = options.trimPreviousWindow
 			? identity.currentWindowId
 			: undefined;
-		sendContextWindowMessage(
-			pi,
+		pi.sendMessage(createContextWindowMessage(
 			renderContextWindowMessage(identity, threadHint),
 			"window",
 			identity,
-			{ ...options, triggerTurn: false },
 			options.trimPreviousWindow,
-		);
+		), { triggerTurn: false });
 	}
 
+}
+
+function hasRealCompactionAfterWindowBoundary(entries: readonly SessionEntry[]): boolean {
+	let boundaryIndex = -1;
+	let compactionIndex = -1;
+	for (let index = 0; index < entries.length; index += 1) {
+		const entry = entries[index]!;
+		if (
+			entry.type === "custom_message" &&
+			entry.customType === CODEX_CONTEXT_WINDOW_MESSAGE_TYPE &&
+			isCodexContextManagementMessageDetails(entry.details) &&
+			entry.details.contextManagement.kind === "window"
+		) boundaryIndex = index;
+		if (entry.type === "compaction" && !isContextWindowCompactionDetails(entry.details))
+			compactionIndex = index;
+	}
+	return boundaryIndex >= 0 && compactionIndex > boundaryIndex;
+}
+
+/** An explicit window cut retires conversation, not the prompt and executable tool declarations. */
+function checkpointWindow(messages: readonly AgentMessage[], boundaryIndex: number): AgentMessage[] {
+	const checkpoint = getCurrentSystemMessage(messages.slice(0, boundaryIndex));
+	const tail = messages.slice(boundaryIndex);
+	return checkpoint ? [checkpoint, ...tail] : tail;
 }
 
 function identityFromDetails(

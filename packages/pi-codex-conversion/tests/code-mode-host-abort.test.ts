@@ -26,8 +26,8 @@ function notifyContext(seen: Array<{ message: string; kind: string }>): Extensio
 function registrationFor(failure: unknown): CodeModeRegistration {
 	return {
 		prepare: () => Promise.reject(failure),
-		refreshPromptTools: (prompt: string) => prompt,
 		checkpointNotebook: () => Promise.resolve(),
+		notebookStatus: () => Promise.reject(new Error("not used")),
 		shutdownHost: () => Promise.resolve(),
 		shutdown: () => Promise.resolve(),
 	};

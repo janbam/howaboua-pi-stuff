@@ -10,7 +10,6 @@ import { registerCodexTools } from "./tools.ts";
 import { registerCodexUi } from "./ui.ts";
 import { registerCodexVoiceRenderer } from "../voice/ui.ts";
 import { resolveCodexRuntimePlanForState } from "../adapter/activation/runtime-plan.ts";
-import { captureActiveProviderSystemPrompt } from "../adapter/provider-request.ts";
 import { hasCodexCacheKeepalivePlanChanged } from "../adapter/activation/cache-keepalive.ts";
 
 export async function registerCodexConversion(pi: ExtensionAPI): Promise<void> {
@@ -27,11 +26,7 @@ export async function registerCodexConversion(pi: ExtensionAPI): Promise<void> {
 			useResponsesLite: (model) => resolveCodexRuntimePlanForState({ model }, runtime.state).transport === "responses-lite",
 			turnState: runtime.state.codexTurnState,
 			getDiagnostics: () => runtime.diagnosticsSink(),
-			onPreparedPayload: (payload) => {
-				if (!runtime.state.pendingActiveProviderPromptCapture) return;
-				captureActiveProviderSystemPrompt(payload, runtime.state);
-				runtime.state.pendingActiveProviderPromptCapture = false;
-			},
+			beforeRequestSend: runtime.beforeRequestSend,
 		});
 		cleanupCodexProvider = codexProvider;
 		const proxyProvider = registerCodeModeProxyProvider(
@@ -39,6 +34,7 @@ export async function registerCodexConversion(pi: ExtensionAPI): Promise<void> {
 			() => runtime.state.config,
 			() => runtime.state.executionMode,
 			() => runtime.state.availableToolNames,
+			runtime.beforeRequestSend,
 			() => runtime.state.adapterEnabled,
 		);
 		cleanupProxyProvider = proxyProvider;
@@ -70,6 +66,9 @@ export async function registerCodexConversion(pi: ExtensionAPI): Promise<void> {
 			const promptConfigChanged =
 				config.prompt.heavySystemPromptOverwrite !== previousConfig.prompt.heavySystemPromptOverwrite
 				|| config.prompt.appendSystemPromptFile !== previousConfig.prompt.appendSystemPromptFile;
+			if (executionModeChanged || config.voiceFeaturesOnly !== previousConfig.voiceFeaturesOnly ||
+				config.notebook.maxHeapMiB !== previousConfig.notebook.maxHeapMiB || config.notebook.profile !== previousConfig.notebook.profile)
+				runtime.state.notebookStatusMessageId = undefined;
 			const contextManagementChanged =
 				config.compaction.contextManagement !==
 				previousConfig.compaction.contextManagement;
@@ -103,11 +102,6 @@ export async function registerCodexConversion(pi: ExtensionAPI): Promise<void> {
 			}
 			if (hasCodexCacheKeepalivePlanChanged(ctx.model?.id, previousConfig.openai, config.openai)) {
 				runtime.cancelCacheKeepalive();
-			}
-			if (promptConfigChanged) {
-				// A changed prompt policy invalidates provider and voice prompt snapshots immediately.
-				runtime.state.activeProviderSystemPrompt = undefined;
-				runtime.state.voiceSystemPromptOverride = undefined;
 			}
 			if (
 				config.voiceFeaturesOnly !== previousConfig.voiceFeaturesOnly

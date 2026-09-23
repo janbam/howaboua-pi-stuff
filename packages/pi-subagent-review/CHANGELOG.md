@@ -1,5 +1,31 @@
 # @howaboua/pi-subagent-review
 
+## 0.2.24
+
+- GPT-6 Sol and Luna now share Astra's Codex support.
+
+  - Removed `/terra`; use `/luna` instead.
+  - Added Responses Lite, non-destructive reasoning changes and terse context guidance for GPT-6 Sol and Luna.
+  - Image descriptions now use GPT-6 Luna directly instead of preferring older mini models.
+  - Cost estimates now use published GPT-6 Sol and Luna rates, including cache writes and long-context pricing.
+  - Agent, review, exploration, web search, voice summary and image-description defaults now use GPT-6; Luna replaces Terra defaults. GPT Switcher retains Luna's 472K context limit, while Codex Conversion defaults all three GPT-6 models to 272K.
+
+## 0.2.23
+
+- Adapt Codex, Imagegen, review, and GipPity to Pi 0.87.
+
+  Codex Conversion, Imagegen, and Subagent Review require Pi 0.87.0 or newer.
+
+  - Fixed Codex prompt and tool updates rewriting the cached conversation prefix.
+  - Context reminders no longer start an extra checkpoint turn if the current run already saved a note in the current window.
+  - Fixed Imagegen recent-image selection ignoring context removals and replacements.
+  - Fixed review summaries and preface tracking ignoring context removals and replacements.
+  - Kept GipPity browser turn notifications from including full context previews and losing their fields to truncation.
+
+## 0.2.22
+
+- Removed redundant developer-message wording while preserving review approval rules and nested AGENTS.md guidance.
+
 ## 0.2.21
 
 - Restore full extension prompt preparation when continuing into a new context window or starting review triage.

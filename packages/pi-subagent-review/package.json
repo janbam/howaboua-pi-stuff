@@ -1,6 +1,6 @@
 {
 	"name": "@howaboua/pi-subagent-review",
-	"version": "0.2.21",
+	"version": "0.2.24",
 	"description": "Pi extension that adds /review via an isolated review subagent.",
 	"type": "module",
 	"main": "index.ts",
@@ -40,9 +40,9 @@
 		]
 	},
 	"peerDependencies": {
-		"@howaboua/pi-codex-conversion": ">=3.0.34",
+		"@howaboua/pi-codex-conversion": ">=3.0.37",
 		"@earendil-works/pi-ai": ">=0.84.3",
-		"@earendil-works/pi-coding-agent": ">=0.84.3",
+		"@earendil-works/pi-coding-agent": ">=0.87.0",
 		"@earendil-works/pi-tui": ">=0.84.3"
 	},
 	"peerDependenciesMeta": {
@@ -59,9 +59,9 @@
 		"format": "biome check --write ."
 	},
 	"devDependencies": {
-		"@howaboua/pi-codex-conversion": "3.0.34",
-		"@earendil-works/pi-ai": "0.85.1",
-		"@earendil-works/pi-coding-agent": "0.85.1",
+		"@howaboua/pi-codex-conversion": "3.0.37",
+		"@earendil-works/pi-ai": "0.87.0",
+		"@earendil-works/pi-coding-agent": "0.87.0",
 		"@types/node": "^26.2.0",
 		"typescript": "^7.0.2",
 		"@biomejs/biome": "^2.5.10"

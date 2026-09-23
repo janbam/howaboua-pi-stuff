@@ -48,6 +48,7 @@ export interface CodexConversionConfig {
 	voiceFeaturesOnly: boolean;
 	prompt: {
 		heavySystemPromptOverwrite: boolean;
+		currentTimeReminderMinutes: 0 | 30 | 60;
 		appendSystemPromptFile: boolean;
 	};
 	scope: { allProviders: AllProvidersMode; additionalProviders: string[] };
@@ -115,6 +116,7 @@ export const DEFAULT_CODEX_CONVERSION_CONFIG: CodexConversionConfig = {
 	voiceFeaturesOnly: false,
 	prompt: {
 		heavySystemPromptOverwrite: false,
+		currentTimeReminderMinutes: 0,
 		appendSystemPromptFile: true,
 	},
 	scope: { allProviders: "off", additionalProviders: [] },
@@ -158,7 +160,7 @@ export const DEFAULT_CODEX_CONVERSION_CONFIG: CodexConversionConfig = {
 		dictationShortcutMode: "push",
 		contextModel: {
 			provider: "openai-codex",
-			modelId: "gpt-5.6-luna",
+			modelId: "gpt-6-luna",
 		},
 		contextReasoning: DEFAULT_VOICE_CONTEXT_REASONING,
 	},

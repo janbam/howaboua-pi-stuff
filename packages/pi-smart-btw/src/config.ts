@@ -16,7 +16,7 @@ export const THINKING_LEVELS = [
 
 const ALLOWED = new Set<ThinkingLevel>(THINKING_LEVELS);
 
-export function normalizeThinkingLevel(
+function normalizeThinkingLevel(
 	value: unknown,
 	fallback: ThinkingLevel = "low",
 ): ThinkingLevel {
@@ -27,7 +27,7 @@ export function normalizeThinkingLevel(
 
 const DEFAULT_CONFIG: ResolvedBtwConfig = {
 	provider: "openai-codex",
-	modelId: "gpt-5.6-luna",
+	modelId: "gpt-6-luna",
 	command: "pi",
 	thinking: "low",
 	composeShortcut: DEFAULT_SHORTCUTS.compose,

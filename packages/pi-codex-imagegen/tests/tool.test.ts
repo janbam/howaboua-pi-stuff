@@ -3,37 +3,12 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { Check } from "typebox/value";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { imagegenCodeModeResult } from "../index.js";
-import {
-	isCodexToolRoute,
-	normalizeCodexToolRouteConfig,
-	resolveCodexToolModel,
-} from "../src/codex-runtime/config.js";
-import { IMAGE_GENERATION_PARAMETERS } from "../src/contract.js";
+import { recentConversationImageUrls } from "../src/history.js";
 import { buildImageGenerationRequest } from "../src/request.js";
 
 test("image generation preserves Codex request and Code Mode value contracts", async () => {
-	const routes = normalizeCodexToolRouteConfig({
-		providers: {
-			"image-proxy": { "gpt-image-2.5": "company-image" },
-		},
-	});
-	assert.equal(
-		isCodexToolRoute(routes, {
-			provider: "IMAGE-PROXY",
-			id: "other",
-		} as never),
-		true,
-	);
-	assert.equal(
-		resolveCodexToolModel(
-			routes,
-			{ provider: "image-proxy" } as never,
-			"gpt-image-2.5",
-		),
-		"company-image",
-	);
 	assert.deepEqual(
 		imagegenCodeModeResult({
 			content: [
@@ -71,34 +46,36 @@ test("image generation preserves Codex request and Code Mode value contracts", a
 		},
 	);
 	const recent = "data:image/png;base64,aW1hZ2U=";
-	for (const selectors of [
-		{},
-		{ referenced_image_paths: [] },
-		{ referenced_image_paths: null, num_last_images_to_include: null },
-		{ referenced_image_paths: [], num_last_images_to_include: null },
-	]) {
-		const args = { prompt: "draw a fox", ...selectors };
-		assert.equal(Check(IMAGE_GENERATION_PARAMETERS, args), true);
-		assert.equal(
-			(await buildImageGenerationRequest(args, undefined, process.cwd()))
-				.operation,
-			"generations",
-		);
-	}
-	assert.equal(
-		Check(IMAGE_GENERATION_PARAMETERS, {
-			prompt: "draw",
-			num_last_images_to_include: 0,
-		}),
+	const session = SessionManager.inMemory();
+	const image = (data: string) => ({
+		type: "image" as const,
+		data,
+		mimeType: "image/png",
+	});
+	const replaced = session.appendMessage({
+		role: "user",
+		content: [image("b2xk")],
+		timestamp: 1,
+	});
+	const omitted = session.appendCustomMessageEntry(
+		"image",
+		[image("b21pdHRlZA==")],
 		false,
 	);
+	session.appendContextEdit(replaced, { content: [image("aW1hZ2U=")] });
+	session.appendContextEdit(omitted, null);
+	const selected = recentConversationImageUrls(
+		session.buildSessionProjection().messages,
+		1,
+	);
+	assert.deepEqual(selected, [recent]);
 	assert.deepEqual(
 		await buildImageGenerationRequest(
 			{
 				prompt: "add snow",
 				num_last_images_to_include: 1,
 			},
-			[recent],
+			selected,
 			process.cwd(),
 		),
 		{

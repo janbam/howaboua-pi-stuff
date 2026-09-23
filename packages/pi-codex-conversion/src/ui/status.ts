@@ -18,8 +18,7 @@ export function renderCodexStatus(ctx: ExtensionContext, state: AdapterState, pl
 		fast: plan.effectiveOpenAICodex && config.openai.fast,
 		contextManagement: plan.contextManagementMode,
 		compaction: plan.nativeCompaction,
-		fiveHourUsageLeft: state.fiveHourUsageLeft,
-		weeklyUsageLeft: state.weeklyUsageLeft,
+		usageStatus: state.usageStatus,
 		...(isResponsesContext(ctx) ? { verbosity: config.openai.verbosity } : {}),
 	}, ctx.ui.theme));
 }

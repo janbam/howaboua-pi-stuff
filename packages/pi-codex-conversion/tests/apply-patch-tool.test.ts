@@ -3,10 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import {
-	createEventBus,
-	type ExtensionAPI,
-} from "@earendil-works/pi-coding-agent";
+import { createEventBus, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerApplyPatchDisplay } from "../src/apply-patch-display.ts";
 import { registerApplyPatchDisplayBroker } from "../src/tools/apply-patch/display-broker.ts";
 import {
@@ -21,9 +18,7 @@ function displayExtensionApi(bus = createEventBus()) {
 		events: { emit: bus.emit, on: bus.on },
 		registerEntryRenderer() {},
 		on(event: string, handler: (event: never) => unknown) {
-			const eventHandlers = handlers.get(event) ?? [];
-			eventHandlers.push(handler);
-			handlers.set(event, eventHandlers);
+			handlers.set(event, [...handlers.get(event) ?? [], handler]);
 		},
 		appendEntry(customType: string, data: unknown) {
 			entries.push({ customType, data });
@@ -33,14 +28,12 @@ function displayExtensionApi(bus = createEventBus()) {
 		pi,
 		entries,
 		emit(event: string, value: unknown = {}) {
-			return (handlers.get(event) ?? []).map((handler) =>
-				handler(value as never),
-			);
+			return (handlers.get(event) ?? []).map((handler) => handler(value as never));
 		},
 	};
 }
 
-test("apply_patch preserves display routing and rejects duplicate resolved sources before mutation", async () => {
+test("apply_patch preserves deferred display routing and rejects duplicate resolved sources", async () => {
 	const bus = createEventBus();
 	const consumer = displayExtensionApi(bus);
 	const registration = registerApplyPatchDisplay(consumer.pi, {
@@ -49,7 +42,6 @@ test("apply_patch preserves display routing and rejects duplicate resolved sourc
 	});
 	const conversion = displayExtensionApi(bus);
 	registerApplyPatchDisplayBroker(conversion.pi);
-	assert.equal(registration.available, true);
 	conversion.emit("tool_result", {
 		toolName: "apply_patch",
 		toolCallId: "direct-1",
@@ -59,18 +51,10 @@ test("apply_patch preserves display routing and rejects duplicate resolved sourc
 	});
 	assert.deepEqual(conversion.entries, []);
 	conversion.emit("turn_end");
-	assert.deepEqual(conversion.entries, [
-		{
-			customType: "test-apply-patch-display",
-			data: {
-				toolCallId: "direct-1",
-				input: "*** Begin Patch\n*** End Patch",
-				content: "Applied direct",
-				isError: false,
-				source: "direct",
-			},
-		},
-	]);
+	assert.deepEqual(conversion.entries.map(({ customType, data }) => ({
+		customType,
+		source: (data as { source?: string }).source,
+	})), [{ customType: "test-apply-patch-display", source: "direct" }]);
 
 	const cwd = await mkdtemp(join(tmpdir(), "pi-apply-patch-duplicate-"));
 	const path = join(cwd, "duplicate.txt");

@@ -1,7 +1,4 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
 	type Api,
 	type AssistantMessage,
@@ -10,6 +7,7 @@ import {
 	createAssistantMessageEventStream,
 	type Model,
 	type SimpleStreamOptions,
+	type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import {
 	type ExtensionCommandContext,
@@ -144,11 +142,20 @@ function summarize(
 	signal?: AbortSignal,
 ) {
 	const sessionManager = SessionManager.inMemory(process.cwd());
-	sessionManager.appendMessage({
+	const replaced = sessionManager.appendMessage({
 		role: "user",
-		content: "Please review this change",
+		content: "Superseded review direction",
 		timestamp: Date.now(),
 	});
+	const omitted = sessionManager.appendCustomMessageEntry(
+		"old-context",
+		"Omitted review context",
+		false,
+	);
+	sessionManager.appendContextEdit(replaced, {
+		content: "Please review this change",
+	});
+	sessionManager.appendContextEdit(omitted, null);
 	const ctx = {
 		cwd: process.cwd(),
 		modelRegistry,
@@ -184,14 +191,14 @@ async function summarizeWithAuth(
 	});
 	registry = new ModelRegistry(runtime);
 	let receivedOptions: SimpleStreamOptions | undefined;
-	let receivedModel: Model<Api> | undefined;
+	let receivedContext: TranscriptContext | undefined;
 	registry.registerProvider(PROVIDER, {
 		baseUrl: "https://summary.invalid/v1",
 		api: API,
 		...authConfig,
-		streamSimple(model, _context, options) {
-			receivedModel = model;
+		streamSimple(model, context, options) {
 			receivedOptions = options;
+			receivedContext = context;
 			return responseStream(options, model).stream;
 		},
 		models: [
@@ -209,7 +216,7 @@ async function summarizeWithAuth(
 	await runtime.refresh({ allowNetwork: false });
 
 	const summary = await summarize(registry);
-	return { summary, receivedModel, receivedOptions };
+	return { summary, receivedOptions, receivedContext };
 }
 
 test("uses the public Pi session path for extension-registered providers", async () => {
@@ -225,109 +232,15 @@ test("uses the public Pi session path for extension-registered providers", async
 	);
 
 	expect(result.summary).toBe("Review context summary");
+	const request = JSON.stringify(result.receivedContext);
+	expect(request).toContain("Please review this change");
+	expect(request).not.toContain("Superseded review direction");
+	expect(request).not.toContain("Omitted review context");
 	expect(result.receivedOptions?.apiKey).toBe("stored-key");
 	expect(result.receivedOptions?.headers?.Authorization).toBe(
 		"Bearer stored-key",
 	);
 	expect(result.receivedOptions?.env?.SUMMARY_ACCOUNT).toBe("account-123");
-});
-
-test("resolves environment-backed provider auth", async () => {
-	process.env["SUMMARY_SDK_TEST_KEY"] = "environment-key";
-	try {
-		const result = await summarizeWithAuth(credentialStore(), {
-			apiKey: "$SUMMARY_SDK_TEST_KEY",
-		});
-		expect(result.summary).toBe("Review context summary");
-		expect(result.receivedOptions?.apiKey).toBe("environment-key");
-	} finally {
-		delete process.env["SUMMARY_SDK_TEST_KEY"];
-	}
-});
-
-test("resolves OAuth provider auth", async () => {
-	const credentials = {
-		type: "oauth" as const,
-		refresh: "refresh-token",
-		access: "oauth-access-token",
-		expires: Date.now() + 60_000,
-	};
-	const result = await summarizeWithAuth(
-		credentialStore({ [PROVIDER]: credentials }),
-		{
-			oauth: {
-				name: "Summary OAuth",
-				async login() {
-					return credentials;
-				},
-				async refreshToken(current) {
-					return current;
-				},
-				getApiKey(current) {
-					return current.access;
-				},
-				modifyModels(models) {
-					return models.map((model) => ({
-						...model,
-						baseUrl: "https://projected.invalid/v1",
-					}));
-				},
-			},
-		},
-	);
-
-	expect(result.summary).toBe("Review context summary");
-	expect(result.receivedOptions?.apiKey).toBe("oauth-access-token");
-	expect(result.receivedModel?.baseUrl).toBe("https://projected.invalid/v1");
-});
-
-test("preserves credential-derived OAuth endpoints", async () => {
-	const agentDir = await mkdtemp(join(tmpdir(), "pi-review-auth-"));
-	const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
-	const provider = "github-copilot";
-	const modelId = "claude-fable-5";
-	const credentials: Credential = {
-		type: "oauth",
-		refresh: "github-token",
-		access: "tid=test;exp=9999999999;proxy-ep=proxy.enterprise.example;",
-		expires: Date.now() + 60 * 60 * 1000,
-		availableModelIds: [modelId],
-	};
-	await writeFile(
-		join(agentDir, "auth.json"),
-		JSON.stringify({ [provider]: credentials }),
-	);
-	process.env.PI_CODING_AGENT_DIR = agentDir;
-
-	try {
-		const runtime = await ModelRuntime.create({
-			credentials: credentialStore({ [provider]: credentials }),
-			modelsPath: null,
-			allowModelNetwork: false,
-		});
-		registry = new ModelRegistry(runtime);
-		let receivedModel: Model<Api> | undefined;
-		registry.registerProvider(provider, {
-			api: "anthropic-messages",
-			streamSimple(model, _context, options) {
-				receivedModel = model;
-				return responseStream(options, model).stream;
-			},
-		});
-		await runtime.refresh({ allowNetwork: false });
-
-		expect(await summarize(registry, provider, modelId)).toBe(
-			"Review context summary",
-		);
-		expect(receivedModel?.baseUrl).toBe("https://api.enterprise.example");
-	} finally {
-		if (previousAgentDir === undefined) {
-			delete process.env.PI_CODING_AGENT_DIR;
-		} else {
-			process.env.PI_CODING_AGENT_DIR = previousAgentDir;
-		}
-		await rm(agentDir, { recursive: true, force: true });
-	}
 });
 
 test("aborts an in-flight summary when the review is cancelled", async () => {

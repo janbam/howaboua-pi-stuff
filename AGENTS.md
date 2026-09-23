@@ -2,7 +2,7 @@ This repo publishes through Changesets; every merge to `main` feeds the version 
 
 - Resolve package names by matching their words against immediate subdirectories of packages; search the unique match first and follow direct references only.
 - Keep the vendored `src/codex-runtime` trees in pi-codex-web-run and pi-codex-imagegen identical; do not publish a shared runtime package.
-- Agent-facing text is behavior: keep tool contracts, skill files, prompt metadata, and subagent prompts compact.
+- Agent-facing text is behavior: keep tool contracts, skill files, prompt metadata, and subagent prompts compact. Default to general-purpose assistance; scope coding assumptions to coding-specific tasks.
 - Keep extension internals out of agent-facing prompts, descriptions, and results. Expose only intent and information needed to act; lifecycle triggers must not narrate host machinery or invent workflow instructions.
 - Measure package-emitted tool schemas and system-prompt deltas for cache impact; repository `AGENTS.md` is internal, not product prompt cost.
 - Do not repeat self-evident contracts across names, descriptions, schemas, `promptSnippet`, or `promptGuidelines`; use the latter two only for concrete failures. Never rewrite prior tool calls/results to integrate a tool.
@@ -15,9 +15,9 @@ This repo publishes through Changesets; every merge to `main` feeds the version 
 - Slash commands are for users; agents use tools. Prefer one routed entry command over several command names unless explicitly requested.
 - Amend only tiny, immediate, behavior-preserving corrections to the latest unpublished commit. Record behavior changes, revised approaches, and later fixes in new commits to preserve traceability.
 - Treat related package work from one session as one release unit: one PR or one directly, atomically merged stack. Installed users should not absorb serial cleanup releases.
-- Changed published behavior or payload requires a changeset; ordinary docs and tests do not. Use concrete release language; never write “upcoming release”, “unreleased”, or speculative notes.
+- Changed published behavior or payload requires a changeset; dependency-only updates, ordinary docs, and tests do not. Use concrete release language; never write “upcoming release”, “unreleased”, or speculative notes.
 - Changeset bodies become changelog copy: lead with one concise outcome; for broad releases add short user-facing capability bullets. Never dump implementation, tests, review history, or a multi-feature release into one prose lump.
-- Before a `dev` → `main` PR, fetch/prune, reset `dev` onto `origin/main`, then cherry-pick only intended commits. Never merge `main` into `dev`.
+- Before new work on `dev`, check whether its previous `dev` → `main` PR merged. If so, use the retained `repoDance` binding for alignment, not an ad hoc reset. Preserve dirty files and unpublished commits; a blocked dance is not permission to discard them. Never merge `main` into `dev`.
 - `bun run check:changed` selects committed branch changes, not working edits; use focused package checks while editing. Prefer patch-autodetecting `bun changeset -- "summary"`; use `bun changeset:raw` only for intentional non-patch bumps.
 - This development host uses an AMD K10-class CPU without AVX. Do not use Bun to compile, transpile, test, or directly execute TypeScript; it can segfault on this processor. Use `tsgo`/`tsc` for compilation checks and Node or `tsx` for execution. Bun remains the package manager and may invoke scripts that delegate TypeScript work to those tools.
 - `changelog.js` is generated, uncommitted, and required before Pi loads any package with `changelog.ts`. After checkout or `bun install`, generate all copies with `for f in packages/*/changelog.ts; do node scripts/build-extension-changelog.mjs ${f%/changelog.ts}; done`; package builds generate their own copy.

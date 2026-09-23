@@ -3,7 +3,7 @@ import { Box, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import type { CodexConversionConfig } from "../adapter/activation/config.ts";
 import { isAdapterRuntime, resolveCodexRuntimePlanForState } from "../adapter/activation/runtime-plan.ts";
 import { NATIVE_COMPACTION_DISPLAY_MESSAGE_TYPE, NATIVE_COMPACTION_DISPLAY_TEXT, type NativeCompactionDisplayEntry } from "../adapter/compaction/types.ts";
-import { fetchCodexUsageLeft } from "../codex-usage/client.ts";
+import { fetchCodexUsageStatus } from "../codex-usage/client.ts";
 import {
 	CODEX_CONTEXT_WINDOW_MESSAGE_TYPE,
 	type CodexContextManagementMessageDetails,
@@ -25,6 +25,8 @@ export interface CodexUiController {
 }
 
 export function registerCodexUi(pi: ExtensionAPI, runtime: CodexExtensionRuntime): CodexUiController {
+	// Labels must match registered bindings, not later folder config changes.
+	const backgroundShellShortcuts = { ...runtime.state.config.ui };
 	let renderTimer: ReturnType<typeof setTimeout> | undefined;
 	let backgroundWidgetGeneration = 0;
 	let usageGeneration = 0;
@@ -51,11 +53,10 @@ export function registerCodexUi(pi: ExtensionAPI, runtime: CodexExtensionRuntime
 			clearBackgroundWidget();
 			return;
 		}
-		// FORK_MOD: pass shortcut config so the widget footer can reflect disabled bindings.
-		renderBackgroundBashWidget(ctx, runtime.backgroundWidget, runtime.sessions, runtime.state.config.ui);
+		renderBackgroundBashWidget(ctx, runtime.backgroundWidget, runtime.sessions, backgroundShellShortcuts);
 	};
 
-	registerBackgroundBashWidgetShortcuts(pi, runtime.backgroundWidget, runtime.sessions, runtime.state.config.ui, () => runtime.state.adapterEnabled && !runtime.state.config.voiceFeaturesOnly && runtime.state.config.ui.backgroundShellWidget);
+	registerBackgroundBashWidgetShortcuts(pi, runtime.backgroundWidget, runtime.sessions, backgroundShellShortcuts, () => runtime.state.adapterEnabled && !runtime.state.config.voiceFeaturesOnly && runtime.state.config.ui.backgroundShellWidget);
 	const renderNativeCompaction = (
 		content: string,
 		kind: NativeCompactionDisplayEntry["kind"],
@@ -109,18 +110,16 @@ export function registerCodexUi(pi: ExtensionAPI, runtime: CodexExtensionRuntime
 	});
 	const invalidateUsageStatus = () => {
 		usageGeneration += 1;
-		runtime.state.fiveHourUsageLeft = undefined;
-		runtime.state.weeklyUsageLeft = undefined;
+		runtime.state.usageStatus = undefined;
 	};
 	const refreshUsageStatus = async (ctx: ExtensionContext) => {
 		const generation = ++usageGeneration;
 		if (!ctx.hasUI || !runtime.state.adapterEnabled || runtime.state.config.voiceFeaturesOnly || !runtime.state.config.ui.statusLine) {
-			runtime.state.fiveHourUsageLeft = undefined;
-			runtime.state.weeklyUsageLeft = undefined;
+			runtime.state.usageStatus = undefined;
 			return;
 		}
 		if (!isAdapterRuntime(resolveCodexRuntimePlanForState(ctx, runtime.state))) return;
-		const usageLeft = await fetchCodexUsageLeft(ctx);
+		const usageStatus = await fetchCodexUsageStatus(ctx);
 		const plan = resolveCodexRuntimePlanForState(ctx, runtime.state);
 		if (
 			generation !== usageGeneration ||
@@ -130,8 +129,7 @@ export function registerCodexUi(pi: ExtensionAPI, runtime: CodexExtensionRuntime
 			!runtime.state.config.ui.statusLine ||
 			!isAdapterRuntime(plan)
 		) return;
-		runtime.state.fiveHourUsageLeft = usageLeft?.fiveHourLeft;
-		runtime.state.weeklyUsageLeft = usageLeft?.weeklyLeft;
+		runtime.state.usageStatus = usageStatus;
 		renderCodexStatus(ctx, runtime.state, plan);
 	};
 

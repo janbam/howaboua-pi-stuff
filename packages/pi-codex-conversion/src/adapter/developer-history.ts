@@ -39,7 +39,7 @@ export function projectCodexDeveloperHistory(
 		return projected;
 	});
 	if (messages && virtualIds.size === 0) return [...messages];
-	const reconstructed = buildSessionContext(projectedEntries, leafId).messages.filter(survives);
+	const reconstructed = leadWithSystemMessage(buildSessionContext(projectedEntries, leafId).messages.filter(survives));
 	if (!messages) return reconstructed;
 	// Preserve other extensions' message edits and additions. Insert metadata at its
 	// persisted position, before the next surviving message or after the final one.
@@ -65,6 +65,17 @@ export function projectCodexDeveloperHistory(
 	if (pending.length) insertions.set(last + 1, [...(insertions.get(last + 1) ?? []), ...pending]);
 	return messages.flatMap((message, index) => [...(insertions.get(index) ?? []), message])
 		.concat(insertions.get(messages.length) ?? []);
+}
+
+/**
+ * Keep Pi's prompt message at the head of context. Bookkeeping recorded before the first
+ * prompt (e.g. a reasoning update at model selection) would otherwise precede it, and
+ * providers read the prompt and initial tools from index 0.
+ */
+function leadWithSystemMessage(messages: AgentMessage[]): AgentMessage[] {
+	const head = messages.findIndex((message) => message.role === "system");
+	if (head <= 0 || !messages.slice(0, head).every(isVirtualMessage)) return messages;
+	return [messages[head]!, ...messages.slice(0, head), ...messages.slice(head + 1)];
 }
 
 function messageKey(message: AgentMessage): string {

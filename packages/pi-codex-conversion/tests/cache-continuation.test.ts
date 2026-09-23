@@ -165,6 +165,13 @@ test("request reasoning must match; persisted GPT-6 updates extend the input ins
 		session.appendCustomMessageEntry("codex-reasoning-update", "Reasoning effort: medium", false, legacy);
 		assert.equal(codexReasoningUpdates(messages(), gpt6).at(-1)?.id, legacy.id);
 		assert.deepEqual(serializeActiveSessionToResponsesInput({ model: gpt6, entries: session.getBranch() }).at(-1), { type: "configuration_update", reasoning: { effort: "medium" } });
+		// Model selection records an update before Pi persists its first prompt message.
+		const fresh = SessionManager.inMemory("/repo");
+		fresh.appendCustomEntry("codex-reasoning-update", { ...legacy, id: "before-prompt" });
+		fresh.appendMessage({ role: "system", content: "Prompt", timestamp: 1 } as never);
+		fresh.appendMessage(user("first", 2) as never);
+		for (const projected of [projectCodexDeveloperHistory(fresh.getBranch()), projectCodexDeveloperHistory(fresh.getBranch(), buildSessionContext(fresh.getBranch()).messages)])
+			assert.deepEqual(projected.map((message) => message.role), ["system", "custom", "user"], "the prompt message stays at the head of context");
 	}
 });
 

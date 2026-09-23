@@ -100,6 +100,7 @@ export function createCodexExtensionRuntime(pi: ExtensionAPI): CodexExtensionRun
 		voice.piInput(text.trim() ? text : "Continue.");
 	});
 	const state: AdapterState = {
+		adapterEnabled: true,
 		enabled: false,
 		cwd: process.cwd(),
 		promptSkills: [],
@@ -482,7 +483,7 @@ export function createCodexExtensionRuntime(pi: ExtensionAPI): CodexExtensionRun
 			}
 			return diagnostics.configure({
 				mode: state.config.openai.cacheDiagnostics,
-				active: ctx.model?.provider === "openai-codex",
+				active: state.adapterEnabled && !state.config.voiceFeaturesOnly && ctx.model?.provider === "openai-codex",
 				ctx,
 				agentDir: dirname(getCodexConversionConfigPath()),
 				logName: cacheEnvironment.logName,

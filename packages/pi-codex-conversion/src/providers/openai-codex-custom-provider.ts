@@ -34,6 +34,12 @@ export { buildCachedWebSocketRequestBody } from "./openai-codex/websocket-contin
 export { closeOpenAICodexWebSocketSessions };
 export type { ResponsesBody } from "./openai-codex/types.ts";
 
+/** Controls whether the extension-owned OpenAI Codex provider replaces Pi's stock provider. */
+export interface OpenAICodexCustomProviderRegistration {
+	applyEnabled(enabled: boolean): void;
+	shutdown(): void;
+}
+
 export function closeOpenAICodexKeepaliveWebSocketSession(sessionId: string): void {
 	closeOpenAICodexWebSocketSessions(codexCacheKeepaliveSocketSessionId(sessionId));
 }
@@ -126,7 +132,7 @@ export function registerOpenAICodexCustomProvider(pi: ExtensionAPI, options: {
 	turnState?: CodexTurnState | undefined;
 	onPreparedPayload?: ((payload: ResponsesBody) => void) | undefined;
 	getDiagnostics?: (() => CodexDiagnosticsSink | undefined) | undefined;
-}): void {
+}): OpenAICodexCustomProviderRegistration {
 	const streamSimple = (model: Model<Api>, context: Context, streamOptions?: CodexProviderStreamOptions) => {
 		const stream = createCodexTransportStream(model, context, streamOptions, {
 			prepareRequestBody: prepareCodexRequestBody,
@@ -152,5 +158,18 @@ export function registerOpenAICodexCustomProvider(pi: ExtensionAPI, options: {
 		stream: streamSimple,
 		streamSimple,
 	};
-	pi.registerProvider(provider);
+	let enabled = false;
+	/** Swaps only this extension's provider registration, exposing stock Pi while disabled. */
+	const applyEnabled = (nextEnabled: boolean) => {
+		if (nextEnabled === enabled) return;
+		// Removing only the extension registration reveals Pi's stock Codex provider again.
+		if (nextEnabled) pi.registerProvider(provider);
+		else pi.unregisterProvider(provider.id);
+		enabled = nextEnabled;
+	};
+	applyEnabled(true);
+	return {
+		applyEnabled,
+		shutdown: () => applyEnabled(false),
+	};
 }

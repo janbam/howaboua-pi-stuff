@@ -222,6 +222,7 @@ test("portable Pi compaction consumes opaque checkpoints on an isolated summary 
 		modelRegistry: { getApiKeyAndHeaders: async () => ({ ok: true as const, apiKey: "key" }) },
 	} as any;
 	const state: AdapterState = {
+		adapterEnabled: true,
 		enabled: true,
 		cwd: process.cwd(),
 		promptSkills: [],

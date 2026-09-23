@@ -18,6 +18,8 @@ export interface PendingPiCompactionNativeWindow {
 }
 
 export interface AdapterState {
+	/** Session-local master switch restored from the active session branch. */
+	adapterEnabled: boolean;
 	enabled: boolean;
 	availableToolNames?: string[] | undefined;
 	cwd: string;

@@ -12,7 +12,6 @@ import {
 } from "@earendil-works/pi-tui";
 import type { CodexConversionConfig, LunaCacheKeepaliveMinutes } from "../../adapter/activation/config.ts";
 import type { CodexConversionConfigScope } from "../../adapter/activation/config-store.ts";
-import type { ExecutionMode } from "../../adapter/activation/execution-mode.ts";
 import type { CodexLanVoiceServerStatus } from "../../voice/lan/controller.ts";
 import { formatVoiceShortcut } from "../../voice/setup.ts";
 import {
@@ -32,6 +31,10 @@ export interface CodexSettingsScreenOptions extends UsageTabOptions {
 	onGlobalLunaCacheKeepalive: (minutes: LunaCacheKeepaliveMinutes) => CodexConversionConfig | undefined;
 	onProjectCacheKeepalive: (enabled: boolean) => CodexConversionConfig | undefined;
 	initialTab?: SettingsTab | undefined;
+	adapterEnabled: {
+		current: () => boolean;
+		set: (enabled: boolean) => void;
+	};
 	configScope: {
 		current: () => CodexConversionConfigScope;
 		canUseFolder: boolean;
@@ -101,21 +104,6 @@ export async function openCodexSettingsScreen(
 							: ["Global"],
 					},
 				},
-				...(activeTab === "adapter"
-					? [{
-							item: {
-								id: "executionMode",
-								description: "Structured: standard JSON schemas. Code: JavaScript. Notebook: persistent Deno shell with checkpoints.",
-								label: "Execution mode",
-								currentValue: formatExecutionMode(draft.executionMode),
-								values: ["Structured", "Code", "Notebook (recommended)"],
-							},
-							update: (value: string, current: CodexConversionConfig) => ({
-								...current,
-								executionMode: parseExecutionMode(value),
-							}),
-						}]
-					: []),
 				...(activeTab === "voice" && options.lanVoiceServer
 					? [
 							{
@@ -136,6 +124,7 @@ export async function openCodexSettingsScreen(
 					draft,
 					theme,
 					availableContextModels,
+					options.adapterEnabled.current(),
 				),
 			];
 			list = new SettingsList(
@@ -144,6 +133,13 @@ export async function openCodexSettingsScreen(
 				getSettingsListTheme(),
 				(id, value) => {
 					const definition = buildSettings().find(({ item }) => item.id === id);
+					if (definition?.action === "adapter-enabled") {
+						options.adapterEnabled.set(value === "on");
+						for (const { item } of buildSettings())
+							list.updateValue(item.id, item.currentValue);
+						tui.requestRender();
+						return;
+					}
 					if (definition?.action === "edit-config") {
 						void runEditConfig();
 						return;
@@ -448,18 +444,6 @@ function formatToolsDetails(theme: Theme, configPath: string): string[] {
 		theme.fg("dim", "  Custom native helper overrides:"),
 		theme.fg("dim", "  " + configPath),
 	];
-}
-
-function formatExecutionMode(mode: ExecutionMode): string {
-	if (mode === "code") return "Code";
-	if (mode === "notebook") return "Notebook (recommended)";
-	return "Structured";
-}
-
-function parseExecutionMode(value: string): ExecutionMode {
-	if (value === "Code") return "code";
-	if (value === "Notebook (recommended)") return "notebook";
-	return "normal";
 }
 
 function withSettingsDetails(lines: string[], details: string[]): string[] {

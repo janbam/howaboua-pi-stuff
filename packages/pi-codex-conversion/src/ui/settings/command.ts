@@ -15,6 +15,7 @@ import {
 	writeCodexConversionConfig,
 } from "../../adapter/activation/config-store.ts";
 import { syncAdapter } from "../../adapter/activation/activation.ts";
+import { writeSessionAdapterEnabled } from "../../adapter/activation/session-state.ts";
 import type { AdapterState } from "../../adapter/activation/state.ts";
 import type { CodexVoiceController } from "../../voice/controller.ts";
 import { createCodexVoiceControls } from "../../voice/controls.ts";
@@ -32,6 +33,7 @@ export function registerCodexCommand(
 	voice: CodexVoiceController,
 	lanVoice: CodexLanVoiceServerController,
 	onConfigApplied?: (config: CodexConversionConfig, ctx: ExtensionContext, previousConfig: CodexConversionConfig) => void,
+	onAdapterEnabledChanged?: (enabled: boolean, ctx: ExtensionContext, previousEnabled: boolean) => void,
 ): void {
 	function effectiveConfig(ctx: ExtensionContext): CodexConversionConfig {
 		return readEffectiveCodexConversionConfig({
@@ -82,7 +84,7 @@ export function registerCodexCommand(
 				}
 				return;
 			}
-			ctx.ui.notify(formatCodexSettings(state.config), "info");
+			ctx.ui.notify(formatCodexSettings(state.config, state.adapterEnabled), "info");
 			return;
 		}
 		let configScope: CodexConversionConfigScope = hasFolderCodexConversionConfig(
@@ -113,6 +115,17 @@ export function registerCodexCommand(
 		await openCodexSettingsScreen(ctx, {
 			initialConfig: readSelectedConfig(),
 			initialTab: tab,
+			adapterEnabled: {
+				current: () => state.adapterEnabled,
+				set: (enabled) => {
+					if (enabled === state.adapterEnabled) return;
+					const previousEnabled = state.adapterEnabled;
+					state.adapterEnabled = enabled;
+					writeSessionAdapterEnabled(pi, enabled);
+					onAdapterEnabledChanged?.(enabled, ctx, previousEnabled);
+					syncAdapter(pi, ctx, state);
+				},
+			},
 			onChange: (config) => saveAndApply(ctx, configScope, config),
 			onGlobalLunaCacheKeepalive: (minutes) => {
 				const result = setGlobalCodexLunaCacheKeepalive(minutes);
@@ -229,6 +242,6 @@ function formatAllProvidersMode(value: CodexConversionConfig["scope"]["allProvid
 	return value;
 }
 
-function formatCodexSettings(config: CodexConversionConfig): string {
-	return `Codex settings: extension ${config.voiceFeaturesOnly ? "voice only" : "adapter and voice"}, execution ${config.executionMode}, providers ${formatAllProvidersMode(config.scope.allProviders)}, Rust binaries ${config.tools.customRustBinariesDir || "bundled"}, heavy prompt overwrite ${config.prompt.heavySystemPromptOverwrite ? "on" : "off"}, Codex prompt appendix ${config.prompt.appendSystemPromptFile ? "on" : "off"}, harness identifier ${config.openai.harnessIdentifierHeader ? "on" : "off"}, Proxy Responses Lite ${config.openai.proxyResponsesLite ? "on" : "off"}, context management ${config.compaction.contextManagement}, compaction ${config.compaction.hybridCompaction ? "hybrid (V2 where supported, Pi elsewhere)" : config.compaction.contextManagement !== "off" ? "notes only" : config.compaction.responsesCompaction ? "V2" : "Pi"}, portable summary ${config.compaction.portableSummary ? "on" : "off"}, Luna cache keepalive ${config.openai.lunaCacheKeepaliveMinutes === 0 ? "off" : `${config.openai.lunaCacheKeepaliveMinutes} mins`}, Sol/Terra cache keepalive ${config.openai.cacheKeepalive ? "25 mins" : "off"}, cache diagnostics ${config.openai.cacheDiagnostics}, fast ${config.openai.fast ? "on" : "off"}, verbosity ${config.openai.verbosity}`;
+function formatCodexSettings(config: CodexConversionConfig, adapterEnabled: boolean): string {
+	return `Codex settings: adapter ${adapterEnabled ? "enabled" : "disabled"}, extension ${config.voiceFeaturesOnly ? "voice only" : "adapter and voice"}, execution ${config.executionMode}, providers ${formatAllProvidersMode(config.scope.allProviders)}, Rust binaries ${config.tools.customRustBinariesDir || "bundled"}, heavy prompt overwrite ${config.prompt.heavySystemPromptOverwrite ? "on" : "off"}, Codex prompt appendix ${config.prompt.appendSystemPromptFile ? "on" : "off"}, harness identifier ${config.openai.harnessIdentifierHeader ? "on" : "off"}, Proxy Responses Lite ${config.openai.proxyResponsesLite ? "on" : "off"}, context management ${config.compaction.contextManagement}, compaction ${config.compaction.hybridCompaction ? "hybrid (V2 where supported, Pi elsewhere)" : config.compaction.contextManagement !== "off" ? "notes only" : config.compaction.responsesCompaction ? "V2" : "Pi"}, portable summary ${config.compaction.portableSummary ? "on" : "off"}, Luna cache keepalive ${config.openai.lunaCacheKeepaliveMinutes === 0 ? "off" : `${config.openai.lunaCacheKeepaliveMinutes} mins`}, Sol/Terra cache keepalive ${config.openai.cacheKeepalive ? "25 mins" : "off"}, cache diagnostics ${config.openai.cacheDiagnostics}, fast ${config.openai.fast ? "on" : "off"}, verbosity ${config.openai.verbosity}`;
 }

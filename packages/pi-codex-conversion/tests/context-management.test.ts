@@ -233,6 +233,7 @@ test("context windows preserve rollover and native request semantics", async (t)
 	const contextBridge = new CodexDeveloperMessageBridge();
 	const contextKickoff = new CodexContextWindowKickoff(manager);
 	const contextState: AdapterState = {
+		adapterEnabled: true,
 		enabled: true,
 		cwd: "/repo",
 		promptSkills: [],

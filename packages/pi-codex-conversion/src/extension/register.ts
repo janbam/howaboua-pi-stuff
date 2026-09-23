@@ -19,9 +19,10 @@ export async function registerCodexConversion(pi: ExtensionAPI): Promise<void> {
 	const runtime = createCodexExtensionRuntime(pi);
 	runtime.state.contextTree.register(pi);
 	const codeMode = await registerCodexCodeMode(pi, runtime);
+	let cleanupCodexProvider: ReturnType<typeof registerOpenAICodexCustomProvider> | undefined;
 	let cleanupProxyProvider: ReturnType<typeof registerCodeModeProxyProvider> | undefined;
 	try {
-		registerOpenAICodexCustomProvider(pi, {
+		const codexProvider = registerOpenAICodexCustomProvider(pi, {
 			getConfig: () => ({ executionMode: runtime.state.executionMode, openai: runtime.state.config.openai, compaction: runtime.state.config.compaction }),
 			useResponsesLite: (model) => resolveCodexRuntimePlanForState({ model }, runtime.state).transport === "responses-lite",
 			turnState: runtime.state.codexTurnState,
@@ -32,12 +33,40 @@ export async function registerCodexConversion(pi: ExtensionAPI): Promise<void> {
 				runtime.state.pendingActiveProviderPromptCapture = false;
 			},
 		});
-		const proxyProvider = registerCodeModeProxyProvider(pi, () => runtime.state.config, () => runtime.state.executionMode, () => runtime.state.availableToolNames);
+		cleanupCodexProvider = codexProvider;
+		const proxyProvider = registerCodeModeProxyProvider(
+			pi,
+			() => runtime.state.config,
+			() => runtime.state.executionMode,
+			() => runtime.state.availableToolNames,
+			() => runtime.state.adapterEnabled,
+		);
 		cleanupProxyProvider = proxyProvider;
 		const tools = registerCodexTools(pi, runtime);
 		const ui = registerCodexUi(pi, runtime);
+		/** Starts or stops the mode host when session or persisted settings change adapter availability. */
+		const reconcileCodeModeHost = (
+			ctx: Parameters<typeof prepareCodeModeHost>[1],
+			fullAdapterEnabled: boolean,
+			fullAdapterWasEnabled: boolean,
+			executionModeChanged: boolean,
+		) => {
+			if (!fullAdapterEnabled && fullAdapterWasEnabled) {
+				void codeMode.shutdownHost().catch((error: unknown) => {
+					ctx.ui.notify(`Could not stop Code Mode host: ${error instanceof Error ? error.message : String(error)}`, "warning");
+				});
+			} else if (fullAdapterEnabled && (!fullAdapterWasEnabled || executionModeChanged)) {
+				void codeMode.shutdownHost()
+					.then(() => prepareCodeModeHost(codeMode, ctx))
+					.catch((error: unknown) => {
+						ctx.ui.notify(`Could not switch execution mode: ${error instanceof Error ? error.message : String(error)}`, "warning");
+					});
+			}
+		};
 		registerCodexCommand(pi, runtime.state, runtime.voice, runtime.lanVoice, (config, ctx, previousConfig) => {
 			const executionModeChanged = config.executionMode !== previousConfig.executionMode;
+			const fullAdapterEnabled = runtime.state.adapterEnabled && !config.voiceFeaturesOnly;
+			const fullAdapterWasEnabled = runtime.state.adapterEnabled && !previousConfig.voiceFeaturesOnly;
 			const promptConfigChanged =
 				config.prompt.heavySystemPromptOverwrite !== previousConfig.prompt.heavySystemPromptOverwrite
 				|| config.prompt.appendSystemPromptFile !== previousConfig.prompt.appendSystemPromptFile;
@@ -92,23 +121,30 @@ export async function registerCodexConversion(pi: ExtensionAPI): Promise<void> {
 			) {
 				runtime.resetTransport(ctx.sessionManager.getSessionId());
 			}
-			if (config.voiceFeaturesOnly && !previousConfig.voiceFeaturesOnly) {
-				void codeMode.shutdownHost().catch((error: unknown) => {
-					ctx.ui.notify(`Could not stop Code Mode host: ${error instanceof Error ? error.message : String(error)}`, "warning");
-				});
-			} else if (executionModeChanged) {
-				void codeMode.shutdownHost()
-					.then(() => prepareCodeModeHost(codeMode, ctx))
-					.catch((error: unknown) => {
-						ctx.ui.notify(`Could not switch execution mode: ${error instanceof Error ? error.message : String(error)}`, "warning");
-					});
-			}
+			reconcileCodeModeHost(ctx, fullAdapterEnabled, fullAdapterWasEnabled, executionModeChanged);
+		}, (enabled, ctx, previousEnabled) => {
+			runtime.cancelCacheKeepalive();
+			runtime.resetTransport(ctx.sessionManager.getSessionId());
+			codexProvider.applyEnabled(enabled);
+			proxyProvider.applyConfig(runtime.state.config, ctx.modelRegistry);
+			void runtime.configureDiagnostics(ctx);
+			ui.applyAdapterEnabled(ctx);
+			reconcileCodeModeHost(
+				ctx,
+				enabled && !runtime.state.config.voiceFeaturesOnly,
+				previousEnabled && !runtime.state.config.voiceFeaturesOnly,
+				false,
+			);
 		});
-		registerCodexEvents(pi, runtime, tools, ui, codeMode, proxyProvider);
+		registerCodexEvents(pi, runtime, tools, ui, codeMode, codexProvider, proxyProvider);
 	} catch (registrationError) {
 		try {
 			try {
-				cleanupProxyProvider?.shutdown();
+				try {
+					cleanupProxyProvider?.shutdown();
+				} finally {
+					cleanupCodexProvider?.shutdown();
+				}
 			} finally {
 				await codeMode.shutdown();
 			}

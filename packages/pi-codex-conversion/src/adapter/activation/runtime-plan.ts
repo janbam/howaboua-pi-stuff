@@ -122,6 +122,7 @@ export function resolveCodexRuntimePlan(
 	ctx: RuntimeContext,
 	config: CodexConversionConfig,
 	executionMode?: ExecutionMode,
+	adapterEnabled = true,
 ): CodexRuntimePlan {
 	const scope = config.scope.allProviders;
 	const isConfigured = configuredProvider(ctx, config);
@@ -150,6 +151,9 @@ export function resolveCodexRuntimePlan(
 		contextManagementHybrid: false,
 		autoReasoning: false,
 	};
+	// The master switch suppresses every adapter surface, including standalone extras.
+	if (!adapterEnabled)
+		return { ...base, kind: "inactive", toolNames: [], prompt: undefined, transport: undefined };
 	const mixedFullAdapter = codexLike || isConfigured;
 	// Split listed providers by protocol: Responses providers keep the adapter, while other APIs receive only standalone tools.
 	const extras = hasExtras(config)
@@ -235,9 +239,9 @@ export function resolveCodexRuntimePlan(
 
 export function resolveCodexRuntimePlanForState(
 	ctx: RuntimeContext,
-	state: Pick<AdapterState, "config" | "executionMode" | "availableToolNames">,
+	state: Pick<AdapterState, "adapterEnabled" | "config" | "executionMode" | "availableToolNames">,
 ): CodexRuntimePlan {
-	const plan = resolveCodexRuntimePlan(ctx, state.config, state.executionMode);
+	const plan = resolveCodexRuntimePlan(ctx, state.config, state.executionMode, state.adapterEnabled);
 	const missingToolNames = state.availableToolNames === undefined
 		? []
 		: plan.toolNames.filter((name) => !state.availableToolNames?.includes(name));

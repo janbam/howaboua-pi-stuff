@@ -35,6 +35,7 @@ interface ApplyPatchRenderContextLike {
 	executionStarted?: boolean | undefined;
 	expanded?: boolean | undefined;
 	argsComplete?: boolean | undefined;
+	isError?: boolean | undefined;
 }
 
 type ApplyPatchToolDefinition = ToolDefinition<typeof APPLY_PATCH_PARAMETERS, ApplyPatchToolDetails>;
@@ -73,6 +74,24 @@ function summarizePatchCounts(result: ExecutePatchResult): string {
 		`deleted ${result.deletedFiles.length}`,
 		`moved ${result.movedFiles.length}`,
 	].join(", ");
+}
+
+/** Extracts the exact text blocks sent to the model from a tool result. */
+function modelVisibleResultText(content: unknown): string | undefined {
+	if (typeof content === "string") return content || undefined;
+	if (!Array.isArray(content)) return undefined;
+	const text = content
+		.filter((item): item is { type: "text"; text: string } =>
+			Boolean(
+				item &&
+					typeof item === "object" &&
+					(item as { type?: unknown }).type === "text" &&
+					typeof (item as { text?: unknown }).text === "string",
+			),
+		)
+		.map((item) => item.text)
+		.join("\n");
+	return text || undefined;
 }
 
 function uniqueStrings(values: Array<string | undefined>): string[] {
@@ -167,21 +186,26 @@ function renderCompactApplyPatchCall(theme: { fg(role: string, text: string): st
 export function createApplyPatchTool(options: ApplyPatchToolOptions = {}): ApplyPatchToolDefinition {
 	const constrainedSampling = getExperimentalToolSampling("apply_patch");
 	const compactRendering = (context?: ApplyPatchRenderContextLike) => shouldCompactApplyPatchDisplay(context?.toolCallId, context?.executionStarted);
+	// Failed calls retain their full input even when the display broker compacts routine patch activity.
 	const defaultRenderCall: ApplyPatchRenderCall = (args, theme, context) =>
-		compactRendering(context) ? renderCompactApplyPatchCall(theme) : renderApplyPatchCallWithOptionalContext(args, theme, context, options);
+		context?.isError || !compactRendering(context)
+			? renderApplyPatchCallWithOptionalContext(args, theme, context, options)
+			: renderCompactApplyPatchCall(theme);
 	const defaultRenderResult: ApplyPatchRenderResult = (result, { isPartial }, theme, context) => {
+		if (isPartial) return renderCompactApplyPatchCall(theme);
+		const partialFailure = isApplyPatchToolDetails(result.details) && result.details.status === "partial_failure";
+		if (context.isError || partialFailure) {
+			// Custom rendering owns the result slot, so it must preserve the model-visible failure text itself.
+			const error = modelVisibleResultText(result.content)
+				?? (partialFailure ? "• Patch partially failed" : "• Patch failed");
+			return new Text(theme.fg("error", error), 0, 0);
+		}
 		if (compactRendering(context)) {
-			if (isPartial) return renderCompactApplyPatchCall(theme);
 			if (isApplyPatchToolDetails(result.details)) {
-				if (result.details.status === "partial_failure") return new Text(theme.fg("error", "• Patch partially failed"), 0, 0);
 				return new Text(theme.fg("dim", `• Applied patch (${summarizePatchCounts(result.details.result)})`), 0, 0);
 			}
-			if (context.isError) return new Text(theme.fg("error", "• Patch failed"), 0, 0);
 			return new Container();
 		}
-		if (isPartial) return new Text(`${theme.fg("dim", "•")} ${theme.bold("Patching")}`, 0, 0);
-		if (!isApplyPatchToolDetails(result.details)) return new Container();
-		if (result.details.status === "partial_failure") return new Container();
 		return new Container();
 	};
 	return {

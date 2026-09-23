@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { readEffectiveCodexConversionConfig } from "../adapter/activation/config-store.ts";
+import { readSessionAdapterEnabled } from "../adapter/activation/session-state.ts";
 import { syncAdapter } from "../adapter/activation/activation.ts";
 import { isAdapterRuntime, resolveCodexRuntimePlanForState } from "../adapter/activation/runtime-plan.ts";
 import { hasPortableNativeCompactionSummary, isNativeCompactionDetails, NATIVE_COMPACTION_DISPLAY_MESSAGE_TYPE, NATIVE_COMPACTION_DISPLAY_TEXT, NATIVE_COMPACTION_PORTABLE_DISPLAY_TEXT, NATIVE_COMPACTION_STRATEGY, type NativeCompactionDisplayEntry, type NativeCompactionUsage } from "../adapter/compaction/types.ts";
@@ -10,6 +11,7 @@ import { hasNoSkillsFlag } from "../adapter/prompt/skills.ts";
 import { onCodeModeExtensionToolsRefresh } from "../code-mode-extension-tools.ts";
 import { extractPiPromptSkills, resolvePromptSkills } from "../prompt/build-system-prompt.ts";
 import type { CodeModeProxyProviderRegistration } from "../providers/code-mode-proxy-provider.ts";
+import type { OpenAICodexCustomProviderRegistration } from "../providers/openai-codex-custom-provider.ts";
 import { maybeWarnLocalCheckoutVersion } from "../adapter/local-version-warning.ts";
 import { clearApplyPatchRenderState } from "../tools/apply-patch/tool.ts";
 import type { CodeModeRegistration } from "../tools/code-mode/tools.ts";
@@ -74,6 +76,7 @@ export function registerCodexEvents(
 	tools: CodexToolRegistration,
 	ui: CodexUiController,
 	codeMode: CodeModeRegistration,
+	codexProvider: OpenAICodexCustomProviderRegistration,
 	proxyProvider: CodeModeProxyProviderRegistration,
 ): void {
 	const { state, tracker, sessions } = runtime;
@@ -128,14 +131,16 @@ export function registerCodexEvents(
 			cwd: ctx.cwd,
 			projectTrusted: ctx.isProjectTrusted(),
 		});
+		state.adapterEnabled = readSessionAdapterEnabled(ctx);
 		state.fiveHourUsageLeft = undefined;
 		state.weeklyUsageLeft = undefined;
 		state.executionMode = state.config.executionMode;
 		state.activeProviderSystemPrompt = undefined;
 		state.voiceSystemPromptOverride = undefined;
+		codexProvider.applyEnabled(state.adapterEnabled);
 		proxyProvider.applyConfig(state.config, ctx.modelRegistry);
 		state.promptSkills = extractPiPromptSkills(ctx.getSystemPrompt());
-		if (state.config.voiceFeaturesOnly) {
+		if (!state.adapterEnabled || state.config.voiceFeaturesOnly) {
 			clearApplyPatchRenderState();
 			ui.clearBackgroundWidget();
 			syncAdapter(pi, ctx, state);
@@ -178,7 +183,7 @@ export function registerCodexEvents(
 		state.weeklyUsageLeft = undefined;
 		state.promptSkills = extractPiPromptSkills(ctx.getSystemPrompt());
 		proxyProvider.applyConfig(state.config, ctx.modelRegistry);
-		if (state.config.voiceFeaturesOnly) {
+		if (!state.adapterEnabled || state.config.voiceFeaturesOnly) {
 			ui.clearBackgroundWidget();
 			syncAdapter(pi, ctx, state);
 			await runtime.configureDiagnostics(ctx);
@@ -192,7 +197,8 @@ export function registerCodexEvents(
 		);
 		await runtime.configureDiagnostics(ctx);
 		void ui.refreshUsageStatus(ctx);
-		prepareCodeModeHost(codeMode, ctx);
+		if (state.adapterEnabled && !state.config.voiceFeaturesOnly)
+			prepareCodeModeHost(codeMode, ctx);
 		if (!state.config.prompt.heavySystemPromptOverwrite)
 			void runtime.startPrewarm(ctx, codeMode.refreshPromptTools(ctx.getSystemPrompt(), ctx));
 	});
@@ -217,14 +223,20 @@ export function registerCodexEvents(
 		if (state.contextTree.handleSessionTree(event)) return;
 		if (previousMode === "notebook" || state.executionMode === "notebook") appendNotebookTreeEpoch(pi);
 		await codeMode.shutdownHost();
+		// Reconcile every session-local adapter surface against the newly selected branch.
+		state.adapterEnabled = readSessionAdapterEnabled(ctx);
+		codexProvider.applyEnabled(state.adapterEnabled);
 		proxyProvider.applyConfig(state.config, ctx.modelRegistry);
+		await runtime.configureDiagnostics(ctx);
+		ui.applyAdapterEnabled(ctx);
 		const plan = syncAdapter(pi, ctx, state);
 		state.contextWindows.ensureInitialized(
 			pi,
 			ctx,
 			plan.contextManagement,
 		);
-		prepareCodeModeHost(codeMode, ctx);
+		if (state.adapterEnabled && !state.config.voiceFeaturesOnly)
+			prepareCodeModeHost(codeMode, ctx);
 		if (previousMode === "notebook" || state.executionMode === "notebook") {
 			ctx.ui.notify("Notebook state reset after conversation-tree navigation", "info");
 		}
@@ -307,6 +319,7 @@ export function registerCodexEvents(
 		await runShutdownStep(failures, () => sessions.shutdown());
 		await runShutdownStep(failures, () => tools.shutdown());
 		await runShutdownStep(failures, () => proxyProvider.shutdown());
+		await runShutdownStep(failures, () => codexProvider.shutdown());
 		await runShutdownStep(failures, () => codeMode.shutdown());
 		state.developerMessages.clear();
 		state.contextWindows.reset();
@@ -335,7 +348,8 @@ export function registerCodexEvents(
 	pi.on("before_agent_start", async (event, ctx) => {
 		state.contextWindows.clearTurnNotes();
 		state.contextTree.handoff.preparing(event.prompt);
-		if (!state.config.voiceFeaturesOnly) await reserve.beforeTurn(ctx);
+		if (state.adapterEnabled && !state.config.voiceFeaturesOnly)
+			await reserve.beforeTurn(ctx);
 		runtime.autoReasoning.begin(ctx);
 		turnPrewarm = undefined;
 		const systemPrompt = event.systemPrompt;
@@ -384,7 +398,7 @@ export function registerCodexEvents(
 			|| state.contextTree.rolloverPending || state.contextKickoff.pending;
 		if (!continuingWork) runtime.autoReasoning.settle(ctx);
 		// Reserve must capture the user's restored level, never a temporary Astra override.
-		const quotaExhausted = !continuingWork && !state.config.voiceFeaturesOnly && await reserve.settled(ctx);
+		const quotaExhausted = !continuingWork && state.adapterEnabled && !state.config.voiceFeaturesOnly && await reserve.settled(ctx);
 		let rolled = false;
 		let continued = false;
 		try {
@@ -398,7 +412,8 @@ export function registerCodexEvents(
 			state.codexTurnState.reset();
 			runtime.voice.settleTurn();
 			runtime.lanVoice.agentSettled();
-			if (!state.config.voiceFeaturesOnly) void ui.refreshUsageStatus(ctx);
+			if (state.adapterEnabled && !state.config.voiceFeaturesOnly)
+				void ui.refreshUsageStatus(ctx);
 			rolled = await state.contextTree.settle(pi, ctx) || await state.contextKickoff.settlePostCompaction(pi, ctx);
 			if (rolled) runtime.resetTransportAfterCompaction(ctx.sessionManager.getSessionId());
 			state.contextTree.handoff.settled(ctx);

@@ -193,6 +193,34 @@ test("adds Pi-loaded package skills to the filesystem catalog", (t) => {
 	);
 });
 
+test("keeps filesystem skills when Pi loaded only a user-only extension skill", (t) => {
+	// Simulates `pi --no-skills` plus an extension injecting one flagged skill via
+	// resources_discover: the loaded list is non-empty but must not replace the scan.
+	const global = fixture();
+	const packaged = fixture();
+	t.after(() => global.cleanup());
+	t.after(() => packaged.cleanup());
+	global.add(
+		"agents-md",
+		"---\nname: agents-md\ndescription: Global guidance.\n---\nGlobal body\n",
+	);
+	packaged.add(
+		"injected",
+		"---\nname: injected\ndescription: Injected.\ndisable-model-invocation: true\n---\nBody\n",
+	);
+	const output = runSkills("list", global.root, undefined, [
+		{
+			name: "injected",
+			description: "Injected.",
+			filePath: resolve(packaged.root, "injected/SKILL.md"),
+			baseDir: resolve(packaged.root, "injected"),
+			disableModelInvocation: true,
+		},
+	]);
+	assert.match(output, /agents-md: Global guidance\./);
+	assert.doesNotMatch(output, /injected/);
+});
+
 test("keeps user-only skills out of the model catalog", (t) => {
 	const global = fixture();
 	const packaged = fixture();

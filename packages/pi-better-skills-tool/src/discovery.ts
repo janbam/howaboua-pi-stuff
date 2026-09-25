@@ -215,6 +215,12 @@ function catalogLoadedSkill(
 	return catalogSkill;
 }
 
+/**
+ * Build the model-visible catalog: filesystem skills (global, overridden by session),
+ * overlaid with skills Pi loaded itself (packages, extensions, native discovery).
+ * Loaded skills win name collisions because Pi already resolved their precedence;
+ * a loaded skill with `disable-model-invocation` hides that name entirely.
+ */
 export function discoverVisibleSkills(
 	globalRoot = defaultSkillsDir(),
 	sessionRoot: string | undefined = globalRoot === defaultSkillsDir()
@@ -222,14 +228,8 @@ export function discoverVisibleSkills(
 		: undefined,
 	loadedSkills: readonly LoadedSkill[] = [],
 ): CatalogSkill[] {
-	if (loadedSkills.length > 0) {
-		return sortSkills(
-			loadedSkills
-				.filter((skill) => !skill.disableModelInvocation)
-				.map((skill) => catalogLoadedSkill(skill, globalRoot, sessionRoot)),
-		);
-	}
-
+	// Always scan the filesystem: loaded skills may be only a partial set (e.g. under
+	// --no-skills, where extensions can still inject a few), so they must never replace it.
 	const globalCatalog = discoverDirectoryCatalog(globalRoot);
 	const byName = new Map(
 		globalCatalog.skills.map((skill) => [skill.name, skill]),
@@ -241,6 +241,15 @@ export function discoverVisibleSkills(
 		for (const skill of sessionCatalog.skills) {
 			byName.set(skill.name, { ...skill, category: "session" });
 		}
+	}
+
+	// Overlay Pi-loaded skills; user-only ones remove the name rather than leak a shadowed copy.
+	for (const skill of loadedSkills) {
+		if (skill.disableModelInvocation) {
+			byName.delete(skill.name);
+			continue;
+		}
+		byName.set(skill.name, catalogLoadedSkill(skill, globalRoot, sessionRoot));
 	}
 	return sortSkills([...byName.values()]);
 }

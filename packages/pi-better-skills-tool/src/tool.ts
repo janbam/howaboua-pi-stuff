@@ -1,4 +1,5 @@
 import { defineTool } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import type { Static } from "typebox";
 import { Type } from "typebox";
 import {
@@ -50,6 +51,16 @@ export function createSkillsTool(options: SkillsToolOptions = {}) {
 				content: [{ type: "text", text: output }],
 				details: {},
 			};
+		},
+		// Show the full command untruncated; Pi's fallback renders only the tool name.
+		// Args may still be streaming, so tolerate a missing command.
+		renderCall(args, theme) {
+			const command = typeof args?.command === "string" ? args.command : "";
+			return new Text(
+				`${theme.fg("toolTitle", theme.bold("skills"))} ${theme.fg("accent", command)}`,
+				0,
+				0,
+			);
 		},
 	});
 }

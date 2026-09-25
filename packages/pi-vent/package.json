@@ -1,6 +1,6 @@
 {
 	"name": "@howaboua/pi-vent",
-	"version": "0.2.10",
+	"version": "0.2.11",
 	"description": "Pi extension for centrally logging repeated workflow friction by project.",
 	"type": "module",
 	"license": "MIT",

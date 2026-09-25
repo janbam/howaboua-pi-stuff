@@ -1,5 +1,13 @@
 # @howaboua/pi-extensions
 
+## 0.0.79
+
+- Include bundled package updates:
+
+  - @howaboua/pi-better-skills-tool: Fixed `skills list` returning nothing under `--no-skills` when an extension injected a user-only skill: skills Pi loaded now overlay the filesystem catalog instead of replacing it.
+  - @howaboua/pi-better-skills-tool: The `skills` tool call line in the TUI now shows the full command instead of only the tool name.
+  - @howaboua/pi-vent: Store project vent logs under ~/.pi/agent/vent and migrate repo-local logs without losing existing central history.
+
 ## 0.0.78
 
 - Include bundled package updates:

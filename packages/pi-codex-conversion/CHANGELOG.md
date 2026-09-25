@@ -1,5 +1,26 @@
 # Changelog
 
+## 3.0.38
+
+- Add `CODEX_APPEND_SYSTEM.md` as the final section of active converted system prompts, with a General-menu toggle to disable it.
+
+- Keep the full adapter on Codex and Responses-compatible Additional providers while giving listed providers on other APIs enabled standalone tools in the new mixed provider scope.
+
+- Added a session-scoped **Adapter enabled** switch and complete `apply_patch` failure output.
+
+  - Added **Adapter enabled** to `/codex` General settings. Off restores Pi's stock prompt, requests, tools and compaction for the current session only, including removal of standalone extra tools; voice and `/codex` stay available. Resuming the session restores the choice.
+  - `apply_patch` failures now show the exact error the model received and the complete rejected patch, even while the row is collapsed.
+
+- Fixed the `Handler removed the leading system message` error on Pi 0.87: reasoning updates recorded before the first prompt no longer push the system prompt off the head of the request.
+
+- pi-codex-conversion: set a shortcut binding to an empty string to disable that shortcut instead of falling back to its default
+
+- Suppress cancelled Code Mode host downloads while switching to Notebook mode.
+
+- pi-codex-conversion: status line uses compact labels: "Codex" without "adapter", no verbosity level, no compact v2 indicator, and no "left" suffix on usage
+
+- pi-codex-conversion: status-line usage cache refreshes every minute instead of five, keeping displayed quota closer to live state
+
 ## 3.0.37
 
 - GPT-6 Sol and Luna now share Astra's Codex support.

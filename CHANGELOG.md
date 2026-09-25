@@ -36,9 +36,11 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-auto-trees/CHANGELOG.md)
 
-### @howaboua/pi-better-skills-tool — 0.0.4
+### @howaboua/pi-better-skills-tool — 0.0.5
 
-- The skills tool now reads mixed skills and unique cross-skill references in one call. Ambiguous reference names report their qualified choices.
+- Fixed `skills list` returning nothing under `--no-skills` when an extension injected a user-only skill: skills Pi loaded now overlay the filesystem catalog instead of replacing it.
+
+- The `skills` tool call line in the TUI now shows the full command instead of only the tool name.
 
 [Full changelog](./packages/pi-better-skills-tool/CHANGELOG.md)
 
@@ -65,15 +67,26 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-cache-hit-predictor/CHANGELOG.md)
 
-### @howaboua/pi-codex-conversion — 3.0.37
+### @howaboua/pi-codex-conversion — 3.0.38
 
-- GPT-6 Sol and Luna now share Astra's Codex support.
+- Add `CODEX_APPEND_SYSTEM.md` as the final section of active converted system prompts, with a General-menu toggle to disable it.
 
-  - Removed `/terra`; use `/luna` instead.
-  - Added Responses Lite, non-destructive reasoning changes and terse context guidance for GPT-6 Sol and Luna.
-  - Image descriptions now use GPT-6 Luna directly instead of preferring older mini models.
-  - Cost estimates now use published GPT-6 Sol and Luna rates, including cache writes and long-context pricing.
-  - Agent, review, exploration, web search, voice summary and image-description defaults now use GPT-6; Luna replaces Terra defaults. GPT Switcher retains Luna's 472K context limit, while Codex Conversion defaults all three GPT-6 models to 272K.
+- Keep the full adapter on Codex and Responses-compatible Additional providers while giving listed providers on other APIs enabled standalone tools in the new mixed provider scope.
+
+- Added a session-scoped **Adapter enabled** switch and complete `apply_patch` failure output.
+
+  - Added **Adapter enabled** to `/codex` General settings. Off restores Pi's stock prompt, requests, tools and compaction for the current session only, including removal of standalone extra tools; voice and `/codex` stay available. Resuming the session restores the choice.
+  - `apply_patch` failures now show the exact error the model received and the complete rejected patch, even while the row is collapsed.
+
+- Fixed the `Handler removed the leading system message` error on Pi 0.87: reasoning updates recorded before the first prompt no longer push the system prompt off the head of the request.
+
+- pi-codex-conversion: set a shortcut binding to an empty string to disable that shortcut instead of falling back to its default
+
+- Suppress cancelled Code Mode host downloads while switching to Notebook mode.
+
+- pi-codex-conversion: status line uses compact labels: "Codex" without "adapter", no verbosity level, no compact v2 indicator, and no "left" suffix on usage
+
+- pi-codex-conversion: status-line usage cache refreshes every minute instead of five, keeping displayed quota closer to live state
 
 [Full changelog](./packages/pi-codex-conversion/CHANGELOG.md)
 
@@ -124,16 +137,13 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-explore-subagents/CHANGELOG.md)
 
-### @howaboua/pi-extensions — 0.0.78
+### @howaboua/pi-extensions — 0.0.79
 
 - Include bundled package updates:
 
-  - @howaboua/pi-auto-trees: GPT-6 Sol and Luna now share Astra's Codex support. - Removed `/terra`; use `/luna` instead. - Added Responses Lite, non-destructive reasoning changes and terse context guidance for GPT-6 Sol and Luna. - Image descriptions now use GPT-6 Luna directly instead of preferring older mini models. - Cost estimates now use published GPT-6 Sol and Luna rates, including cache writes and long-context pricing. - Agent, review, exploration, web search, voice summary and image-description defaults now use GPT-6; Luna replaces Terra defaults. GPT Switcher retains Luna's 472K context limit, while Codex Conversion defaults all three GPT-6 models to 272K.
-  - @howaboua/pi-explore-subagents: GPT-6 Sol and Luna now share Astra's Codex support. - Removed `/terra`; use `/luna` instead. - Added Responses Lite, non-destructive reasoning changes and terse context guidance for GPT-6 Sol and Luna. - Image descriptions now use GPT-6 Luna directly instead of preferring older mini models. - Cost estimates now use published GPT-6 Sol and Luna rates, including cache writes and long-context pricing. - Agent, review, exploration, web search, voice summary and image-description defaults now use GPT-6; Luna replaces Terra defaults. GPT Switcher retains Luna's 472K context limit, while Codex Conversion defaults all three GPT-6 models to 272K.
-  - @howaboua/pi-gpt-switcher: GPT-6 Sol and Luna now share Astra's Codex support. - Removed `/terra`; use `/luna` instead. - Added Responses Lite, non-destructive reasoning changes and terse context guidance for GPT-6 Sol and Luna. - Image descriptions now use GPT-6 Luna directly instead of preferring older mini models. - Cost estimates now use published GPT-6 Sol and Luna rates, including cache writes and long-context pricing. - Agent, review, exploration, web search, voice summary and image-description defaults now use GPT-6; Luna replaces Terra defaults. GPT Switcher retains Luna's 472K context limit, while Codex Conversion defaults all three GPT-6 models to 272K.
-  - @howaboua/pi-shepherdr: GPT-6 Sol and Luna now share Astra's Codex support. - Removed `/terra`; use `/luna` instead. - Added Responses Lite, non-destructive reasoning changes and terse context guidance for GPT-6 Sol and Luna. - Image descriptions now use GPT-6 Luna directly instead of preferring older mini models. - Cost estimates now use published GPT-6 Sol and Luna rates, including cache writes and long-context pricing. - Agent, review, exploration, web search, voice summary and image-description defaults now use GPT-6; Luna replaces Terra defaults. GPT Switcher retains Luna's 472K context limit, while Codex Conversion defaults all three GPT-6 models to 272K.
-  - @howaboua/pi-smart-btw: GPT-6 Sol and Luna now share Astra's Codex support. - Removed `/terra`; use `/luna` instead. - Added Responses Lite, non-destructive reasoning changes and terse context guidance for GPT-6 Sol and Luna. - Image descriptions now use GPT-6 Luna directly instead of preferring older mini models. - Cost estimates now use published GPT-6 Sol and Luna rates, including cache writes and long-context pricing. - Agent, review, exploration, web search, voice summary and image-description defaults now use GPT-6; Luna replaces Terra defaults. GPT Switcher retains Luna's 472K context limit, while Codex Conversion defaults all three GPT-6 models to 272K.
-  - @howaboua/pi-subagent-review: GPT-6 Sol and Luna now share Astra's Codex support. - Removed `/terra`; use `/luna` instead. - Added Responses Lite, non-destructive reasoning changes and terse context guidance for GPT-6 Sol and Luna. - Image descriptions now use GPT-6 Luna directly instead of preferring older mini models. - Cost estimates now use published GPT-6 Sol and Luna rates, including cache writes and long-context pricing. - Agent, review, exploration, web search, voice summary and image-description defaults now use GPT-6; Luna replaces Terra defaults. GPT Switcher retains Luna's 472K context limit, while Codex Conversion defaults all three GPT-6 models to 272K.
+  - @howaboua/pi-better-skills-tool: Fixed `skills list` returning nothing under `--no-skills` when an extension injected a user-only skill: skills Pi loaded now overlay the filesystem catalog instead of replacing it.
+  - @howaboua/pi-better-skills-tool: The `skills` tool call line in the TUI now shows the full command instead of only the tool name.
+  - @howaboua/pi-vent: Store project vent logs under ~/.pi/agent/vent and migrate repo-local logs without losing existing central history.
 
 [Full changelog](./packages/pi-extensions/CHANGELOG.md)
 
@@ -254,16 +264,13 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-smart-btw/CHANGELOG.md)
 
-### @howaboua/pi-stuff — 0.0.86
+### @howaboua/pi-stuff — 0.0.87
 
 - Include bundled package updates:
 
-  - @howaboua/pi-auto-trees: GPT-6 Sol and Luna now share Astra's Codex support. - Removed `/terra`; use `/luna` instead. - Added Responses Lite, non-destructive reasoning changes and terse context guidance for GPT-6 Sol and Luna. - Image descriptions now use GPT-6 Luna directly instead of preferring older mini models. - Cost estimates now use published GPT-6 Sol and Luna rates, including cache writes and long-context pricing. - Agent, review, exploration, web search, voice summary and image-description defaults now use GPT-6; Luna replaces Terra defaults. GPT Switcher retains Luna's 472K context limit, while Codex Conversion defaults all three GPT-6 models to 272K.
-  - @howaboua/pi-explore-subagents: GPT-6 Sol and Luna now share Astra's Codex support. - Removed `/terra`; use `/luna` instead. - Added Responses Lite, non-destructive reasoning changes and terse context guidance for GPT-6 Sol and Luna. - Image descriptions now use GPT-6 Luna directly instead of preferring older mini models. - Cost estimates now use published GPT-6 Sol and Luna rates, including cache writes and long-context pricing. - Agent, review, exploration, web search, voice summary and image-description defaults now use GPT-6; Luna replaces Terra defaults. GPT Switcher retains Luna's 472K context limit, while Codex Conversion defaults all three GPT-6 models to 272K.
-  - @howaboua/pi-gpt-switcher: GPT-6 Sol and Luna now share Astra's Codex support. - Removed `/terra`; use `/luna` instead. - Added Responses Lite, non-destructive reasoning changes and terse context guidance for GPT-6 Sol and Luna. - Image descriptions now use GPT-6 Luna directly instead of preferring older mini models. - Cost estimates now use published GPT-6 Sol and Luna rates, including cache writes and long-context pricing. - Agent, review, exploration, web search, voice summary and image-description defaults now use GPT-6; Luna replaces Terra defaults. GPT Switcher retains Luna's 472K context limit, while Codex Conversion defaults all three GPT-6 models to 272K.
-  - @howaboua/pi-shepherdr: GPT-6 Sol and Luna now share Astra's Codex support. - Removed `/terra`; use `/luna` instead. - Added Responses Lite, non-destructive reasoning changes and terse context guidance for GPT-6 Sol and Luna. - Image descriptions now use GPT-6 Luna directly instead of preferring older mini models. - Cost estimates now use published GPT-6 Sol and Luna rates, including cache writes and long-context pricing. - Agent, review, exploration, web search, voice summary and image-description defaults now use GPT-6; Luna replaces Terra defaults. GPT Switcher retains Luna's 472K context limit, while Codex Conversion defaults all three GPT-6 models to 272K.
-  - @howaboua/pi-smart-btw: GPT-6 Sol and Luna now share Astra's Codex support. - Removed `/terra`; use `/luna` instead. - Added Responses Lite, non-destructive reasoning changes and terse context guidance for GPT-6 Sol and Luna. - Image descriptions now use GPT-6 Luna directly instead of preferring older mini models. - Cost estimates now use published GPT-6 Sol and Luna rates, including cache writes and long-context pricing. - Agent, review, exploration, web search, voice summary and image-description defaults now use GPT-6; Luna replaces Terra defaults. GPT Switcher retains Luna's 472K context limit, while Codex Conversion defaults all three GPT-6 models to 272K.
-  - @howaboua/pi-subagent-review: GPT-6 Sol and Luna now share Astra's Codex support. - Removed `/terra`; use `/luna` instead. - Added Responses Lite, non-destructive reasoning changes and terse context guidance for GPT-6 Sol and Luna. - Image descriptions now use GPT-6 Luna directly instead of preferring older mini models. - Cost estimates now use published GPT-6 Sol and Luna rates, including cache writes and long-context pricing. - Agent, review, exploration, web search, voice summary and image-description defaults now use GPT-6; Luna replaces Terra defaults. GPT Switcher retains Luna's 472K context limit, while Codex Conversion defaults all three GPT-6 models to 272K.
+  - @howaboua/pi-better-skills-tool: Fixed `skills list` returning nothing under `--no-skills` when an extension injected a user-only skill: skills Pi loaded now overlay the filesystem catalog instead of replacing it.
+  - @howaboua/pi-better-skills-tool: The `skills` tool call line in the TUI now shows the full command instead of only the tool name.
+  - @howaboua/pi-vent: Store project vent logs under ~/.pi/agent/vent and migrate repo-local logs without losing existing central history.
 
 [Full changelog](./packages/pi-stuff/CHANGELOG.md)
 
@@ -293,12 +300,9 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-unicode-charts/CHANGELOG.md)
 
-### @howaboua/pi-vent — 0.2.10
+### @howaboua/pi-vent — 0.2.11
 
-### Changes
-
-- [#106](https://github.com/IgorWarzocha/howaboua-pi-stuff/pull/106) [`c423031`](https://github.com/IgorWarzocha/howaboua-pi-stuff/commit/c4230312f24db0e49c95eafff959109d74017c3d) Thanks [@IgorWarzocha](https://github.com/IgorWarzocha)!:
-  - Rewrite package documentation around current installation, configuration, usage, and behavior.
+- Store project vent logs under ~/.pi/agent/vent and migrate repo-local logs without losing existing central history.
 
 [Full changelog](./packages/pi-vent/CHANGELOG.md)
 

@@ -197,7 +197,7 @@ test("adapter activation requires registered tools and follows scope independent
 	);
 	conflict.unregister();
 
-	// The session master switch must override standalone extras and restore the exact prior tool surface.
+	// Standalone apply_patch replaces Pi's edit and write; the session master switch must restore the exact prior tool surface.
 	const sessionTools = ["read", "bash", "edit", "write"];
 	const sessionHarness = createToolHarness(sessionTools);
 	const sessionState = createAdapterState({
@@ -211,7 +211,7 @@ test("adapter activation requires registered tools and follows scope independent
 		id: "claude-sonnet",
 	});
 	assert.equal(syncAdapter(sessionHarness as never, sessionContext as never, sessionState).kind, "extras");
-	assert.deepEqual(sessionHarness.activeTools(), [...sessionTools, "apply_patch"]);
+	assert.deepEqual(sessionHarness.activeTools(), ["read", "bash", "apply_patch"]);
 	sessionState.adapterEnabled = false;
 	assert.equal(syncAdapter(sessionHarness as never, sessionContext as never, sessionState).kind, "inactive");
 	assert.deepEqual(sessionHarness.activeTools(), sessionTools);

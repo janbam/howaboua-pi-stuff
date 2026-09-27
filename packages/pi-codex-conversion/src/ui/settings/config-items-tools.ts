@@ -40,7 +40,7 @@ export function buildToolsSettings(
 				...current,
 				tools: { ...current.tools, applyPatchOnly: enabled },
 			}),
-			"Expose apply_patch without the full adapter.",
+			"Expose apply_patch without the full adapter, replacing Pi's edit and write tools.",
 		),
 		toggle(
 			"viewImageOnly",

@@ -43,6 +43,8 @@ export const DEFAULT_TOOL_NAMES = ["read", "bash", "edit", "write"];
 
 export const SHELL_ADAPTER_TOOL_NAMES = ["exec_command", "write_stdin"];
 export const APPLY_PATCH_TOOL_NAME = "apply_patch";
+/** Pi builtins that standalone apply_patch fully covers and therefore hides while exposed. */
+export const APPLY_PATCH_REPLACED_TOOL_NAMES = ["edit", "write"];
 export const CORE_ADAPTER_TOOL_NAMES = [...SHELL_ADAPTER_TOOL_NAMES, APPLY_PATCH_TOOL_NAME];
 export const CODE_MODE_TOOL_NAMES = ["exec", "wait"];
 export const NOTEBOOK_MODE_TOOL_NAMES = [...CODE_MODE_TOOL_NAMES, "notebook"];

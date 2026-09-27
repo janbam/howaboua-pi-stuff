@@ -52,7 +52,7 @@ Install [`pi-codex-web-run`](../pi-codex-web-run) or [`pi-codex-imagegen`](../pi
 | --- | --- |
 | **Structured adapter** | Replaces Pi's default file and shell tools with the Codex-shaped set. This is the default for Codex-like GPT models and configured providers. |
 | **Code Mode** | Exposes `exec` and `wait`; shell, patch, image and extension tools compose locally inside `exec`. |
-| **Extra tools only** | Adds individually selected `apply_patch` or `view_image` without replacing the active model's normal setup. |
+| **Extra tools only** | Adds individually selected `apply_patch` or `view_image` without replacing the active model's normal prompt. Standalone `apply_patch` replaces Pi's `edit` and `write`; `read` and `bash` stay. |
 | **Voice only** | Leaves the active model's prompt, tools, requests, compaction and adapter widgets untouched while retaining voice and dictation. |
 
 Structured mode has no separate text `read`, `edit` or `write` tool. The model inspects files through the shell and edits with `apply_patch`.

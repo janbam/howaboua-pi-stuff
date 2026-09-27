@@ -1,9 +1,9 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getCodeModeExtensionToolSnapshot } from "../../code-mode-extension-tools.ts";
 import { renderCodexStatus } from "../../ui/status.ts";
-import { ALL_CODEX_ADAPTER_TOOL_NAMES, isAdapterRuntime, resolveCodexRuntimePlanForState, type CodexRuntimePlan } from "./runtime-plan.ts";
+import { ALL_CODEX_ADAPTER_TOOL_NAMES, isAdapterRuntime, resolveCodexRuntimePlanForState, type CodexRuntimePlan, type ExtrasRuntimePlan } from "./runtime-plan.ts";
 import type { AdapterState } from "./state.ts";
-import { DEFAULT_TOOL_NAMES, STATUS_KEY, buildExtraToolsOnlyStatusText } from "./tool-set.ts";
+import { APPLY_PATCH_REPLACED_TOOL_NAMES, APPLY_PATCH_TOOL_NAME, DEFAULT_TOOL_NAMES, STATUS_KEY, buildExtraToolsOnlyStatusText } from "./tool-set.ts";
 
 export function syncAdapter(pi: ExtensionAPI, ctx: ExtensionContext, state: AdapterState): CodexRuntimePlan {
 	state.availableToolNames = pi.getAllTools().map((tool) => tool.name);
@@ -27,7 +27,7 @@ function enableExtraTools(
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
 	state: AdapterState,
-	plan: CodexRuntimePlan,
+	plan: ExtrasRuntimePlan,
 	extensionTools: ExtensionToolSnapshot,
 ): void {
 	const changed = hasRuntimePlanChanged(state, plan);
@@ -44,13 +44,16 @@ function enableExtraTools(
 		extensionTools,
 		false,
 	);
+	// apply_patch supersedes Pi's edit and write; bash and read stay since extras bring no shell or read replacement.
+	// previousToolNames keeps the hidden builtins, so disabling or dropping apply_patch restores them.
+	const replaced = plan.toolNames.includes(APPLY_PATCH_TOOL_NAME) ? APPLY_PATCH_REPLACED_TOOL_NAMES : [];
 	const tools = changed
 		? mergeToolNames(
 			restoreTools(
 				state.previousToolNames ?? DEFAULT_TOOL_NAMES,
 				projectedTools,
 				owned,
-			),
+			).filter((name) => !replaced.includes(name)),
 			plan.toolNames,
 		)
 		: projectedTools;

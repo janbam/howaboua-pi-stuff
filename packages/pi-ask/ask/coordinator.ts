@@ -14,6 +14,8 @@ export interface AskCoordinatorOptions {
 	askInComposer?: AskInComposer;
 	deliverSteer?: (message: string) => void;
 	onPendingChange?: (update: PendingAskUpdate) => void;
+	/** Called when a panel actually appears (after queued panels ahead of it), for both wait and steer asks. */
+	onPresent?: (ctx: ExtensionContext, prompts: AskPrompt[]) => void;
 }
 
 interface PresentAskOptions {
@@ -34,6 +36,7 @@ export function createAskCoordinator({
 	askInComposer,
 	deliverSteer,
 	onPendingChange,
+	onPresent,
 }: AskCoordinatorOptions = {}) {
 	let generation = 0;
 	let sessionAbort = new AbortController();
@@ -54,6 +57,7 @@ export function createAskCoordinator({
 			if (signal?.aborted) return null;
 			try {
 				onActiveChange?.(true);
+				onPresent?.(ctx, prompts);
 				return askInComposer
 					? await askInComposer(prompts, signal)
 					: ctx.mode === "tui"

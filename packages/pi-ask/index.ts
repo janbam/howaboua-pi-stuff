@@ -10,6 +10,7 @@ import {
 	type TryCodexDeveloperMessage,
 } from "./ask/delivery.js";
 import { isSteeringAskInput } from "./ask/normalize.js";
+import { runNotifyScript } from "./ask/notify.js";
 import { PENDING_ASK_ENTRY_TYPE, readPendingAsks } from "./ask/pending.js";
 import { createAskRuntime, createAskTool } from "./ask/tool.js";
 import registerPackageChangelog from "./changelog.js";
@@ -62,6 +63,7 @@ export default async function humanInTheLoop(pi: ExtensionAPI): Promise<void> {
 		onPendingChange: (update) => {
 			pi.appendEntry(PENDING_ASK_ENTRY_TYPE, update);
 		},
+		onPresent: (ctx, prompts) => runNotifyScript(ctx, prompts[0]?.title ?? ""),
 	});
 	const ask = askRuntime.tool;
 	const restorePending = (ctx: ExtensionContext) => {

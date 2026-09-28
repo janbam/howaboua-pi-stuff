@@ -33,11 +33,13 @@ export function createAskRuntime({
 	deliverSteer,
 	onBlockedChange,
 	onPendingChange,
+	onPresent,
 }: AskToolOptions = {}) {
 	const coordinator = createAskCoordinator({
 		...(askInComposer ? { askInComposer } : {}),
 		...(deliverSteer ? { deliverSteer } : {}),
 		...(onPendingChange ? { onPendingChange } : {}),
+		...(onPresent ? { onPresent } : {}),
 	});
 
 	const tool = defineTool({

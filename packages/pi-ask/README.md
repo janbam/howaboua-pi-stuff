@@ -28,12 +28,22 @@ When Pi runs inside Herdr with its Pi integration installed, only a waiting ask 
 
 `Other/rephrase` is always available. Submit it blank when the prompt needs to be rephrased, split, or followed up instead of answered as written.
 
+## Notifications
+
+Set `notifyScript` in `pi-ask.json` to run an executable whenever an ask panel appears, for waiting and steering asks alike. It receives the first prompt title as its only argument. A leading `~/` expands to your home directory. Failures show as a warning and never block the ask.
+
+```json
+{
+  "notifyScript": "~/.local/bin/notify-user"
+}
+```
+
 ## Prompt commands
 
 - `/fold [report]` turns a long report or structured list into one interactive disposition prompt per item.
 - `/grill [idea]` investigates an idea, asks successive decisions, and keeps the agreed plan in `docs/`.
 
-Both templates are enabled by default. The extension creates `ask.json` under Pi's agent directory on first load. That is `~/.pi/agent/ask.json` by default. `PI_CODING_AGENT_DIR` changes the agent directory.
+Both templates are enabled by default. The extension creates `pi-ask.json` under Pi's agent directory on first load. That is `~/.pi/agent/pi-ask.json` by default. `PI_CODING_AGENT_DIR` changes the agent directory. An existing `ask.json` from earlier versions is renamed to `pi-ask.json` automatically.
 
 ```json
 {

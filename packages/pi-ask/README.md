@@ -30,7 +30,7 @@ When Pi runs inside Herdr with its Pi integration installed, only a waiting ask 
 
 ## Notifications
 
-Set `notifyScript` in `pi-ask.json` to run an executable whenever an ask panel appears, for waiting and steering asks alike. It receives the first prompt title as its only argument. A leading `~/` expands to your home directory. Failures show as a warning and never block the ask.
+Set `notifyScript` in `pi-ask.json` to run an executable whenever an ask panel appears, for waiting and steering asks alike. It receives the first prompt title as its only argument. A leading `~/` expands to your home directory. The script runs in the background without a shell and never blocks the ask; if it cannot be started, Pi shows a warning.
 
 ```json
 {

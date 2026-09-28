@@ -21,7 +21,11 @@ export function runNotifyScript(ctx: ExtensionContext, question: string): void {
 		);
 	// Detach so a slow or lingering notifier neither holds Pi open nor dies with its signals.
 	try {
-		const child = spawn(path, [question], { detached: true, stdio: "ignore" });
+		const child = spawn(path, [question], {
+			detached: true,
+			stdio: "ignore",
+			windowsHide: true,
+		});
 		child.on("error", warn);
 		child.unref();
 	} catch (error) {

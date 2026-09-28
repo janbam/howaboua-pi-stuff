@@ -50,13 +50,13 @@ Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist ups
 
 ### Loaded skills overlay the filesystem catalog
 
-- PR: #20
+- Commit: `96d7696` (PR #20)
 - Behavior: the filesystem catalog is always scanned and Pi-loaded skills are overlaid on it (winning name collisions) instead of replacing it; a partial loaded set (e.g. under `--no-skills`) no longer hides filesystem skills. A loaded skill with `disable-model-invocation` removes that name.
 - Files: `packages/pi-better-skills-tool/src/discovery.ts`
 
 ### Full command in the skills call line
 
-- PR: #21
+- Commit: `7f94a9d` (PR #21)
 - Behavior: `renderCall` prints `skills <command>` untruncated; Pi's default renderer showed only the tool name.
 - Files: `packages/pi-better-skills-tool/src/tool.ts`
 
@@ -91,7 +91,7 @@ Paths below are relative to `packages/pi-codex-conversion/`.
 
 ### Standalone `apply_patch` replaces `edit` and `write`
 
-- Commit: `8710da4` (`FORK_MOD`)
+- Commit: `8710da4`
 - Behavior: when standalone `apply_patch` is exposed, Pi's builtin `edit` and `write` are hidden; disabling the adapter or the tool restores them.
 - Files: `src/adapter/activation/{activation,tool-set}.ts`, `src/ui/settings/config-items-tools.ts`, `README.md`
 
@@ -103,14 +103,14 @@ Paths below are relative to `packages/pi-codex-conversion/`.
 
 ### Session adapter switch and `apply_patch` failure diagnostics
 
-- PR: #15, plus `a563eca` (changeset restore); `FORK_MOD` in tests
+- Commits: `352af15` (PR #15), `a563eca` (changeset restore); `FORK_MOD` in tests
 - Behavior: a session-local "Adapter enabled" toggle at the top of `/codex` General settings. When off, all adapter overlays and tools are suppressed and the adapter's Codex provider is unregistered so stock Pi takes over; the setting is stored as a session entry and restored on branch navigation. Failed `apply_patch` results render the exact model-visible error and the full rejected patch, also in resumed sessions.
 - Fork-only files: `src/adapter/activation/session-state.ts`
 - Shared files: `src/adapter/activation/{runtime-plan,state}.ts`, `src/adapter/provider-request.ts`, `src/extension/{events,register,runtime,ui}.ts`, `src/providers/{code-mode-proxy-provider,openai-codex-custom-provider}.ts`, `src/tools/apply-patch/{render-state,tool}.ts`, `src/ui/settings/command.ts`, `README.md`
 
 ### Prompt message stays at the head of context
 
-- PR: #17
+- Commit: `ecd31db` (PR #17)
 - Behavior: the head system message is hoisted ahead of virtual Codex bookkeeping entries (e.g. the reasoning update at model selection), restoring Pi 0.87's invariant that the prompt leads the context.
 - Files: `src/adapter/developer-history.ts`
 - Upstream status: bug fix against Pi 0.87; worth proposing upstream.

@@ -112,5 +112,5 @@ Paths below are relative to `packages/pi-codex-conversion/`.
 
 - Commit: `ecd31db` (PR #17)
 - Behavior: the head system message is hoisted ahead of virtual Codex bookkeeping entries (e.g. the reasoning update at model selection), restoring Pi 0.87's invariant that the prompt leads the context.
-- Files: `src/adapter/developer-history.ts`
-- Upstream status: bug fix against Pi 0.87; worth proposing upstream.
+- Files: `src/adapter/developer-history.ts` (`leadWithSystemMessage`); `FORK_MOD` assertion in `tests/cache-continuation.test.ts`
+- Upstream status: upstream #426 fixed the path where Pi passes `messages` (pending bookkeeping inserted after index 0). The fork hoist still covers reconstruction without `messages` (compaction serializer, `compaction.ts`); both coexist. Worth proposing the remainder upstream.

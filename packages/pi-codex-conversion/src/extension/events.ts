@@ -220,7 +220,6 @@ export function registerCodexEvents(
 			pi,
 			ctx,
 			plan.contextManagement,
-			event.newLeafId,
 		);
 		if (state.adapterEnabled && !state.config.voiceFeaturesOnly)
 			prepareCodeModeHost(codeMode, ctx);
@@ -266,7 +265,7 @@ export function registerCodexEvents(
 			}
 		})) return;
 		if (state.contextTree.handoff.active) return;
-		const reminder = state.contextWindows.recordBudget(ctx, plan.contextManagement);
+		const reminder = state.contextWindows.recordBudget(ctx, plan.contextManagement ? plan.contextManagementMode : "off");
 		if (reminder) return { entries: [...event.entries, reminder], continue: true };
 	});
 	pi.on("message_update", async (event) => {
@@ -327,7 +326,6 @@ export function registerCodexEvents(
 			runtime.voice.piInput(event.text, event.streamingBehavior);
 	});
 	pi.on("before_agent_start", async (event, ctx) => {
-		state.contextWindows.clearTurnNotes();
 		state.contextTree.handoff.preparing(event.prompt);
 		if (state.adapterEnabled && !state.config.voiceFeaturesOnly)
 			await reserve.beforeTurn(ctx);
@@ -371,7 +369,6 @@ export function registerCodexEvents(
 		} };
 	});
 	pi.on("agent_start", async (_event, ctx) => {
-		state.contextWindows.beginTurn(ctx);
 		updateCodexPreparedIdleKickoff(pi, "agent_start");
 		state.contextTree.handoff.started(ctx);
 		runtime.autoReasoning.begin(ctx);
@@ -389,7 +386,6 @@ export function registerCodexEvents(
 	});
 	pi.on("agent_settled", async (_event, ctx) => {
 		runtime.finishTurn();
-		state.contextWindows.settleTurn(ctx);
 		updateCodexPreparedIdleKickoff(pi, "agent_settled");
 		flushCodexReasoningUpdates(pi, ctx);
 		// Hybrid's asynchronous compact() aborts this run before its successor exists.

@@ -24,3 +24,4 @@ This repo publishes through Changesets; every merge to `main` feeds the version 
 - Keep the monorepo root and `pi-codex-conversion` development `typebox` pins exactly aligned with Pi's version. Update them together when Pi changes its pin so shared helpers such as `StringEnum` retain one portable type identity.
 - After behavior-preserving module splits, run `bun refactor:compare --base <pre-refactor> --entry <old path> --probe <ESM>`; the probe calls old and replacement modules with identical inputs, asserts normalized outputs, and expands until no reachable old-side paths remain unexplained. Coverage is traversal, not proof; retain probes only for durable independent contracts.
 - Do not bump aggregate package versions or add their changesets manually; CI runs `bun run changeset:aggregates`.
+- This is a fork. `FORK.md` lists fork-owned changes; add an entry in the same PR as any change upstream lacks, and consult it when merging `upstream/main`.

@@ -1,9 +1,12 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Box, Text, truncateToWidth } from "@earendil-works/pi-tui";
+import { getMarkdownTheme, keyHint, type ExtensionAPI, type ExtensionContext, type Theme } from "@earendil-works/pi-coding-agent";
+import { Box, Markdown, MouseRegion, Text, TruncatedText, truncateToWidth } from "@earendil-works/pi-tui";
 import type { CodexConversionConfig } from "../adapter/activation/config.ts";
 import { isAdapterRuntime, resolveCodexRuntimePlanForState } from "../adapter/activation/runtime-plan.ts";
+import { CODEX_TOOLKIT_UPDATE_TYPE, readToolkitUpdate } from "../adapter/code-mode/toolkit-updates.ts";
+import { CODEX_NOTEBOOK_STATUS_TYPE, readNotebookStatus } from "../adapter/notebook-status.ts";
 import { NATIVE_COMPACTION_DISPLAY_MESSAGE_TYPE, NATIVE_COMPACTION_DISPLAY_TEXT, type NativeCompactionDisplayEntry } from "../adapter/compaction/types.ts";
 import { fetchCodexUsageStatus } from "../codex-usage/client.ts";
+import { CODEX_DEVELOPER_MESSAGE_TYPE } from "../developer-messages.ts";
 import {
 	CODEX_CONTEXT_WINDOW_MESSAGE_TYPE,
 	type CodexContextManagementMessageDetails,
@@ -57,6 +60,22 @@ export function registerCodexUi(pi: ExtensionAPI, runtime: CodexExtensionRuntime
 	};
 
 	registerBackgroundBashWidgetShortcuts(pi, runtime.backgroundWidget, runtime.sessions, backgroundShellShortcuts, () => runtime.state.adapterEnabled && !runtime.state.config.voiceFeaturesOnly && runtime.state.config.ui.backgroundShellWidget);
+	const renderNotice = createNoticeRenderer();
+	pi.registerMessageRenderer<{ title?: unknown }>(CODEX_DEVELOPER_MESSAGE_TYPE, (message, { expanded, outputPad }, theme) =>
+		typeof message.content === "string" ? renderNotice(message,
+			typeof message.details?.title === "string" ? message.details.title : "Context update",
+			message.content, expanded, theme, outputPad) : undefined);
+	// Toolkit entries already feed model context through projection. Render that
+	// same stored content without sending another message or queuing a turn.
+	pi.registerEntryRenderer(CODEX_TOOLKIT_UPDATE_TYPE, (entry, { expanded }, theme) => {
+		const update = readToolkitUpdate(entry.data);
+		const title = `${update.id === update.rootId ? "Tools" : "Tools updated"} · ${update.tools.length}`;
+		return renderNotice(entry, title, update.content, expanded, theme);
+	});
+	pi.registerEntryRenderer(CODEX_NOTEBOOK_STATUS_TYPE, (entry, { expanded }, theme) => {
+		const status = readNotebookStatus(entry.data);
+		return renderNotice(entry, status.title, status.content, expanded, theme);
+	});
 	const renderNativeCompaction = (
 		content: string,
 		kind: NativeCompactionDisplayEntry["kind"],
@@ -160,5 +179,30 @@ export function registerCodexUi(pi: ExtensionAPI, runtime: CodexExtensionRuntime
 			if (!runtime.state.adapterEnabled || config.voiceFeaturesOnly || !config.ui.backgroundShellWidget) clearBackgroundWidget();
 			else renderBackgroundWidget();
 		},
+	};
+}
+
+function createNoticeRenderer() {
+	// Pi recreates renderer output on invalidation. Preserve clicks until the next global toggle.
+	const expansion = new WeakMap<object, { globalExpanded: boolean; expanded: boolean }>();
+	return (key: object, title: string, content: string, expanded: boolean, theme: Theme, outputPad = 1) => {
+		const previous = expansion.get(key);
+		const state = previous && previous.globalExpanded === expanded ? previous : { globalExpanded: expanded, expanded };
+		expansion.set(key, state);
+		const box = new Box(outputPad, 1, (text) => theme.bg("customMessageBg", text));
+		const update = () => {
+			box.clear();
+			box.addChild(state.expanded
+				? new Markdown(content, 0, 0, getMarkdownTheme(), { color: (text) => theme.fg("customMessageText", text) })
+				: new TruncatedText(theme.fg("customMessageLabel", title.replace(/\s+/g, " ").trim())
+					+ theme.fg("dim", ` (${keyHint("app.tools.expand", "to expand")})`), 0, 0));
+		};
+		update();
+		return new MouseRegion(box, (event) => {
+			if (event.type !== "click" || event.button !== "left") return undefined;
+			state.expanded = !state.expanded;
+			update();
+			return { handled: true };
+		});
 	};
 }

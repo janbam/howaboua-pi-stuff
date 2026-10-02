@@ -1,9 +1,9 @@
-import { randomUUID } from "node:crypto";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { readEffectiveCodexConversionConfig } from "../adapter/activation/config-store.ts";
 import { readSessionAdapterEnabled } from "../adapter/activation/session-state.ts";
 import { syncAdapter } from "../adapter/activation/activation.ts";
-import { isAdapterRuntime, resolveCodexRuntimePlanForState } from "../adapter/activation/runtime-plan.ts";
+import { isAdapterRuntime, isCodeModeRuntime, resolveCodexRuntimePlanForState } from "../adapter/activation/runtime-plan.ts";
 import { hasPortableNativeCompactionSummary, isNativeCompactionDetails, NATIVE_COMPACTION_DISPLAY_MESSAGE_TYPE, NATIVE_COMPACTION_DISPLAY_TEXT, NATIVE_COMPACTION_PORTABLE_DISPLAY_TEXT, NATIVE_COMPACTION_STRATEGY, type NativeCompactionDisplayEntry, type NativeCompactionUsage } from "../adapter/compaction/types.ts";
 import { findLatestCompactionEntry } from "../adapter/compaction/details-store.ts";
 import { handleCodexSessionBeforeCompact } from "../adapter/compaction/compaction.ts";
@@ -25,11 +25,15 @@ import { formatCompactionCacheDiagnostic } from "../adapter/compaction/diagnosti
 import type { CodexExtensionRuntime } from "./runtime.ts";
 import type { CodexToolRegistration } from "./tools.ts";
 import type { CodexUiController } from "./ui.ts";
-import { CODEX_DEVELOPER_MESSAGE_TYPE, registerCodexDeveloperMessageBroker, updateCodexPreparedIdleKickoff } from "../developer-messages.ts";
+import { registerCodexDeveloperMessageBroker, updateCodexPreparedIdleKickoff } from "../developer-messages.ts";
 import { isContextWindowCompactionDetails } from "../context-management/messages.ts";
+import { hasTreeArchives } from "../context-management/tree-archive.ts";
 import { flushCodexReasoningUpdates, recordCodexReasoningUpdate } from "../adapter/reasoning-updates.ts";
 import { createCodexReserveController } from "../codex-usage/reserve.ts";
+import { recordCodexProxyMessage } from "../codex-usage/ledger-store.ts";
 import { recordCurrentTimeReminder } from "../adapter/current-time-reminder.ts";
+import { recordCodeModeToolkit } from "../adapter/code-mode/toolkit-updates.ts";
+import { recordNotebookStatus } from "../adapter/notebook-status.ts";
 
 function formatCompactionUsage(usage: NativeCompactionUsage): string {
 	const ratio = usage.inputTokens > 0 ? `${((usage.cachedInputTokens / usage.inputTokens) * 100).toFixed(1)}%` : "0%";
@@ -84,8 +88,35 @@ export function registerCodexEvents(
 ): void {
 	const { state, tracker, sessions } = runtime;
 	const reserve = createCodexReserveController(pi);
+	const startManualNotesWindow = async (ctx: ExtensionContext): Promise<boolean> => {
+		const plan = resolveCodexRuntimePlanForState(ctx, state);
+		try {
+			const rolled = plan.contextManagementMode === "tree"
+				? state.contextTree.schedule(ctx, { triggerTurn: false }) && await state.contextTree.settle(pi, ctx)
+				: await state.contextKickoff.startWindow(pi, ctx, {
+					triggerTurn: false,
+					mode: plan.contextManagementMode,
+					trimPreviousWindow: true,
+				});
+			if (rolled) runtime.resetTransportAfterCompaction(ctx.sessionManager.getSessionId());
+			else if (plan.contextManagementMode !== "tree") ctx.ui.notify("Context rollover did not start", "warning");
+			return rolled;
+		} catch (error) {
+			ctx.ui.notify(`Context rollover failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+			return false;
+		}
+	};
 	let activeContext: ExtensionContext | undefined;
 	let pendingExtensionToolRefresh = false;
+	const refreshNotebookStatus = (
+		ctx: ExtensionContext,
+		messages?: readonly AgentMessage[],
+		selectedTools = pi.getActiveTools(),
+	): Promise<boolean> => {
+		if (resolveCodexRuntimePlanForState(ctx, state).kind !== "notebook"
+			|| !["exec", "wait", "notebook"].every((name) => selectedTools.includes(name))) return Promise.resolve(false);
+		return recordNotebookStatus(pi, ctx, state, messages ?? runtime.projectContextMessages(ctx), codeMode);
+	};
 	const unregisterDeveloperMessageBroker = registerCodexDeveloperMessageBroker(
 		pi,
 		() => Boolean(
@@ -149,12 +180,9 @@ export function registerCodexEvents(
 		tracker.clear();
 		clearApplyPatchRenderState();
 		ui.renderBackgroundWidget();
-		const plan = syncAdapter(pi, ctx, state);
-		state.contextWindows.ensureInitialized(
-			pi,
-			ctx,
-			plan.contextManagement,
-		);
+		syncAdapter(pi, ctx, state);
+		// A fresh worker may adopt its family before its first prepared turn.
+		state.contextWindows.restore(ctx.sessionManager.getBranch());
 		await runtime.configureDiagnostics(ctx);
 		void ui.refreshUsageStatus(ctx);
 		prepareCodeModeHost(codeMode, ctx);
@@ -233,13 +261,14 @@ export function registerCodexEvents(
 			runtime.voice.piUserMessage(event.message);
 		if (event.message.role !== "toolResult" && !isToolCallOnlyAssistantMessage(event.message)) tracker.resetExplorationGroup();
 	});
-	pi.on("message_end", async (event) => {
+	pi.on("message_end", async (event, ctx) => {
 		if (event.message.role === "assistant") {
 			runtime.voice.finishAgentMessage(
 				event.message,
 				state.config.voice.forwardReasoningSummaries,
 			);
 			runtime.lanVoice.assistantMessage(event.message);
+			await recordCodexProxyMessage(event.message, ctx.modelRegistry);
 		}
 	});
 	pi.on("turn_end", (event, ctx) => {
@@ -330,7 +359,8 @@ export function registerCodexEvents(
 		if (state.adapterEnabled && !state.config.voiceFeaturesOnly)
 			await reserve.beforeTurn(ctx);
 		runtime.autoReasoning.begin(ctx);
-		const plan = resolveCodexRuntimePlanForState(ctx, state);
+		const plan = syncAdapter(pi, ctx, state);
+		if (!state.contextWindows.currentIdentity()) state.contextWindows.ensureInitialized(pi, ctx, plan.contextManagement);
 		if (plan.kind !== "notebook") state.notebookStatusMessageId = undefined;
 		if (!isAdapterRuntime(plan)) {
 			state.preparedPrompt = undefined;
@@ -346,30 +376,11 @@ export function registerCodexEvents(
 			// Resolve the personal tail only inside active Codex prompt construction.
 			codexAppendSystemPrompt: state.config.prompt.appendSystemPromptFile ? readCodexAppendSystemPrompt() : undefined,
 		});
-		if (plan.kind !== "notebook" || !["exec", "wait", "notebook"].every((name) => event.systemPromptOptions.selectedTools.includes(name))) return;
-		// Count only persisted delivery, including snapshots archived by internal Tree rollover.
-		if (state.notebookStatusMessageId && ctx.sessionManager.getEntries().some((entry) =>
-			entry.type === "custom_message" && entry.customType === CODEX_DEVELOPER_MESSAGE_TYPE &&
-			(entry.details as { id?: unknown } | undefined)?.id === state.notebookStatusMessageId)) return;
-		let content: string;
-		let failed = false;
-		try {
-			content = (await codeMode.notebookStatus(ctx)).message;
-		} catch (error) {
-			if (ctx.signal?.aborted) throw error;
-			failed = true;
-			content = `Notebook startup status unavailable: ${error instanceof Error ? error.message : String(error)}\nUse notebook diagnostics to inspect the failure before relying on retained state`;
-		}
-		state.notebookStatusMessageId = randomUUID();
-		return { message: {
-			customType: CODEX_DEVELOPER_MESSAGE_TYPE,
-			content,
-			display: failed,
-			details: { protocol: 1, id: state.notebookStatusMessageId },
-		} };
+		await refreshNotebookStatus(ctx, runtime.projectContextMessages(ctx), event.systemPromptOptions.selectedTools);
 	});
 	pi.on("agent_start", async (_event, ctx) => {
 		updateCodexPreparedIdleKickoff(pi, "agent_start");
+		state.contextWindows.beginPromptedManualCheckpointRun();
 		state.contextTree.handoff.started(ctx);
 		runtime.autoReasoning.begin(ctx);
 		runtime.cancelCacheKeepalive();
@@ -388,8 +399,8 @@ export function registerCodexEvents(
 		runtime.finishTurn();
 		updateCodexPreparedIdleKickoff(pi, "agent_settled");
 		flushCodexReasoningUpdates(pi, ctx);
-		// Hybrid's asynchronous compact() aborts this run before its successor exists.
-		const continuingWork = state.contextWindows.isHybridCompactionRunning()
+		// Rollover compaction aborts this run before its successor exists.
+		const continuingWork = state.contextWindows.isRolloverCompactionRunning()
 			|| state.contextTree.rolloverPending || state.contextKickoff.pending;
 		if (!continuingWork) runtime.autoReasoning.settle(ctx);
 		// Reserve must capture the user's restored level, never a temporary auto-reasoning override.
@@ -409,11 +420,17 @@ export function registerCodexEvents(
 			rolled = await state.contextTree.settle(pi, ctx);
 			if (rolled) runtime.resetTransportAfterCompaction(ctx.sessionManager.getSessionId());
 			state.contextTree.handoff.settled(ctx);
+			const plan = resolveCodexRuntimePlanForState(ctx, state);
+			const manualCheckpoint = state.contextWindows.finishPromptedManualCheckpoint(ctx,
+				plan.contextManagement && !plan.compactOnRollover);
+			if (manualCheckpoint === "ready") rolled = await startManualNotesWindow(ctx) || rolled;
+			else if (manualCheckpoint === "missing")
+				ctx.ui.notify("Context rollover did not start: no note was saved in the completed run", "warning");
 			continued = state.contextKickoff.continue(pi, ctx);
 		} finally {
-			if (continuingWork && !continued && !state.contextWindows.isHybridCompactionRunning()) runtime.autoReasoning.settle(ctx);
+			if (continuingWork && !continued && !state.contextWindows.isRolloverCompactionRunning()) runtime.autoReasoning.settle(ctx);
 		}
-		if (!rolled && !continued && !quotaExhausted && !state.contextWindows.isHybridCompactionRunning()) runtime.armCacheKeepalive(ctx);
+		if (!rolled && !continued && !quotaExhausted && !state.contextWindows.isRolloverCompactionRunning()) runtime.armCacheKeepalive(ctx);
 	});
 	pi.on("cache_warming_decision", (_event, ctx) => {
 		const plan = resolveCodexRuntimePlanForState(ctx, state);
@@ -437,11 +454,13 @@ export function registerCodexEvents(
 			ctx,
 			state,
 		);
+		if (event.reason === "manual" && !state.contextWindows.currentIdentity())
+			state.contextWindows.ensureInitialized(pi, ctx, plan.contextManagement);
 		const contextManagementResult = plan.contextManagement
 			? state.contextWindows.prepareCompaction(
 				event,
 				plan.contextManagementMode,
-				plan.contextManagementHybrid,
+				plan.compactOnRollover,
 			)
 			: undefined;
 		if (contextManagementResult && "cancel" in contextManagementResult)
@@ -456,7 +475,7 @@ export function registerCodexEvents(
 			ctx.ui.notify(`Notebook checkpoint before compaction failed: ${error instanceof Error ? error.message : String(error)}`, "warning");
 		}
 		if (contextManagementResult) return contextManagementResult;
-		if (!nativeCompaction) return undefined;
+		if (!nativeCompaction && !plan.nativeReplay && !hasTreeArchives(event.branchEntries)) return undefined;
 		try {
 			const result = await handleCodexSessionBeforeCompact(
 				event,
@@ -472,28 +491,15 @@ export function registerCodexEvents(
 		}
 	});
 	pi.on("session_compact_failed", async (event, ctx) => {
-		if (state.contextWindows.isHybridCompactionRunning()) runtime.autoReasoning.settle(ctx);
+		if (state.contextWindows.isRolloverCompactionRunning()) runtime.autoReasoning.settle(ctx);
 		state.pendingPiCompactionNativeWindow = undefined;
 		runtime.voice.compactionFinished();
 		const plan = resolveCodexRuntimePlanForState(ctx, state);
 		const reuseNotes = state.contextWindows.finishManualCheckpointRequest(
-			pi, ctx, event, plan.contextManagement && !plan.contextManagementHybrid,
+			pi, ctx, event, plan.contextManagement && !plan.compactOnRollover,
 		);
 		if (!reuseNotes) return;
-		try {
-			const rolled = plan.contextManagementMode === "tree"
-				? state.contextTree.schedule(ctx, { triggerTurn: false }) && await state.contextTree.settle(pi, ctx)
-				: await state.contextKickoff.startWindow(pi, ctx, {
-					triggerTurn: false,
-					mode: plan.contextManagementMode,
-					trimPreviousWindow: true,
-				});
-			if (rolled) runtime.resetTransportAfterCompaction(ctx.sessionManager.getSessionId());
-			else if (plan.contextManagementMode !== "tree")
-				ctx.ui.notify("Context rollover did not start", "warning");
-		} catch (error) {
-			ctx.ui.notify(`Context rollover failed: ${error instanceof Error ? error.message : String(error)}`, "error");
-		}
+		await startManualNotesWindow(ctx);
 	});
 	pi.on("session_compact", async (event, ctx) => {
 		try {
@@ -524,9 +530,9 @@ export function registerCodexEvents(
 				}
 			}
 			// Overflow compaction keeps the current window and resumes from its checkpoint.
-			if (plan.contextManagementHybrid && event.reason !== "overflow") {
+			if (plan.compactOnRollover && event.reason !== "overflow") {
 				if (plan.contextManagementMode === "tree" && compactionEntry) {
-					const requested = state.contextWindows.isHybridCompactionRunning();
+					const requested = state.contextWindows.isRolloverCompactionRunning();
 					treeRolloverScheduled = state.contextTree.schedule(ctx, {
 						compactionEntryId: compactionEntry.id,
 						triggerTurn: requested,
@@ -535,16 +541,19 @@ export function registerCodexEvents(
 						await state.contextTree.settle(pi, ctx);
 						treeRolloverScheduled = false;
 					}
-				} else await state.contextWindows.completeHybridCompaction(pi, ctx, plan.contextManagementMode);
+				} else await state.contextWindows.completeRolloverCompaction(pi, ctx, plan.contextManagementMode);
 			}
 			if (!treeRolloverScheduled) {
 				runtime.resetTransportAfterCompaction(ctx.sessionManager.getSessionId());
 				// Tool-requested rollover appends its marker in onComplete; do not prewarm the old window.
-				if (!state.contextWindows.isHybridCompactionRunning() && !state.contextKickoff.pending)
+				if (!state.contextWindows.isRolloverCompactionRunning() && !state.contextKickoff.pending) {
+					// A normal compaction may resume without another kickoff. Prewarm the renewed context too.
+					await refreshNotebookStatus(ctx);
 					await runtime.startCompactionPrewarm(ctx);
+				}
 			}
-			// Explicit Hybrid rollover refreshes at its window boundary; overflow stays here.
-			if (!contextCompaction && (!plan.contextManagementHybrid || event.reason === "overflow"))
+			// Explicit rollover refreshes at its window boundary; overflow stays here.
+			if (!contextCompaction && (!plan.compactOnRollover || event.reason === "overflow"))
 				await runtime.voice.refreshRealtimeContext(ctx, state.config);
 		} finally {
 			runtime.voice.compactionFinished();
@@ -552,6 +561,10 @@ export function registerCodexEvents(
 	});
 	pi.on("context_with_system", async (event, ctx) => {
 		let messages = runtime.projectContextMessages(ctx, event.messages);
+		if (await refreshNotebookStatus(ctx, messages))
+			messages = runtime.projectContextMessages(ctx, event.messages);
+		if (isCodeModeRuntime(resolveCodexRuntimePlanForState(ctx, state)) && recordCodeModeToolkit(pi, ctx, messages, codeMode.getTools(ctx)))
+			messages = runtime.projectContextMessages(ctx, event.messages);
 		const developerMessages = supportsCodexDeveloperMessages(ctx, state);
 		if (developerMessages && recordCurrentTimeReminder(pi, ctx, messages, state.config.prompt.currentTimeReminderMinutes))
 			messages = runtime.projectContextMessages(ctx, event.messages);

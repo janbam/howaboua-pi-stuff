@@ -6,7 +6,10 @@ export type CompactToolsMode = "off" | "on" | "minimal";
 export type LunaCacheKeepaliveMinutes = 0 | 5 | 10 | 15;
 /** Selects which providers receive the full adapter or standalone extra tools. */
 export type AllProvidersMode = "off" | "on" | "extras" | "codex-plus-extras";
-export type ContextManagementMode = "off" | "local" | "tree" | "remote";
+export type ContinuityStrategy = "compaction" | "notes" | "notes-and-compaction";
+export type HistoryStorage = "local" | "tree" | "remote";
+export type ContextManagementMode = "off" | HistoryStorage;
+export type CompactionMethod = "pi" | "v2" | "both";
 export type V2UserMessageRetention = 16 | 32 | 64;
 export const MIN_NOTEBOOK_HEAP_MIB = 256;
 export const MAX_NOTEBOOK_HEAP_MIB = 65_536;
@@ -71,10 +74,10 @@ export interface CodexConversionConfig {
 		backgroundShellCloseShortcut: string;
 	};
 	compaction: {
-		contextManagement: ContextManagementMode;
-		hybridCompaction: boolean;
-		responsesCompaction: boolean;
-		portableSummary: boolean;
+		continuity: ContinuityStrategy;
+		historyStorage: HistoryStorage;
+		shareSubagentContext: boolean;
+		method: CompactionMethod;
 		v2UserMessageRetention: V2UserMessageRetention;
 	};
 	notebook: {
@@ -107,7 +110,7 @@ export interface CodexConversionConfig {
 		proxyResponsesLite: boolean;
 		forceCachedWebSockets: boolean;
 		cacheDiagnostics: CacheDiagnosticsMode;
-		harnessIdentifierHeader: boolean;
+		harnessIdentifierHeader: boolean | "codex";
 	};
 }
 
@@ -139,10 +142,10 @@ export const DEFAULT_CODEX_CONVERSION_CONFIG: CodexConversionConfig = {
 		backgroundShellCloseShortcut: "alt+r",
 	},
 	compaction: {
-		contextManagement: "off",
-		hybridCompaction: false,
-		responsesCompaction: false,
-		portableSummary: false,
+		continuity: "compaction",
+		historyStorage: "local",
+		shareSubagentContext: false,
+		method: "pi",
 		v2UserMessageRetention: 64,
 	},
 	notebook: { maxHeapMiB: 4_096, plainCommandOutput: false },

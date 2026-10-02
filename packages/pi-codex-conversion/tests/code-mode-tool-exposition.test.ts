@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatCodeModeToolHelp } from "../src/tools/code-mode/custom-tool-prompt.ts";
+import { convertToLlm, SessionManager } from "@earendil-works/pi-coding-agent";
+import { createMcpCodeModeBridge } from "../src/adapter/code-mode/mcp-tools.ts";
+import { CODEX_TOOLKIT_UPDATE_TYPE, recordCodeModeToolkit } from "../src/adapter/code-mode/toolkit-updates.ts";
+import { projectCodexDeveloperHistory } from "../src/adapter/developer-history.ts";
+import { CodexDeveloperMessageBridge } from "../src/adapter/developer-messages.ts";
+import { buildCodeModeToolsPrompt, formatCodeModeToolHelp } from "../src/tools/code-mode/custom-tool-prompt.ts";
 import { scopeAllToolsToDeferredCustom } from "../src/tools/code-mode/host-client.ts";
+import { toWireToolDefinition } from "../src/tools/code-mode/host-protocol.ts";
 import { codeModeGlobalName } from "../src/tools/code-mode/tool-identity.ts";
 import { notebookBootstrapSource } from "../src/tools/notebook-mode/kernel-runtime.ts";
 import type {
@@ -37,7 +43,7 @@ function customTool(
 	};
 }
 
-test("Notebook tool names follow the live registry while ALL_TOOLS contains deferred help", async () => {
+test("deferred discovery and availability share the callable catalog without importing ordinary extensions", async () => {
 	const promoted = customTool("promoted_tool", false);
 	const deferred = customTool("deferred_tool", true);
 	const deferredProgrammatic = {
@@ -47,23 +53,97 @@ test("Notebook tool names follow the live registry while ALL_TOOLS contains defe
 		deferLoading: true,
 		discoverWhenDeferred: true,
 	};
+	const native = {
+		name: "mcp__records__lookup", description: "Find records", parameters: { type: "object" },
+		outputSchema: { type: "object", properties: { content: { type: "array" } } },
+	};
+	const resource = { ...native, name: "list_mcp_resources" };
+	const extension = { ...native, name: "mcp__pretender__lookup" };
+	const hidden = { ...native, name: "mcp__records__hidden" };
+	const mcp = createMcpCodeModeBridge({
+		getAllTools: () => [native, resource, extension, hidden].map((tool) => ({
+			...tool, sourceInfo: { path: tool === extension ? "/extension.ts" : "builtin:mcp" },
+		})),
+	} as never);
+	const loadout = {
+		declared: [native, extension], callable: [native, resource, extension], registered: [native, resource, extension, hidden],
+		getExposure: () => "codemode" as const,
+		getNamespace: () => ({
+			name: "mcp__records", description: "Record lookup",
+			instructions: "Keep record IDs unchanged\nReturn source citations",
+		}),
+	};
+	assert.deepEqual(mcp.prepareLoadout(loadout as never).hiddenDeclarations, [native.name, resource.name]);
+	const catalog = [bundled, promoted, deferred, deferredProgrammatic, ...mcp.getTools()];
+	assert.match(formatCodeModeToolHelp(mcp.getTools()[0]!), /Output: .*"content"/);
 	const state = {
-		ALL_TOOLS: [bundled, promoted, deferred, deferredProgrammatic].map(({ name, description }) => ({
-			name: codeModeGlobalName(name),
-			description,
+		ALL_TOOLS: catalog.map((tool) => ({
+			name: codeModeGlobalName(tool.name),
+			description: toWireToolDefinition(tool).description,
 		})),
 	};
-	const source = scopeAllToolsToDeferredCustom("", [bundled, promoted, deferred, deferredProgrammatic]);
+	const source = scopeAllToolsToDeferredCustom("", catalog);
 	Function("globalThis", source)(state);
 
-	assert.deepEqual(state.ALL_TOOLS, [
-		{ name: "deferred_tool", description: "deferred_tool help" },
-		{ name: "deferred_programmatic_tool", description: "Run command" },
-	]);
+	assert.deepEqual(state.ALL_TOOLS, [deferred, deferredProgrammatic, ...mcp.getTools()].map((tool) => ({
+		name: codeModeGlobalName(tool.name), description: formatCodeModeToolHelp(tool),
+	})));
+	assert.match(state.ALL_TOOLS.find((tool) => tool.name === native.name)!.description,
+		/Instructions: Keep record IDs unchanged\nReturn source citations/);
+	assert(!state.ALL_TOOLS.find((tool) => tool.name === deferred.name)!.description.includes("Instructions:"));
+	for (const mode of ["code", "notebook"] as const) {
+		assert.equal(buildCodeModeToolsPrompt(catalog, mode), buildCodeModeToolsPrompt(catalog.map((tool) => ({
+			...tool, namespace: tool.namespace ? { ...tool.namespace, instructions: "" } : undefined,
+		})), mode));
+	}
 	assert.match(
 		formatCodeModeToolHelp(deferredProgrammatic),
 		/^Usage: await tools\.deferred_programmatic_tool\(\{ cmd \}\)/,
 	);
+	const manager = SessionManager.inMemory();
+	manager.appendMessage({ role: "user", content: [{ type: "text", text: "Find a record" }], timestamp: 1 });
+	const ctx = { sessionManager: manager };
+	const pi = { appendEntry: (type: string, data: unknown) => manager.appendCustomEntry(type, data) } as never;
+	const messages = () => projectCodexDeveloperHistory(manager.getBranch());
+	assert.equal(recordCodeModeToolkit(pi, ctx, messages(), catalog), true);
+	const initial = messages();
+	const inventory = initial.find((message) => message.role === "custom" && message.customType === CODEX_TOOLKIT_UPDATE_TYPE);
+	assert(inventory?.role === "custom");
+	assert.match(JSON.stringify(inventory), /Record lookup/);
+	assert(!JSON.stringify(inventory).includes("Keep record IDs unchanged"));
+	assert(!JSON.stringify(inventory).includes("promoted_tool"));
+	assert(!JSON.stringify(inventory).includes("pretender"));
+	assert(!JSON.stringify(inventory).includes(hidden.name));
+	assert.equal(recordCodeModeToolkit(pi, ctx, initial, [...catalog].reverse()), false);
+	const bridge = new CodexDeveloperMessageBridge();
+	const system = { role: "system" as const, content: "Keep Pi's system instructions", timestamp: 0 };
+	assert.deepEqual(convertToLlm(bridge.prepare([system, inventory], false)), [system, {
+		role: "user", content: [{ type: "text", text: inventory.content }], timestamp: inventory.timestamp,
+	}]);
+	const carrier = bridge.prepare([inventory], true)[0]!;
+	assert.equal(carrier.role, "custom");
+	const payload = bridge.rewritePayload({ input: [{ role: "user", content: carrier.content }] }) as { input: Array<{ role: string; content: string }> };
+	assert.equal(payload.input[0]!.role, "developer");
+	assert.match(payload.input[0]!.content, /Deferred tools — full help in ALL_TOOLS/);
+	const changedInstructions = catalog.map((tool) => tool.name === native.name
+		? { ...tool, namespace: { ...loadout.getNamespace(), instructions: "Preserve opaque IDs" } } : tool);
+	assert.equal(recordCodeModeToolkit(pi, ctx, initial, changedInstructions), true);
+	assert.match(JSON.stringify(messages().at(-1)), /Changed:.*mcp__records__lookup/s);
+	assert(!JSON.stringify(messages().at(-1)).includes("Preserve opaque IDs"));
+
+	const nextCatalog = catalog.filter((tool) => tool.name !== deferred.name).map((tool) => tool.name === native.name
+		? { ...tool, inputSchema: { type: "object", required: ["id"] } } : tool);
+	const priorBytes = JSON.stringify(initial);
+	assert.equal(recordCodeModeToolkit(pi, ctx, initial, nextCatalog), true);
+	assert.equal(JSON.stringify(initial), priorBytes);
+	const delta = messages().at(-1)!;
+	assert.match(JSON.stringify(delta), /Changed:.*mcp__records__lookup.*Removed: deferred_tool/s);
+	assert.equal(recordCodeModeToolkit(pi, ctx, messages(), nextCatalog), false);
+	// A surviving delta cannot stand in for a full catalog lost at a context boundary.
+	assert.equal(recordCodeModeToolkit(pi, ctx, [delta], nextCatalog), true);
+	assert.match(JSON.stringify(messages().at(-1)), /Deferred tools — full help in ALL_TOOLS/);
+	assert.deepEqual(mcp.prepareLoadout({ ...loadout, callable: [extension] } as never).hiddenDeclarations, []);
+	assert.deepEqual(mcp.getTools(), []);
 
 	const calls: unknown[] = [];
 	const kernel: Record<string, unknown> = {
@@ -91,6 +171,8 @@ test("Notebook tool names follow the live registry while ALL_TOOLS contains defe
 		exec_command: { name: "exec_command" },
 		deferred_programmatic_tool: { name: "deferred-programmatic-tool" },
 	});
+	assert.deepEqual(kernel["ALL_TOOLS"], state.ALL_TOOLS);
+	assert.match(JSON.stringify(kernel["ALL_TOOLS"]), /Keep record IDs unchanged/);
 	const tools = kernel["tools"] as Record<string, (input: unknown) => Promise<unknown>>;
 	assert.deepEqual(Object.keys(tools), ["exec_command", "deferred_programmatic_tool"]);
 	assert.equal(await tools["deferred_programmatic_tool"]!({}), "delivered");

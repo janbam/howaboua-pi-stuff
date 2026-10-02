@@ -3,8 +3,12 @@ import { buildSessionContext, type SessionEntry } from "@earendil-works/pi-codin
 import { CODEX_REASONING_UPDATE_TYPE, readCodexReasoningUpdate } from "./reasoning-updates.ts";
 import { CODEX_CURRENT_TIME_REMINDER_TYPE, projectCurrentTimeReminder } from "./current-time-reminder.ts";
 import { isCodexDeveloperMessageDetails } from "../developer-messages.ts";
+import { CODEX_TOOLKIT_UPDATE_TYPE, projectToolkitUpdate } from "./code-mode/toolkit-updates.ts";
+import { CODEX_NOTEBOOK_STATUS_TYPE, projectNotebookStatusEntry } from "./notebook-status.ts";
 
 export function projectCodexDeveloperEntry(entry: SessionEntry): SessionEntry {
+	if (entry.type === "custom" && entry.customType === CODEX_NOTEBOOK_STATUS_TYPE) return projectNotebookStatusEntry(entry);
+	if (entry.type === "custom" && entry.customType === CODEX_TOOLKIT_UPDATE_TYPE) return projectToolkitUpdate(entry);
 	if (entry.type !== "custom" || entry.customType !== CODEX_REASONING_UPDATE_TYPE) return projectCurrentTimeReminder(entry);
 	const update = readCodexReasoningUpdate(entry.data);
 	return { ...entry, type: "custom_message", content: `Reasoning effort: ${update.effort}`, display: false, details: update };
@@ -39,7 +43,12 @@ export function projectCodexDeveloperHistory(
 		return projected;
 	});
 	if (messages && virtualIds.size === 0) return [...messages];
-	const reconstructed = leadWithSystemMessage(buildSessionContext(projectedEntries, leafId).messages.filter(survives));
+	const reconstructed = buildSessionContext(projectedEntries, leafId).messages.filter(survives);
+	// Pi's initial prompt must lead the transcript; only virtual bookkeeping may precede it in storage.
+	const headSystemIndex = reconstructed.findIndex((message) => message.role === "system");
+	if (headSystemIndex > 0 && reconstructed.slice(0, headSystemIndex).every(isVirtualMessage)) {
+		reconstructed.unshift(...reconstructed.splice(headSystemIndex, 1));
+	}
 	if (!messages) return reconstructed;
 	// Preserve other extensions' message edits and additions. Insert metadata at its
 	// persisted position, before the next surviving message or after the final one.
@@ -74,17 +83,6 @@ export function projectCodexDeveloperHistory(
 		.concat(insertions.get(messages.length) ?? []);
 }
 
-/**
- * Keep Pi's prompt message at the head of context. Bookkeeping recorded before the first
- * prompt (e.g. a reasoning update at model selection) would otherwise precede it, and
- * providers read the prompt and initial tools from index 0.
- */
-function leadWithSystemMessage(messages: AgentMessage[]): AgentMessage[] {
-	const head = messages.findIndex((message) => message.role === "system");
-	if (head <= 0 || !messages.slice(0, head).every(isVirtualMessage)) return messages;
-	return [messages[head]!, ...messages.slice(0, head), ...messages.slice(head + 1)];
-}
-
 function messageKey(message: AgentMessage): string {
 	return JSON.stringify([message.role, message.timestamp,
 		message.role === "custom" ? (isVirtualMessage(message) && isCodexDeveloperMessageDetails(message.details)
@@ -94,5 +92,6 @@ function messageKey(message: AgentMessage): string {
 
 function isVirtualMessage(message: AgentMessage): message is Extract<AgentMessage, { role: "custom" }> {
 	return message.role === "custom" && (message.customType === CODEX_REASONING_UPDATE_TYPE
-		|| message.customType === CODEX_CURRENT_TIME_REMINDER_TYPE);
+		|| message.customType === CODEX_CURRENT_TIME_REMINDER_TYPE || message.customType === CODEX_TOOLKIT_UPDATE_TYPE
+		|| message.customType === CODEX_NOTEBOOK_STATUS_TYPE);
 }

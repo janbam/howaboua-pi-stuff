@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { processResponsesStream } from "../src/providers/openai-responses/shared.ts";
+import { createAssistantMessageEventStream, normalizeContext, type AssistantMessage } from "@earendil-works/pi-ai";
+import { convertResponsesMessages, processResponsesStream } from "../src/providers/openai-responses/shared.ts";
+import { assertSuccessfulCodexOutput, processCodexResponsesStream } from "../src/providers/openai-codex/stream-events.ts";
 
 const model = {
 	id: "gpt-test",
@@ -15,7 +17,7 @@ const model = {
 	maxTokens: 4096,
 };
 
-function createAssistantOutput() {
+function createAssistantOutput(): AssistantMessage {
 	return {
 		role: "assistant",
 		content: [],
@@ -30,7 +32,7 @@ function createAssistantOutput() {
 			totalTokens: 0,
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 		},
-		stopReason: "stop",
+		stopReason: "pending",
 		timestamp: Date.now(),
 	};
 }
@@ -46,9 +48,16 @@ async function* interruptedAsyncIterable<T>(values: T[]): AsyncIterable<T> {
 	throw new Error("Request was aborted");
 }
 
-test("processResponsesStream keeps interleaved message items separate by output index", async () => {
+test("processResponsesStream keeps interleaved text and reasoning separate with authoritative final items", async () => {
 	const output = createAssistantOutput();
-	const pushedEvents: Array<{ type: string; contentIndex?: number }> = [];
+	const pushedEvents: Array<{ type: string; contentIndex?: number; delta?: string; thinking?: string }> = [];
+	const reasoningItems = [
+		{ type: "reasoning", id: "rs_raw", summary: [], content: [{ type: "reasoning_text", text: "Final raw reasoning" }], encrypted_content: "opaque/raw==" },
+		{ type: "reasoning", id: "rs_stream_only", summary: [], encrypted_content: "opaque/stream==" },
+		{ type: "reasoning", id: "rs_summary", summary: [{ type: "summary_text", text: "Actual summary" }], content: [{ type: "reasoning_text", text: "Not the summary" }], encrypted_content: "opaque/summary==" },
+		{ type: "reasoning", id: "rs_encrypted", summary: [], encrypted_content: "opaque/only==" },
+		{ type: "reasoning", id: "rs_final_only", summary: [], content: [{ type: "reasoning_text", text: "First raw part" }, { type: "reasoning_text", text: "Second raw part" }] },
+	];
 
 	await processResponsesStream(
 		asAsyncIterable([
@@ -77,7 +86,15 @@ test("processResponsesStream keeps interleaved message items separate by output 
 				item_id: "msg_b",
 				part: { type: "output_text", text: "", annotations: [] },
 			},
+			{ type: "response.output_item.added", output_index: 2, item: { type: "reasoning", id: "rs_raw", summary: [] } },
+			{ type: "response.output_item.added", output_index: 3, item: { type: "reasoning", id: "rs_stream_only", summary: [] } },
+			{ type: "response.reasoning_text.delta", output_index: 2, content_index: 0, item_id: "rs_raw", delta: "Partial raw" },
 			{ type: "response.output_text.delta", output_index: 0, content_index: 0, item_id: "msg_a", delta: "Hello", logprobs: [] },
+			{ type: "response.reasoning_text.delta", output_index: 3, content_index: 0, item_id: "rs_stream_only", delta: "First" },
+			{ type: "response.reasoning_text.delta", output_index: 3, content_index: 1, item_id: "rs_stream_only", delta: "Second" },
+			{ type: "response.reasoning_text.delta", output_index: 3, content_index: 0, item_id: "rs_stream_only", delta: " part" },
+			{ type: "response.reasoning_text.delta", output_index: 2, content_index: 0, item_id: "rs_raw", delta: " reasoning" },
+			{ type: "response.reasoning_text.delta", output_index: 3, content_index: 1, item_id: "rs_stream_only", delta: " part" },
 			{ type: "response.output_text.delta", output_index: 1, content_index: 0, item_id: "msg_b", delta: "World", logprobs: [] },
 			{
 				type: "response.output_item.done",
@@ -89,6 +106,7 @@ test("processResponsesStream keeps interleaved message items separate by output 
 				output_index: 1,
 				item: { type: "message", id: "msg_b", role: "assistant", status: "completed", content: [{ type: "output_text", text: "World", annotations: [] }] },
 			},
+			...reasoningItems.map((item, index) => ({ type: "response.output_item.done", output_index: index + 2, item })),
 			{
 				type: "response.completed",
 				response: {
@@ -99,21 +117,52 @@ test("processResponsesStream keeps interleaved message items separate by output 
 			},
 		]) as AsyncIterable<any>,
 		output as any,
-		{ push: (event: { type: string; contentIndex?: number }) => pushedEvents.push(event) } as any,
+		{ push: (event: { type: string; contentIndex?: number; delta?: string }) => {
+			const block = event.contentIndex === undefined ? undefined : output.content[event.contentIndex];
+			pushedEvents.push({ ...event, ...(block?.type === "thinking" ? { thinking: block.thinking } : {}) });
+		} } as any,
 		model,
 	);
 
 	assert.deepEqual(
-		(output.content as Array<{ type: string; text?: string }>).map((block) => (block.type === "text" ? block.text : undefined)),
+		output.content.flatMap((block) => block.type === "text" ? [block.text] : []),
 		["Hello", "World"],
 	);
 	assert.deepEqual(
 		pushedEvents.filter((event) => event.type === "text_start").map((event) => event.contentIndex),
 		[0, 1],
 	);
+	assert.deepEqual(
+		pushedEvents.filter((event) => event.type === "thinking_delta").map(({ contentIndex, delta, thinking }) => [contentIndex, delta, thinking]),
+		[
+			[2, "Partial raw", "Partial raw"],
+			[3, "First", "First"],
+			[3, "\n\nSecond", "First\n\nSecond"],
+			[2, " reasoning", "Partial raw reasoning"],
+			[3, " part", "First part\n\nSecond part"],
+		],
+	);
+	assert.deepEqual(
+		output.content.flatMap((block) => block.type === "thinking" ? [block.thinking] : []),
+		["Final raw reasoning", "First part\n\nSecond part", "Actual summary", "", "First raw part\n\nSecond raw part"],
+	);
+	assert.deepEqual(
+		output.content.flatMap((block) => {
+			if (block.type !== "thinking") return [];
+			assert.ok(block.thinkingSignature);
+			return [JSON.parse(block.thinkingSignature)];
+		}),
+		reasoningItems,
+		"full provider items, including opaque encrypted payloads, survive for replay",
+	);
+	assert.deepEqual(
+		convertResponsesMessages(model, normalizeContext({ messages: [output] }), new Set([model.provider]))
+			.filter((item) => item.type === "reasoning"),
+		reasoningItems,
+	);
 });
 
-test("processResponsesStream records cache writes and reasoning tokens", async () => {
+test("Responses terminal events preserve raw observations and price reported usage", async () => {
 	const output = { ...createAssistantOutput(), errorMessage: "stale incomplete response" };
 	await processResponsesStream(
 		asAsyncIterable([{
@@ -145,6 +194,29 @@ test("processResponsesStream records cache writes and reasoning tokens", async (
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 	});
 	assert.equal(output.errorMessage, undefined);
+	for (const [serviceTier, multiplier] of [["default", 1], ["priority", 2], ["fast", 2], ["flex", 0.5]] as const) {
+		const priced = createAssistantOutput();
+		const pricedModel = { ...model, cost: { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 } };
+		const raw = { type: "response.done", response: { status: "completed", service_tier: serviceTier,
+			usage: { input_tokens: 20, output_tokens: 8, total_tokens: 28, input_tokens_details: { cached_tokens: 5, cache_write_tokens: 3 } } } };
+		const observed: unknown[] = [];
+		await processCodexResponsesStream(asAsyncIterable([raw]), priced, createAssistantMessageEventStream(), pricedModel, {
+			onProviderStreamEvent: async (event, observedModel) => {
+				assert.equal(observedModel, pricedModel);
+				observed.push(event);
+			},
+		});
+		assert.deepEqual(observed, [raw]);
+		assertSuccessfulCodexOutput(priced);
+		const expected = {
+			input: 24 / 1e6 * multiplier, output: 80 / 1e6 * multiplier,
+			cacheRead: 0.5 / 1e6 * multiplier, cacheWrite: 7.5 / 1e6 * multiplier,
+			total: (24 / 1e6 + 80 / 1e6 + 0.5 / 1e6 + 7.5 / 1e6) * multiplier,
+		};
+		for (const key of Object.keys(expected) as Array<keyof typeof expected>) {
+			assert.ok(Math.abs(priced.usage.cost[key] - expected[key]) < 1e-15, `${serviceTier} ${key}`);
+		}
+	}
 });
 
 test("processResponsesStream retains finalized freeform input for execution and continuation", async () => {
@@ -178,7 +250,7 @@ test("processResponsesStream retains finalized freeform input for execution and 
 	assert.deepEqual(completedItems, [{ type: "custom_tool_call", id: "ctc_1", call_id: "call_1", name: "exec", status: "completed", namespace: "security", input: "canonical();" }]);
 });
 
-test("processResponsesStream omits an interrupted partial tool call from the final message", async () => {
+test("Responses rejects ambiguous or unfinished tool calls and discards interrupted input", async () => {
 	const output = createAssistantOutput();
 	const pushedEvents: string[] = [];
 
@@ -198,4 +270,32 @@ test("processResponsesStream omits an interrupted partial tool call from the fin
 
 	assert.ok(pushedEvents.includes("toolcall_start"));
 	assert.deepEqual(output.content, []);
+	for (const type of ["function_call", "custom_tool_call"] as const) {
+		const item = { type, id: "item_1", call_id: "call_1", name: "example", arguments: "{}", input: "done" };
+		const added = { type: "response.output_item.added", output_index: 0, item };
+		const done = { type: "response.output_item.done", output_index: 0, item };
+		const terminal = { type: "response.completed", response: { status: "completed" } };
+		for (const events of [
+			[added, terminal],
+			[{ type: added.type, item }, { type: added.type, item: { ...item, id: "item_2", call_id: "call_2" } }, done, terminal],
+			[added, { ...added, item: { ...item, id: "item_2", call_id: "call_2" } }, done, terminal],
+			[added, { ...done, item: { ...item, call_id: "other" } }, terminal],
+			[done, done, terminal],
+		]) {
+			const rejected = createAssistantOutput();
+			await processCodexResponsesStream(asAsyncIterable(events), rejected, createAssistantMessageEventStream(), model, undefined);
+			assert.equal(rejected.stopReason, "error");
+			assert.throws(() => assertSuccessfulCodexOutput(rejected), /Invalid Responses tool stream/);
+		}
+		// A finalized item alone is a supported boundary, not an unfinished call.
+		for (const events of [
+			[done, terminal],
+			[{ ...added, item: { ...item, id: undefined } }, { ...done, item: { ...item, id: undefined } }, terminal],
+		]) {
+			const finalized = createAssistantOutput();
+			await processCodexResponsesStream(asAsyncIterable<typeof events[number]>(events), finalized, createAssistantMessageEventStream(), model, undefined);
+			assert.equal(finalized.stopReason, "toolUse");
+			assert.equal(finalized.content.length, 1);
+		}
+	}
 });

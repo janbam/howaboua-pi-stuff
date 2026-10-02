@@ -1,6 +1,6 @@
 {
 	"name": "@howaboua/pi-dynamic-tools",
-	"version": "0.0.8",
+	"version": "0.0.9",
 	"description": "Expose TOML-defined commands through Codex-style JavaScript code mode in Pi.",
 	"type": "module",
 	"license": "MIT",
@@ -49,8 +49,8 @@
 		"smol-toml": "^1.8.0"
 	},
 	"devDependencies": {
-		"@earendil-works/pi-coding-agent": "0.87.0",
-		"@earendil-works/pi-tui": "0.87.0",
+		"@earendil-works/pi-coding-agent": "0.99.2",
+		"@earendil-works/pi-tui": "0.99.2",
 		"@types/node": "^26.2.0",
 		"typebox": "1.3.18",
 		"typescript": "^7.0.2",

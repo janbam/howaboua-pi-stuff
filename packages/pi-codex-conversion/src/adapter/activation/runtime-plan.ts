@@ -27,10 +27,12 @@ interface RuntimePlanBase {
 	codexTransport: boolean;
 	effectiveOpenAICodex: boolean;
 	nativeCompaction: boolean;
+	nativeReplay: boolean;
 	contextManagement: boolean;
 	contextManagementMode: ContextManagementMode;
 	contextManagementRemote: boolean;
-	contextManagementHybrid: boolean;
+	shareSubagentContext: boolean;
+	compactOnRollover: boolean;
 	autoReasoning: boolean;
 }
 
@@ -118,6 +120,22 @@ function normalToolNames(ctx: RuntimeContext, config: CodexConversionConfig, con
 	return names;
 }
 
+/** Provider feature negotiation shares the configured method; route eligibility is resolved below. */
+export function nativeCompactionConfigured(compaction: CodexConversionConfig["compaction"] | undefined): boolean {
+	return compaction !== undefined && compaction.continuity !== "notes" && compaction.method !== "pi";
+}
+
+export function hasCodexTransportConfigChanged(previous: CodexConversionConfig, next: CodexConversionConfig): boolean {
+	return next.voiceFeaturesOnly !== previous.voiceFeaturesOnly
+		|| next.executionMode !== previous.executionMode
+		|| next.prompt.heavySystemPromptOverwrite !== previous.prompt.heavySystemPromptOverwrite
+		|| next.openai.fast !== previous.openai.fast
+		|| next.openai.harnessIdentifierHeader !== previous.openai.harnessIdentifierHeader
+		|| nativeCompactionConfigured(next.compaction) !== nativeCompactionConfigured(previous.compaction)
+		|| next.compaction.continuity !== previous.compaction.continuity
+		|| (next.compaction.historyStorage !== previous.compaction.historyStorage && next.compaction.continuity !== "compaction");
+}
+
 export function resolveCodexRuntimePlan(
 	ctx: RuntimeContext,
 	config: CodexConversionConfig,
@@ -145,10 +163,12 @@ export function resolveCodexRuntimePlan(
 		codexTransport,
 		effectiveOpenAICodex,
 		nativeCompaction: false,
+		nativeReplay: false,
 		contextManagement: false,
 		contextManagementMode: "off" as const,
 		contextManagementRemote: false,
-		contextManagementHybrid: false,
+		shareSubagentContext: false,
+		compactOnRollover: false,
 		autoReasoning: false,
 	};
 	// The master switch suppresses every adapter surface, including standalone extras.
@@ -170,8 +190,8 @@ export function resolveCodexRuntimePlan(
 	// Preserve the existing configured-provider adapter path in mixed scope; only non-Responses providers fall back to extras.
 	const active = mixedScope ? mixedFullAdapter : scope === "on" || isConfigured || codexLike;
 	if (!active) return { ...base, kind: "inactive", toolNames: [], prompt: undefined, transport: undefined };
-	const configuredContextManagementMode = isResponsesContext(ctx)
-		? config.compaction.contextManagement
+	const configuredContextManagementMode = isResponsesContext(ctx) && config.compaction.continuity !== "compaction"
+		? config.compaction.historyStorage
 		: "off";
 	const contextManagement = configuredContextManagementMode !== "off" &&
 		(configuredContextManagementMode !== "remote" || codexTransport);
@@ -179,9 +199,10 @@ export function resolveCodexRuntimePlan(
 		? configuredContextManagementMode
 		: "off";
 	const contextManagementRemote = contextManagementMode === "remote";
-	base.contextManagementHybrid = contextManagement && config.compaction.hybridCompaction;
-	const nativeCompaction = effectiveOpenAICodex &&
-		(base.contextManagementHybrid || (config.compaction.responsesCompaction && configuredContextManagementMode === "off"));
+	base.shareSubagentContext = contextManagement && config.compaction.shareSubagentContext;
+	base.compactOnRollover = contextManagement && config.compaction.continuity === "notes-and-compaction";
+	base.nativeReplay = effectiveOpenAICodex;
+	const nativeCompaction = effectiveOpenAICodex && nativeCompactionConfigured(config.compaction);
 	base.autoReasoning = config.tools.autoReasoning && supportsCodexReasoningUpdates(ctx.model);
 	const configuredExecutionMode = executionMode ?? config.executionMode;
 	const requestedCodeMode = configuredExecutionMode === "code" || configuredExecutionMode === "notebook"
@@ -254,10 +275,12 @@ export function resolveCodexRuntimePlanForState(
 		prompt: undefined,
 		transport: undefined,
 		nativeCompaction: false,
+		nativeReplay: false,
 		contextManagement: false,
 		contextManagementMode: "off",
 		contextManagementRemote: false,
-		contextManagementHybrid: false,
+		shareSubagentContext: false,
+		compactOnRollover: false,
 		autoReasoning: false,
 	};
 }

@@ -29,6 +29,7 @@ export async function processResponsesStream<TApi extends Api>(
 		blockIndex: number;
 		block: ThinkingBlock;
 		summaryParts: Map<number, { text: string }>;
+		contentParts: Map<number, { text: string }>;
 	};
 	type MessageState = {
 		kind: "message";
@@ -52,6 +53,11 @@ export async function processResponsesStream<TApi extends Api>(
 	type OutputState = ReasoningState | MessageState | FunctionCallState | CustomToolCallState;
 
 	const outputStates = new Map<number, OutputState>();
+	const completedToolCallIds = new Set<string>();
+	const rejectToolCalls = (message: string) => {
+		output.stopReason = "error";
+		output.errorMessage = `Invalid Responses tool stream: ${message}`;
+	};
 	const appendCustomInput = (
 		state: CustomToolCallState,
 		nextInput: string,
@@ -68,8 +74,8 @@ export async function processResponsesStream<TApi extends Api>(
 		return delta;
 	};
 
-	const renderReasoningSummary = (summaryParts: Map<number, { text: string }>): string =>
-		Array.from(summaryParts.entries())
+	const renderReasoningParts = (parts: Map<number, { text: string }>): string =>
+		Array.from(parts.entries())
 			.sort(([a], [b]) => a - b)
 			.map(([, part]) => part.text)
 			.join("\n\n");
@@ -107,6 +113,27 @@ export async function processResponsesStream<TApi extends Api>(
 	}();
 
 	for await (const event of cleanedStream) {
+		if (event.type === "response.output_item.added" || event.type === "response.output_item.done") {
+			const item = event.item;
+			const state = outputStates.get(event.output_index);
+			if (event.type === "response.output_item.added" ? state !== undefined : state && state.kind !== item.type) {
+				rejectToolCalls("conflicting output items");
+				return;
+			}
+			if (item.type === "function_call" || item.type === "custom_tool_call") {
+				if (!Number.isInteger(event.output_index) || event.output_index < 0) {
+					rejectToolCalls("missing or invalid output_index");
+					return;
+				}
+				if (completedToolCallIds.has(item.call_id) ||
+					((state?.kind === "function_call" || state?.kind === "custom_tool_call") &&
+						(state.block.id !== `${item.call_id}|${item.id ?? ""}` || state.block.name !== item.name))) {
+					rejectToolCalls("duplicate or mismatched tool call");
+					return;
+				}
+				if (event.type === "response.output_item.done") completedToolCallIds.add(item.call_id);
+			}
+		}
 		if (event.type === "response.custom_tool_call_input.delta") {
 			const state = outputStates.get(event.output_index);
 			if (state?.kind === "custom_tool_call") {
@@ -156,6 +183,7 @@ export async function processResponsesStream<TApi extends Api>(
 					blockIndex: blockIndex(),
 					block: currentBlock,
 					summaryParts: new Map(),
+					contentParts: new Map(),
 				});
 				stream.push({ type: "thinking_start", contentIndex: blockIndex(), partial: output });
 			} else if (item.type === "message") {
@@ -172,7 +200,7 @@ export async function processResponsesStream<TApi extends Api>(
 				const namespace = (item as unknown as { namespace?: string }).namespace;
 				const currentBlock: ToolCallBlock = {
 					type: "toolCall",
-					id: `${item.call_id}|${item.id}`,
+					id: `${item.call_id}|${item.id ?? ""}`,
 					name: item.name,
 					arguments: {},
 					...(namespace !== undefined ? { namespace } : {}),
@@ -198,7 +226,7 @@ export async function processResponsesStream<TApi extends Api>(
 				summaryPart.text += event.delta;
 				state.summaryParts.set(event.summary_index, summaryPart);
 				const previousThinking = state.block.thinking;
-				const nextThinking = renderReasoningSummary(state.summaryParts);
+				const nextThinking = renderReasoningParts(state.summaryParts);
 				state.block.thinking = nextThinking;
 				emitAppendedDelta("thinking_delta", state.blockIndex, previousThinking, nextThinking);
 			}
@@ -206,7 +234,18 @@ export async function processResponsesStream<TApi extends Api>(
 			const state = outputStates.get(event.output_index);
 			if (state?.kind === "reasoning") {
 				state.summaryParts.set(event.summary_index, { text: event.part.text });
-				state.block.thinking = renderReasoningSummary(state.summaryParts);
+				state.block.thinking = renderReasoningParts(state.summaryParts);
+			}
+		} else if (event.type === "response.reasoning_text.delta") {
+			const state = outputStates.get(event.output_index);
+			if (state?.kind === "reasoning") {
+				const contentPart = state.contentParts.get(event.content_index) ?? { text: "" };
+				contentPart.text += event.delta;
+				state.contentParts.set(event.content_index, contentPart);
+				const previousThinking = state.block.thinking;
+				const nextThinking = renderReasoningParts(state.contentParts);
+				state.block.thinking = nextThinking;
+				emitAppendedDelta("thinking_delta", state.blockIndex, previousThinking, nextThinking);
 			}
 		} else if (event.type === "response.content_part.added") {
 			const state = outputStates.get(event.output_index);
@@ -299,11 +338,13 @@ export async function processResponsesStream<TApi extends Api>(
 				if (!state || state.kind !== "reasoning") {
 					const currentBlock: ThinkingBlock = { type: "thinking", thinking: "" };
 					output.content.push(currentBlock);
-					state = { kind: "reasoning", blockIndex: blockIndex(), block: currentBlock, summaryParts: new Map() };
+					state = { kind: "reasoning", blockIndex: blockIndex(), block: currentBlock, summaryParts: new Map(), contentParts: new Map() };
 					outputStates.set(event.output_index, state);
 					stream.push({ type: "thinking_start", contentIndex: state.blockIndex, partial: output });
 				}
-				state.block.thinking = item.summary?.map((summary) => summary.text).join("\n\n") || "";
+				const summaryText = item.summary?.map((summary) => summary.text).join("\n\n") || "";
+				const contentText = item.content?.map((content) => content.text).join("\n\n") || "";
+				state.block.thinking = summaryText || contentText || state.block.thinking;
 				state.block.thinkingSignature = JSON.stringify(item);
 				stream.push({ type: "thinking_end", contentIndex: state.blockIndex, content: state.block.thinking, partial: output });
 				outputStates.delete(event.output_index);
@@ -335,7 +376,7 @@ export async function processResponsesStream<TApi extends Api>(
 				} else {
 					toolCall = {
 						type: "toolCall",
-						id: `${item.call_id}|${item.id}`,
+						id: `${item.call_id}|${item.id ?? ""}`,
 						name: item.name,
 						arguments: args,
 						...(namespace !== undefined ? { namespace } : {}),
@@ -399,6 +440,9 @@ export async function processResponsesStream<TApi extends Api>(
 			else output.errorMessage = mappedStop.errorMessage;
 			if (output.content.some((block) => block.type === "toolCall") && output.stopReason === "stop") {
 				output.stopReason = "toolUse";
+			}
+			if ([...outputStates.values()].some((state) => state.kind === "function_call" || state.kind === "custom_tool_call")) {
+				rejectToolCalls("response ended with an unfinished tool call");
 			}
 		} else if (event.type === "error") {
 			const details = [event.code, event.message].filter(Boolean).join(": ");

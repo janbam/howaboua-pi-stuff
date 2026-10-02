@@ -36,22 +36,18 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-auto-trees/CHANGELOG.md)
 
-### @howaboua/pi-better-skills-tool — 0.0.4
+### @howaboua/pi-better-skills-tool — 0.0.5
 
-- The skills tool now reads mixed skills and unique cross-skill references in one call. Ambiguous reference names report their qualified choices.
+- Skills tool usage now advertises category-filtered listing in Code and Notebook modes.
 
 [Full changelog](./packages/pi-better-skills-tool/CHANGELOG.md)
 
-### @howaboua/pi-browser — 0.0.4
+### @howaboua/pi-browser — 0.0.5
 
-- Added session-owned background browser work and direct form controls.
+- Browser snapshots now include link destinations.
 
-  - Fill or clear fields, select options, and set checkbox states, including indeterminate checkboxes.
-  - Press keys and shortcuts on the focused element.
-  - Wait for an element, page text, or URL with cancellation and a bounded timeout.
-  - Page snapshots now report checked, selected, expanded, and disabled states.
-  - New tabs open in the background and keep rendering during control. Show them explicitly, list session-owned tabs, and close any tab by reference.
-  - Tab ownership survives reloads, worker restarts, and visits to hidden browser pages. Old ownership records expire after 30 days of inactivity. Concurrent Pi sessions keep separate element references.
+  - Browser help and schemas now describe single-action requests, shared batch fields and JSON results with less repetition.
+  - Click errors now identify zero-sized browser viewports.
 
 [Full changelog](./packages/pi-browser/CHANGELOG.md)
 
@@ -65,91 +61,64 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-cache-hit-predictor/CHANGELOG.md)
 
-### @howaboua/pi-codex-conversion — 3.0.39
+### @howaboua/pi-codex-conversion — 3.0.42
 
-- Fixed LAN voice and controls accepting requests from unrelated websites while preserving direct phone access and unauthenticated trusted-LAN use.
+- MCP help and recovery now preserve server-specific guidance in Code and Notebook modes.
+
+  - Fixed missing MCP server usage instructions in on-demand tool help on Pi 0.99.2.
+  - Missing MCP tools now identify known server namespaces and explain retrying in a new cell after connection. Repeated failures prompt a suggestion to disable the affected server, without automatic retries or disabling.
 
 [Full changelog](./packages/pi-codex-conversion/CHANGELOG.md)
 
-### @howaboua/pi-codex-imagegen — 0.0.7
+### @howaboua/pi-codex-imagegen — 0.0.8
 
-- Adapt Codex, Imagegen, review, and GipPity to Pi 0.87.
+- Added `transparent_background` for generated and edited images. Omitted or false requests an opaque background.
 
-  Codex Conversion, Imagegen, and Subagent Review require Pi 0.87.0 or newer.
-
-  - Fixed Codex prompt and tool updates rewriting the cached conversation prefix.
-  - Context reminders no longer start an extra checkpoint turn if the current run already saved a note in the current window.
-  - Fixed Imagegen recent-image selection ignoring context removals and replacements.
-  - Fixed review summaries and preface tracking ignoring context removals and replacements.
-  - Kept GipPity browser turn notifications from including full context previews and losing their fields to truncation.
+  Image requests now re-evaluate proxy and `no_proxy` routing after redirects.
 
 [Full changelog](./packages/pi-codex-imagegen/CHANGELOG.md)
 
-### @howaboua/pi-codex-web-run — 0.0.4
+### @howaboua/pi-codex-web-run — 0.0.5
 
-- GPT-6 Sol and Luna now share Astra's Codex support.
-
-  - Removed `/terra`; use `/luna` instead.
-  - Added Responses Lite, non-destructive reasoning changes and terse context guidance for GPT-6 Sol and Luna.
-  - Image descriptions now use GPT-6 Luna directly instead of preferring older mini models.
-  - Cost estimates now use published GPT-6 Sol and Luna rates, including cache writes and long-context pricing.
-  - Agent, review, exploration, web search, voice summary and image-description defaults now use GPT-6; Luna replaces Terra defaults. GPT Switcher retains Luna's 472K context limit, while Codex Conversion defaults all three GPT-6 models to 272K.
+- Web requests now re-evaluate proxy and `no_proxy` routing after redirects.
 
 [Full changelog](./packages/pi-codex-web-run/CHANGELOG.md)
 
-### @howaboua/pi-dynamic-tools — 0.0.8
+### @howaboua/pi-dynamic-tools — 0.0.9
 
-### Changes
-
-- [#195](https://github.com/IgorWarzocha/howaboua-pi-stuff/pull/195) [`dca7267`](https://github.com/IgorWarzocha/howaboua-pi-stuff/commit/dca7267730098e7cfcdd068ae8f032008f2033d7) Thanks [@IgorWarzocha](https://github.com/IgorWarzocha)!:
-  - Correct Herdr delivery failures to acknowledge that messages may already be queued
+- Reviewer prompts now request evidence-backed findings without issue-count targets.
 
 [Full changelog](./packages/pi-dynamic-tools/CHANGELOG.md)
 
-### @howaboua/pi-explore-subagents — 0.1.14
+### @howaboua/pi-explore-subagents — 0.1.15
 
-- GPT-6 Sol and Luna now share Astra's Codex support.
-
-  - Removed `/terra`; use `/luna` instead.
-  - Added Responses Lite, non-destructive reasoning changes and terse context guidance for GPT-6 Sol and Luna.
-  - Image descriptions now use GPT-6 Luna directly instead of preferring older mini models.
-  - Cost estimates now use published GPT-6 Sol and Luna rates, including cache writes and long-context pricing.
-  - Agent, review, exploration, web search, voice summary and image-description defaults now use GPT-6; Luna replaces Terra defaults. GPT Switcher retains Luna's 472K context limit, while Codex Conversion defaults all three GPT-6 models to 272K.
+- Explorer prompts now use concise evidence maps and explicit unknowns without fixed-length report templates or repeated discovery instructions.
 
 [Full changelog](./packages/pi-explore-subagents/CHANGELOG.md)
 
-### @howaboua/pi-extensions — 0.0.80
+### @howaboua/pi-extensions — 0.0.83
 
 - Include bundled package updates:
 
-  - @howaboua/pi-gippity-control: Fixed LAN voice and controls accepting requests from unrelated websites while preserving direct phone access and unauthenticated trusted-LAN use.
+  - @howaboua/pi-shepherdr: Non-blocking agent guidance now explicitly permits continued conversation, other work or an immediate reply. Completion and blockage arrive even after a reply, without polling or sleep waits.
 
 [Full changelog](./packages/pi-extensions/CHANGELOG.md)
 
-### @howaboua/pi-gippity-control — 0.0.22
+### @howaboua/pi-gippity-control — 0.0.23
 
-- Fixed LAN voice and controls accepting requests from unrelated websites while preserving direct phone access and unauthenticated trusted-LAN use.
+- Fixed `voice.forwardReasoningSummaries` forwarding raw reasoning. Voice now uses only verified provider summaries and preserves visible-text progress.
 
 [Full changelog](./packages/pi-gippity-control/CHANGELOG.md)
 
-### @howaboua/pi-gpt-switcher — 0.1.3
+### @howaboua/pi-gpt-switcher — 0.1.4
 
-- GPT-6 Sol and Luna now share Astra's Codex support.
-
-  - Removed `/terra`; use `/luna` instead.
-  - Added Responses Lite, non-destructive reasoning changes and terse context guidance for GPT-6 Sol and Luna.
-  - Image descriptions now use GPT-6 Luna directly instead of preferring older mini models.
-  - Cost estimates now use published GPT-6 Sol and Luna rates, including cache writes and long-context pricing.
-  - Agent, review, exploration, web search, voice summary and image-description defaults now use GPT-6; Luna replaces Terra defaults. GPT Switcher retains Luna's 472K context limit, while Codex Conversion defaults all three GPT-6 models to 272K.
+- The `/sol` shortcut now selects GPT-6.1 Sol while preserving configured context and reasoning defaults.
 
 [Full changelog](./packages/pi-gpt-switcher/CHANGELOG.md)
 
-### @howaboua/pi-memories — 0.1.4
+### @howaboua/pi-memories — 0.1.5
 
-### Changes
-
-- [#106](https://github.com/IgorWarzocha/howaboua-pi-stuff/pull/106) [`c423031`](https://github.com/IgorWarzocha/howaboua-pi-stuff/commit/c4230312f24db0e49c95eafff959109d74017c3d) Thanks [@IgorWarzocha](https://github.com/IgorWarzocha)!:
-  - Rewrite package documentation around current installation, configuration, usage, and behavior.
+- Memory extraction now uses supplied context without assuming that global or project instruction files were loaded.
 
 [Full changelog](./packages/pi-memories/CHANGELOG.md)
 
@@ -171,13 +140,9 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-semantic-grep/CHANGELOG.md)
 
-### @howaboua/pi-shepherdr — 0.2.6
+### @howaboua/pi-shepherdr — 0.2.9
 
-- Fixed exact Ask answer confirmation and retry reconciliation without resending input.
-
-  - Keep answers pending while the original Ask is still open.
-  - Preserve accepted receipts when the worker's reply fails.
-  - Report dismissed Asks as rejected.
+- Non-blocking agent guidance now explicitly permits continued conversation, other work or an immediate reply. Completion and blockage arrive even after a reply, without polling or sleep waits.
 
 [Full changelog](./packages/pi-shepherdr/CHANGELOG.md)
 
@@ -195,15 +160,20 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-skill-code/CHANGELOG.md)
 
-### @howaboua/pi-skill-foundations — 0.0.2
+### @howaboua/pi-skill-foundations — 0.0.3
 
-- Updated communication guidance for concise conversation, writing, teaching, and non-code review.
+- Communication guidance now uses a shorter baseline, rejects stock banter and checks apparent contradictions before conceding a mistake.
 
 [Full changelog](./packages/pi-skill-foundations/CHANGELOG.md)
 
-### @howaboua/pi-skill-harness-and-agent-engineering — 0.0.3
+### @howaboua/pi-skill-harness-and-agent-engineering — 0.0.4
 
-- Refine agent tool design guidance around live route evidence, real caller decisions, and concise positive field instructions.
+- Harness skills now use shorter, evidence-led guidance.
+
+  - Extension design now selects validation by the changed behavior and reuses existing measurement tools for wording edits.
+  - Instruction calibration now checks one-shot outputs against current APIs, distinguishes instruction size from task-cost savings, and completes delegated evaluations without approval between probes.
+  - Prompt-caching guidance now starts from the affected transition and provider-reported usage.
+  - Tool-design guidance now requires a retrieval path for potentially needed truncated output.
 
 [Full changelog](./packages/pi-skill-harness-and-agent-engineering/CHANGELOG.md)
 
@@ -213,11 +183,12 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-skill-omarchy-help/CHANGELOG.md)
 
-### @howaboua/pi-skills — 0.0.21
+### @howaboua/pi-skills — 0.0.22
 
 - Include bundled package updates:
 
-  - @howaboua/pi-skill-harness-and-agent-engineering: Refine agent tool design guidance around live route evidence, real caller decisions, and concise positive field instructions.
+  - @howaboua/pi-skill-foundations: Communication guidance now uses a shorter baseline, rejects stock banter and checks apparent contradictions before conceding a mistake.
+  - @howaboua/pi-skill-harness-and-agent-engineering: Harness skills now use shorter, evidence-led guidance. - Extension design now selects validation by the changed behavior and reuses existing measurement tools for wording edits. - Instruction calibration now checks one-shot outputs against current APIs, distinguishes instruction size from task-cost savings, and completes delegated evaluations without approval between probes. - Prompt-caching guidance now starts from the affected transition and provider-reported usage. - Tool-design guidance now requires a retrieval path for potentially needed truncated output.
 
 [Full changelog](./packages/pi-skills/CHANGELOG.md)
 
@@ -233,29 +204,23 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-smart-btw/CHANGELOG.md)
 
-### @howaboua/pi-stuff — 0.0.88
+### @howaboua/pi-stuff — 0.0.91
 
 - Include bundled package updates:
 
-  - @howaboua/pi-gippity-control: Fixed LAN voice and controls accepting requests from unrelated websites while preserving direct phone access and unauthenticated trusted-LAN use.
+  - @howaboua/pi-shepherdr: Non-blocking agent guidance now explicitly permits continued conversation, other work or an immediate reply. Completion and blockage arrive even after a reply, without polling or sleep waits.
 
 [Full changelog](./packages/pi-stuff/CHANGELOG.md)
 
-### @howaboua/pi-subagent-review — 0.2.24
+### @howaboua/pi-subagent-review — 0.2.25
 
-- GPT-6 Sol and Luna now share Astra's Codex support.
-
-  - Removed `/terra`; use `/luna` instead.
-  - Added Responses Lite, non-destructive reasoning changes and terse context guidance for GPT-6 Sol and Luna.
-  - Image descriptions now use GPT-6 Luna directly instead of preferring older mini models.
-  - Cost estimates now use published GPT-6 Sol and Luna rates, including cache writes and long-context pricing.
-  - Agent, review, exploration, web search, voice summary and image-description defaults now use GPT-6; Luna replaces Terra defaults. GPT Switcher retains Luna's 472K context limit, while Codex Conversion defaults all three GPT-6 models to 272K.
+- Reviewer prompts now request evidence-backed findings without issue-count targets.
 
 [Full changelog](./packages/pi-subagent-review/CHANGELOG.md)
 
-### @howaboua/pi-subdir-agents — 0.0.8
+### @howaboua/pi-subdir-agents — 0.0.9
 
-- Removed redundant developer-message wording while preserving review approval rules and nested AGENTS.md guidance.
+- Expanded AGENTS.md notices now use the same muted theme colour as their summaries.
 
 [Full changelog](./packages/pi-subdir-agents/CHANGELOG.md)
 
@@ -267,12 +232,9 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-unicode-charts/CHANGELOG.md)
 
-### @howaboua/pi-vent — 0.2.10
+### @howaboua/pi-vent — 0.2.11
 
-### Changes
-
-- [#106](https://github.com/IgorWarzocha/howaboua-pi-stuff/pull/106) [`c423031`](https://github.com/IgorWarzocha/howaboua-pi-stuff/commit/c4230312f24db0e49c95eafff959109d74017c3d) Thanks [@IgorWarzocha](https://github.com/IgorWarzocha)!:
-  - Rewrite package documentation around current installation, configuration, usage, and behavior.
+- Vent now uses shorter tool guidance for recording repeated workflow friction after completing the task.
 
 [Full changelog](./packages/pi-vent/CHANGELOG.md)
 

@@ -5,6 +5,7 @@ packages/*/changelog.js
 .afreet/
 pulses/
 vault/
+/memory/
 .pi/*
 !.pi/skills/
 !.pi/skills/**

@@ -38,7 +38,7 @@ Shepherdr reads Herdr's existing machine profiles and connects enabled profiles 
 
 Profiles belong to the host running Pi, not the machine displaying its terminal. Omit `machine` for local agent calls. `list` and `find` search all machines unless filtered. Explicit `local` also means the host running Pi. For remote calls, use the opaque profile ID returned by `list`, not its label or hostname. Renaming a profile changes its label, not its routing identity.
 
-Remote machines connect over noninteractive SSH. The target needs `node` on its SSH PATH, Herdr 0.9 or newer, the Herdr Pi integration and a running Herdr session. Shepherdr installs one helper at `~/.pi/agent/shepherdr.mjs` on each remote, runs it only for the connection lifetime and leaves no remote daemon behind. Herdr's multi-machine UI does not expose a cross-machine automation socket, so Shepherdr still owns its remote transport and Pi transcript reads.
+Remote machines connect over noninteractive SSH. The target needs `node` on its SSH PATH, Herdr 0.9 or newer, the Herdr Pi integration and a running Herdr session. Shepherdr installs managed transport helpers under `~/.pi/agent` on each remote, runs them only for the connection lifetime and leaves no remote daemon behind. Herdr's multi-machine UI does not expose a cross-machine automation socket, so Shepherdr still owns its remote transport and Pi transcript reads.
 
 ### Migrating from separate Shepherdr machines
 
@@ -61,15 +61,13 @@ Call the `agents` tool with `action: "help"` before first use, then send flat re
 | `watch` | Push future settlement from an existing Pi agent |
 | `unwatch` | Stop reporting an agent |
 
-`spawn` and `assign` block by default. Set `blocking: false` when the controller should continue other work immediately. Task completion and blockage are then delivered automatically.
+`spawn` and `assign` block by default. Set `blocking: false` when the controller should continue other work immediately. A profile's `blocking` setting overrides the call for `spawn`. Task completion and blockage are then delivered automatically.
 
 `answer` requires the pending `ask_id` from `read` or a blocked report. It returns `accepted` only when that exact Ask persisted the supplied responses; an accepted retry sends no input.
 
 Questions, status updates and replies use `send`. It returns after submission, does not accept `blocking`, and never creates or changes a watch or task. Use `assign` only to delegate work whose result you need, not to exchange coordination messages.
 
 Automatic delegation watches end when the task finishes or fails. Blocked tasks stay watched until resolved. Only an explicit `watch` keeps reporting subsequent work until `unwatch`. Sending an update to your worker preserves its existing task watch without replacing the task.
-
-Reviewer spawns always block, even when `blocking: false` is supplied. The controller waits for the review before continuing work on its scope.
 
 Every `spawn` needs an `agent_type` and a concise two- or three-word `label`. The label names both the Herdr tab and Pi session; the routing `name` remains optional and is derived from it when omitted.
 
@@ -84,6 +82,18 @@ Messages beginning with `/` use the target Pi session's command, skill and promp
 Idle messages start a prepared user turn. Messages arriving during a run use steering, promoted to developer messages when Pi Codex developer delivery is active. Otherwise they remain ordinary Pi custom messages.
 
 For `answer` inside Code or Notebook Mode, update Pi Ask on workers together with Shepherdr on controllers.
+
+## Shared notes and history
+
+With Pi Codex Conversion 3.0.40 or newer and notes-based continuity, enable **Share subagent context** under `/codex context` in the controller. It is off by default. Shared `spawn` gives each child a unique context identity before its first turn; `contextAgent` in the result identifies its notes and history. Shared nested spawns stay in the same family. Turning sharing off affects new spawns only; existing identity survives resume. `assign` and independently started agents remain unchanged. Older compatible Conversion versions keep ordinary delegation without sharing.
+
+Set `"share_context": false` in a profile to keep its new workers' notes and history independent even when controller sharing is enabled. Omission or `true` follows the controller setting, never turns sharing on itself. This separates context, not filesystem permissions or information included in the task.
+
+Pi creates each worker session normally. The worker records its shared identity before Shepherdr delivers the first task; no pre-created session file or launch override is needed.
+
+Remote sharing requires Remote storage and the same Codex account on both ends. Local and Tree route through the owning Pi sessions and existing SSH connections. Those owners and intermediate controllers must be running; unavailable routes fail explicitly. Resume the owner and use `/herdr connect` after a connection loss. No note store is copied or silently substituted.
+
+Both extensions work independently. A target without active context support still starts, with a warning that its context is not shared. A conflicting storage mode or account rejects the shared spawn before task delivery. Profiles that select or resume an existing session cannot participate in shared `spawn`; use `assign` instead.
 
 ## Profiles
 
@@ -115,6 +125,13 @@ That directory is authoritative after initialization. Edit a profile to change i
 ```
 
 `prompt` is read as system-prompt text. An optional `prepare` module may export `prepare({ cwd, message, base, local })` and return the worker message. Preparation runs on the controlling machine before dispatch; `local` says whether that machine also hosts the worker.
+
+Optional profile settings:
+
+- `blocking`: `true` forces blocking spawns, `false` forces asynchronous spawns. Omission respects the call's `blocking` value, which defaults to `true`. This does not affect `assign` to existing agents.
+- `share_context`: `false` opts new spawns out of shared notes and history. Omission or `true` follows the controller setting.
+
+`help` and `list` expose each profile's description and configured settings. Profile names carry no blocking policy. The bundled reviewer profile sets `"blocking": true`; change it to `false` to force asynchronous review, or remove it to choose per call. Existing installed profiles are never overwritten. An existing reviewer without `blocking` now respects the call like any other profile.
 
 ## Advanced Herdr control
 

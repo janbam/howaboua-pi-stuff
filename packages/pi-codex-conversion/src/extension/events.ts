@@ -26,6 +26,7 @@ function isToolCallOnlyAssistantMessage(message: unknown): boolean {
 	return message.content.every((item) => typeof item === "object" && item !== null && "type" in item && item.type === "toolCall");
 }
 
+/** Connect Codex lifecycle handlers and provider hooks to Pi events. */
 export function registerCodexEvents(
 	pi: ExtensionAPI,
 	runtime: CodexExtensionRuntime,

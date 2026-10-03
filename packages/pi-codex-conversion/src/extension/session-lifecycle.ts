@@ -19,6 +19,7 @@ import type { CodexUiController } from "./ui.ts";
 import { registerCodexDeveloperMessageBroker, updateCodexPreparedIdleKickoff } from "../developer-messages.ts";
 import type { ExtensionHandler, SessionStartEvent, ModelSelectEvent, SessionBeforeSwitchEvent, SessionBeforeForkEvent, SessionBeforeTreeEvent, SessionTreeEvent, SessionShutdownEvent, SessionBeforeSwitchResult, SessionBeforeForkResult, SessionBeforeTreeResult } from "@earendil-works/pi-coding-agent";
 
+/** Own session restoration, provider activation, navigation, and shutdown. */
 export function createCodexSessionLifecycle(
 	pi: ExtensionAPI,
 	runtime: CodexExtensionRuntime,
@@ -212,6 +213,7 @@ export function createCodexSessionLifecycle(
 	};
 }
 
+/** Recognize direct or wrapped host-download cancellation. */
 function isAbortError(error: unknown): boolean {
 	// The host installer wraps fetch failures; recognize cancellation through its cause chain.
 	const seen = new Set<unknown>();
@@ -228,6 +230,7 @@ function isAbortError(error: unknown): boolean {
 	return false;
 }
 
+/** Prepare the host asynchronously, reporting setup failures but not cancellation. */
 export function prepareCodeModeHost(codeMode: CodeModeRegistration, ctx: ExtensionContext): void {
 	void codeMode.prepare(ctx)?.catch((error: unknown) => {
 		if (isAbortError(error)) return;

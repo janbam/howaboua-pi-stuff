@@ -21,6 +21,7 @@ import { recordCodeModeToolkit } from "../adapter/code-mode/toolkit-updates.ts";
 import { recordNotebookStatus } from "../adapter/notebook-status.ts";
 import type { ExtensionHandler, TurnEndEvent, InputEvent, BeforeAgentStartEvent, AgentStartEvent, AgentSettledEvent, ContextWithSystemEvent, TurnEndEventResult, InputEventResult, BeforeAgentStartEventResult, ContextEventResult } from "@earendil-works/pi-coding-agent";
 
+/** Prepare prompts and coordinate turn completion with context maintenance. */
 export function createCodexTurnLifecycle(
 	pi: ExtensionAPI,
 	runtime: CodexExtensionRuntime,

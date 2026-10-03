@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setImmediate as yieldImmediate } from "node:timers";
 import test from "node:test";
-import { prepareCodeModeHost } from "../src/extension/events.ts";
+import { prepareCodeModeHost } from "../src/extension/session-lifecycle.ts";
 import type { CodeModeRegistration } from "../src/tools/code-mode/tools.ts";
 import { installCodeModeHost } from "../src/tools/code-mode/install-host.ts";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -26,6 +26,7 @@ function notifyContext(seen: Array<{ message: string; kind: string }>): Extensio
 function registrationFor(failure: unknown): CodeModeRegistration {
 	return {
 		getTools: () => [],
+		getPromptTools: () => [],
 		prepare: () => Promise.reject(failure),
 		checkpointNotebook: () => Promise.resolve(),
 		notebookStatus: () => Promise.reject(new Error("not used")),

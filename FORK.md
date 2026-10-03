@@ -74,14 +74,14 @@ Paths below are relative to `packages/pi-codex-conversion/`.
 
 - Commits: `407c820`, `5edc924` (`FORK_MOD`)
 - Behavior: status line shows 5-hour usage next to weekly usage from one cached `/wham/usage` read, with shortened labels ("Codex", "Cache", no "left"). The compact v2 indicator and verbosity level are hidden. The usage cache lasts 1 minute instead of 5.
-- Files: `src/codex-usage/{client,payload}.ts`, `src/adapter/activation/{state,tool-set}.ts`, `src/extension/{events,ui}.ts`, `src/ui/status.ts`, `src/diagnostics/{runtime.ts,AGENTS.md}`, `README.md`
+- Files: `src/codex-usage/{client,payload}.ts`, `src/adapter/activation/{state,tool-set}.ts`, `src/extension/{session-lifecycle,turn-lifecycle,ui}.ts`, `src/ui/status.ts`, `src/diagnostics/{runtime.ts,AGENTS.md}`, `README.md`
 
 ### Appended Codex system prompt file
 
 - Commit: `b452e63` (`FORK_MOD`)
 - Behavior: optional user-owned file appended after Pi's prompt construction and conversion, controlled by a default-on General setting with global/project scope. Realtime Voice Mode's prompt is untouched.
 - Fork-only files: `src/prompt/append-system-prompt.ts`
-- Shared files: `src/prompt/build-system-prompt.ts`, `src/adapter/activation/config-{contract,normalize}.ts`, `src/extension/{register,runtime}.ts`, `src/ui/settings/{command,config-items-adapter}.ts`, `src/voice/delegation-preflight.ts`, `README.md`
+- Shared files: `src/prompt/build-system-prompt.ts`, `src/adapter/activation/config-{contract,normalize}.ts`, `src/extension/{register,runtime,turn-lifecycle}.ts`, `src/ui/settings/{command,config-items-adapter}.ts`, `src/voice/delegation-preflight.ts`, `README.md`
 
 ### Codex + Extra tools provider scope
 
@@ -99,11 +99,11 @@ Paths below are relative to `packages/pi-codex-conversion/`.
 
 - Commit: `a41b207`
 - Behavior: cancelling a Code Mode host download while switching to Notebook mode no longer surfaces as a download failure.
-- Files: `src/extension/events.ts`, `src/tools/code-mode/install-host.ts`
+- Files: `src/extension/session-lifecycle.ts`, `src/tools/code-mode/install-host.ts`
 
 ### Session adapter switch and `apply_patch` failure diagnostics
 
 - Commits: `352af15` (PR #15), `a563eca` (changeset restore); `FORK_MOD` in tests
 - Behavior: a session-local "Adapter enabled" toggle at the top of `/codex` General settings. When off, all adapter overlays and tools are suppressed and the adapter's Codex provider is unregistered so stock Pi takes over; the setting is stored as a session entry and restored on branch navigation. Failed `apply_patch` results render the exact model-visible error and the full rejected patch, also in resumed sessions.
 - Fork-only files: `src/adapter/activation/session-state.ts`
-- Shared files: `src/adapter/activation/{runtime-plan,state}.ts`, `src/adapter/provider-request.ts`, `src/extension/{events,register,runtime,ui}.ts`, `src/providers/{code-mode-proxy-provider,openai-codex-custom-provider}.ts`, `src/tools/apply-patch/{render-state,tool}.ts`, `src/ui/settings/command.ts`, `README.md`
+- Shared files: `src/adapter/activation/{runtime-plan,state}.ts`, `src/adapter/provider-request.ts`, `src/extension/{events,register,runtime,session-lifecycle,turn-lifecycle,ui}.ts`, `src/providers/{code-mode-proxy-provider,openai-codex-custom-provider}.ts`, `src/tools/apply-patch/{render-state,tool}.ts`, `src/ui/settings/command.ts`, `README.md`

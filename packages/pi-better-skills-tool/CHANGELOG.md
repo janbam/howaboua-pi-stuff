@@ -1,5 +1,11 @@
 # @howaboua/pi-better-skills-tool
 
+## 0.0.7
+
+- Fixed `skills list` returning nothing under `--no-skills` when an extension injected a user-only skill: skills Pi loaded now overlay the filesystem catalog instead of replacing it.
+
+- The `skills` tool call line in the TUI now shows the full command instead of only the tool name.
+
 ## 0.0.6
 
 - Requires Pi 1.0.0 or later.

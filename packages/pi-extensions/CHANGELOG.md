@@ -1,5 +1,15 @@
 # @howaboua/pi-extensions
 
+## 0.0.85
+
+- Include bundled package updates:
+
+  - @howaboua/pi-ask: Run a notification script whenever an ask needs your attention - Set `notifyScript` in `pi-ask.json` to an executable; it runs with the first prompt title as its argument whenever a waiting or steering ask panel appears. - The config file is now `pi-ask.json`; an existing `ask.json` is renamed automatically.
+  - @howaboua/pi-better-skills-tool: Fixed `skills list` returning nothing under `--no-skills` when an extension injected a user-only skill: skills Pi loaded now overlay the filesystem catalog instead of replacing it.
+  - @howaboua/pi-better-skills-tool: The `skills` tool call line in the TUI now shows the full command instead of only the tool name.
+  - @howaboua/pi-vent: Store project vent logs under ~/.pi/agent/vent and migrate repo-local logs without losing existing central history.
+  - @howaboua/pi-explore-subagents: Remove retired bundled extension.
+
 ## 0.0.84
 
 - Include bundled package updates:

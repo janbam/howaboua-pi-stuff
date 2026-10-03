@@ -18,11 +18,12 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 ## Latest package changelogs
 
-### @howaboua/pi-ask — 0.0.10
+### @howaboua/pi-ask — 0.0.11
 
-- Requires Pi 1.0.0 or later.
+- Run a notification script whenever an ask needs your attention
 
-  Fixed Ask text cursor and input-method candidate window placement in Pi's fullscreen interface.
+  - Set `notifyScript` in `pi-ask.json` to an executable; it runs with the first prompt title as its argument whenever a waiting or steering ask panel appears.
+  - The config file is now `pi-ask.json`; an existing `ask.json` is renamed automatically.
 
 [Full changelog](./packages/pi-ask/CHANGELOG.md)
 
@@ -38,12 +39,11 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-auto-trees/CHANGELOG.md)
 
-### @howaboua/pi-better-skills-tool — 0.0.6
+### @howaboua/pi-better-skills-tool — 0.0.7
 
-- Requires Pi 1.0.0 or later.
+- Fixed `skills list` returning nothing under `--no-skills` when an extension injected a user-only skill: skills Pi loaded now overlay the filesystem catalog instead of replacing it.
 
-  - Skill reads now resolve shorthand references within the selected skill and accept semicolon-separated read/list groups.
-  - Large results now return bounded pages with explicit continuation commands instead of failing.
+- The `skills` tool call line in the TUI now shows the full command instead of only the tool name.
 
 [Full changelog](./packages/pi-better-skills-tool/CHANGELOG.md)
 
@@ -65,22 +65,28 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-cache-hit-predictor/CHANGELOG.md)
 
-### @howaboua/pi-codex-conversion — 3.0.43
+### @howaboua/pi-codex-conversion — 3.0.44
 
-- Requires Pi 1.0.0 or later.
+- Standalone `apply_patch` now replaces Pi's `edit` and `write` tools while it is exposed; `read` and `bash` stay available.
 
-  - Notebook management now uses `{"input":"help"}` and JSON actions through `input`, with guidance for startup recovery.
-  - Added `tools.history` and `tools.notes` inside Code and Notebook for Local, Tree and Remote storage. Remote inputs are visible in execution source and traces; encrypted results reach the model without exposing their contents to JavaScript. Native Remote calls retain encrypted inputs.
-  - Added optional **New window after 25 minutes idle** under `/codex context`. With Notes and history, the next prompt opens a new window only when the last completed run saved fresh notes. Incoming agent messages use the same rollover checks.
-  - Tree navigation now loads saved handoff notes before resuming. Failed reads cancel the jump.
-  - Fixed low-context reminders restarting completed replies.
-  - MCP discovery now starts from server summaries with complete contracts in `ALL_TOOLS`. Promoted custom-tool changes and removals are announced before the next request.
-  - Fixed Usage history loading when Pi and the extension are installed separately. Standalone ledger reports require `--file`; session scans require `--root`.
-  - Fixed conversation replay across Responses model and execution-mode changes.
-  - Fixed voice progress and final replies when realtime voice starts during ongoing Pi work.
-  - Added `xhigh` and `max` to Auto reasoning's `change_reasoning` tool.
-  - WebSocket setup now overlaps request preparation. Compaction warmup reconnects dropped sockets and reuses matching history.
-  - Updated the Sites custom-tool example with Site-hosted MCP guidance, slug changes, Worker logs, database reads, schedules and atomic private-source publishing with saved-version recovery.
+- Add `CODEX_APPEND_SYSTEM.md` as the final section of active converted system prompts, with a General-menu toggle to disable it.
+
+- Keep the full adapter on Codex and Responses-compatible Additional providers while giving listed providers on other APIs enabled standalone tools in the new mixed provider scope.
+
+- Added a session-scoped **Adapter enabled** switch and complete `apply_patch` failure output.
+
+  - Added **Adapter enabled** to `/codex` General settings. Off restores Pi's stock prompt, requests, tools and compaction for the current session only, including removal of standalone extra tools; voice and `/codex` stay available. Resuming the session restores the choice.
+  - `apply_patch` failures now show the exact error the model received and the complete rejected patch, even while the row is collapsed.
+
+- Fixed the `Handler removed the leading system message` error on Pi 0.87: reasoning updates recorded before the first prompt no longer push the system prompt off the head of the request.
+
+- pi-codex-conversion: set a shortcut binding to an empty string to disable that shortcut instead of falling back to its default
+
+- Suppress cancelled Code Mode host downloads while switching to Notebook mode.
+
+- pi-codex-conversion: status line uses compact labels: "Codex" without "adapter", no verbosity level, no compact v2 indicator, and no "left" suffix on usage
+
+- pi-codex-conversion: status-line usage cache refreshes every minute instead of five, keeping displayed quota closer to live state
 
 [Full changelog](./packages/pi-codex-conversion/CHANGELOG.md)
 
@@ -112,14 +118,14 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-explore-subagents/CHANGELOG.md)
 
-### @howaboua/pi-extensions — 0.0.84
+### @howaboua/pi-extensions — 0.0.85
 
 - Include bundled package updates:
 
-  - @howaboua/pi-ask: Requires Pi 1.0.0 or later. Fixed Ask text cursor and input-method candidate window placement in Pi's fullscreen interface.
-  - @howaboua/pi-better-skills-tool: Requires Pi 1.0.0 or later. - Skill reads now resolve shorthand references within the selected skill and accept semicolon-separated read/list groups. - Large results now return bounded pages with explicit continuation commands instead of failing.
-  - @howaboua/pi-gippity-control: Requires Pi 1.0.0 or later. Updated Undici to 8.10.2 with security fixes.
-  - @howaboua/pi-shepherdr: Requires Pi 1.0.0 or later. - Added optional agent-tree message boards with channels, replies, search, subscriptions and persistent folder-local history. Boards require Node.js 22.13 or later. - Added session, exact-folder and global board settings under `/herdr board`. Board notifications reach running turns without waking idle agents. - Board history is stored as plaintext in `.pi/agent-message-board.sqlite` and remains after disabling boards. Keep this archive out of version control and restricted to its intended readers. - Agent messages and worker reports now respect Codex Conversion's saved-Notes idle rollover before waking an idle agent. - Updated coordination guidance to favor asynchronous implementation workers and ending the controller turn when only waiting. Blocked workers are directed to a question-asking tool instead of peer messages, and final replies replace duplicate completion reports.
+  - @howaboua/pi-ask: Run a notification script whenever an ask needs your attention - Set `notifyScript` in `pi-ask.json` to an executable; it runs with the first prompt title as its argument whenever a waiting or steering ask panel appears. - The config file is now `pi-ask.json`; an existing `ask.json` is renamed automatically.
+  - @howaboua/pi-better-skills-tool: Fixed `skills list` returning nothing under `--no-skills` when an extension injected a user-only skill: skills Pi loaded now overlay the filesystem catalog instead of replacing it.
+  - @howaboua/pi-better-skills-tool: The `skills` tool call line in the TUI now shows the full command instead of only the tool name.
+  - @howaboua/pi-vent: Store project vent logs under ~/.pi/agent/vent and migrate repo-local logs without losing existing central history.
   - @howaboua/pi-explore-subagents: Remove retired bundled extension.
 
 [Full changelog](./packages/pi-extensions/CHANGELOG.md)
@@ -228,16 +234,15 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-smart-btw/CHANGELOG.md)
 
-### @howaboua/pi-stuff — 0.0.92
+### @howaboua/pi-stuff — 0.0.93
 
 - Include bundled package updates:
 
-  - @howaboua/pi-ask: Requires Pi 1.0.0 or later. Fixed Ask text cursor and input-method candidate window placement in Pi's fullscreen interface.
-  - @howaboua/pi-better-skills-tool: Requires Pi 1.0.0 or later. - Skill reads now resolve shorthand references within the selected skill and accept semicolon-separated read/list groups. - Large results now return bounded pages with explicit continuation commands instead of failing.
-  - @howaboua/pi-gippity-control: Requires Pi 1.0.0 or later. Updated Undici to 8.10.2 with security fixes.
-  - @howaboua/pi-shepherdr: Requires Pi 1.0.0 or later. - Added optional agent-tree message boards with channels, replies, search, subscriptions and persistent folder-local history. Boards require Node.js 22.13 or later. - Added session, exact-folder and global board settings under `/herdr board`. Board notifications reach running turns without waking idle agents. - Board history is stored as plaintext in `.pi/agent-message-board.sqlite` and remains after disabling boards. Keep this archive out of version control and restricted to its intended readers. - Agent messages and worker reports now respect Codex Conversion's saved-Notes idle rollover before waking an idle agent. - Updated coordination guidance to favor asynchronous implementation workers and ending the controller turn when only waiting. Blocked workers are directed to a question-asking tool instead of peer messages, and final replies replace duplicate completion reports.
+  - @howaboua/pi-ask: Run a notification script whenever an ask needs your attention - Set `notifyScript` in `pi-ask.json` to an executable; it runs with the first prompt title as its argument whenever a waiting or steering ask panel appears. - The config file is now `pi-ask.json`; an existing `ask.json` is renamed automatically.
+  - @howaboua/pi-better-skills-tool: Fixed `skills list` returning nothing under `--no-skills` when an extension injected a user-only skill: skills Pi loaded now overlay the filesystem catalog instead of replacing it.
+  - @howaboua/pi-better-skills-tool: The `skills` tool call line in the TUI now shows the full command instead of only the tool name.
+  - @howaboua/pi-vent: Store project vent logs under ~/.pi/agent/vent and migrate repo-local logs without losing existing central history.
   - @howaboua/pi-explore-subagents: Remove retired bundled extension.
-  - @howaboua/pi-skill-harness-and-agent-engineering: Harness audits now stay within the requested workflow, reuse supplied context and measure startup overhead only when in scope. Tool-design guidance now prefers on-demand help for unfamiliar multi-action or state-dependent tools, while preserving familiar native contracts and simple schemas.
 
 [Full changelog](./packages/pi-stuff/CHANGELOG.md)
 
@@ -261,9 +266,9 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-unicode-charts/CHANGELOG.md)
 
-### @howaboua/pi-vent — 0.2.11
+### @howaboua/pi-vent — 0.2.12
 
-- Vent now uses shorter tool guidance for recording repeated workflow friction after completing the task.
+- Store project vent logs under ~/.pi/agent/vent and migrate repo-local logs without losing existing central history.
 
 [Full changelog](./packages/pi-vent/CHANGELOG.md)
 

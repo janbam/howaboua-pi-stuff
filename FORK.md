@@ -17,9 +17,9 @@ Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist ups
 
 ### Generated `changelog.js` handling
 
-- Commits: `f987721`, `e340b30`
-- Behavior: `changelog.js` is ignored once at the repo root instead of per package, and every package `biome.json` excludes it so local lint passes once it is generated.
-- Files: `.gitignore`, `packages/pi-codex-conversion/.gitignore` (entry removed), `packages/*/biome.json`
+- Commits: `f987721`, `e340b30`, PR #27
+- Behavior: `changelog.js` is ignored once at the repo root instead of per package, and every package `biome.json` excludes it so local lint passes once it is generated. Knip explicitly includes source changelog entry points whose generated imports are ignored, plus the retained skills contract tests.
+- Files: `.gitignore`, `packages/pi-codex-conversion/.gitignore` (entry removed), `packages/*/biome.json`, `knip.jsonc`
 
 ## pi-ask
 

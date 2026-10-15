@@ -18,6 +18,12 @@
 		"packages/pi-auto-trees": {
 			"entry": ["changelog.ts"]
 		},
+		"packages/pi-ask": {
+			"entry": ["changelog.ts"]
+		},
+		"packages/pi-better-skills-tool": {
+			"entry": ["changelog.ts", "tests/**/*.test.ts"]
+		},
 		"packages/pi-browser": {
 			"entry": [
 				"changelog.ts",
@@ -55,6 +61,12 @@
 			"ignoreDependencies": ["proxy-from-env"]
 		},
 		"packages/pi-codex-guardian": {
+			"entry": ["changelog.ts"]
+		},
+		"packages/pi-codex-imagegen": {
+			"entry": ["changelog.ts"]
+		},
+		"packages/pi-codex-web-run": {
 			"entry": ["changelog.ts"]
 		},
 		"packages/pi-gippity-control": {

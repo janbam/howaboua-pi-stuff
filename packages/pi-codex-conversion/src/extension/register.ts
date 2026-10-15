@@ -48,7 +48,7 @@ export async function registerCodexConversion(pi: ExtensionAPI): Promise<void> {
 		cleanupProxyProvider = proxyProvider;
 		const tools = registerCodexTools(pi, runtime);
 		const unregisterNotesBridge = registerExternalNotesBridge(pi, runtime, codeMode, {
-			...createExternalNotesRemoteService(tools.contextRouter),
+			...createExternalNotesRemoteService(() => runtime.state.adapterEnabled, tools.contextRouter),
 			configureTools: (definitions, ctx, contracts) => configureExternalNotesTools(pi, runtime.state, definitions, ctx, contracts),
 		});
 		cleanupNotesBridge = unregisterNotesBridge;

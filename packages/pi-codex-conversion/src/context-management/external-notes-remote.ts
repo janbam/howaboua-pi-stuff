@@ -4,11 +4,12 @@ import { contextAgentIdentity, contextTargetAgent } from "./agent-identity.ts";
 import { lookupRemoteHistoryNotes } from "./history-notes.ts";
 import { projectNotesResponses, projectSharedNotesResult } from "./notes-response-projection.ts";
 
-/** Provider services remain PCC-owned; continuity and the response cache do not. */
-export function createExternalNotesRemoteService(router?: ContextRouter): Pick<NotesBridge,
+/** Provider services remain PCC-owned; protected delivery requires the live adapter. */
+export function createExternalNotesRemoteService(isAdapterEnabled: () => boolean, router?: ContextRouter): Pick<NotesBridge,
 	"lookup" | "canProject" | "projectResult" | "agentName" | "route"> {
 	return {
-		canProject: ctx => ctx.model?.api === "openai-codex-responses",
+		// Stock Pi cannot deliver the protected result details after the adapter is disabled.
+		canProject: ctx => isAdapterEnabled() && ctx.model?.api === "openai-codex-responses",
 		agentName: ctx => contextAgentIdentity(ctx).agentName,
 		async lookup(query, ctx, signal) {
 			const response = await lookupRemoteHistoryNotes(query.namespace, query.params, ctx, signal);

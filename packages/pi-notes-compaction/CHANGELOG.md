@@ -1,5 +1,9 @@
 # @howaboua/pi-notes-compaction
 
+## 0.0.6
+
+- Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+
 ## 0.0.5
 
 - We've been informed that Astra and Sol currently retain their prompt caches for around an hour. If you use notes-managed idle rollover, consider increasing it from 25 to 55 minutes. Cache retention can vary. YMMV. We'll keep monitoring. Please share your cache-retention and long-context quota observations in [the feedback thread](https://github.com/IgorWarzocha/howaboua-pi-stuff/issues/508).

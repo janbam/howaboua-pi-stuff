@@ -1,5 +1,29 @@
 # @howaboua/pi-extensions
 
+## 0.0.95
+
+- Include bundled package updates:
+
+  - @howaboua/pi-ask: Run a notification script whenever an ask needs your attention - Set `notifyScript` in `pi-ask.json` to an executable; it runs with the first prompt title as its argument whenever a waiting or steering ask panel appears. - The config file is now `pi-ask.json`; an existing `ask.json` is renamed automatically.
+  - @howaboua/pi-ask: Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+  - @howaboua/pi-auto-trees: Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+  - @howaboua/pi-better-skills-tool: Fixed `skills list` returning nothing under `--no-skills` when an extension injected a user-only skill: skills Pi loaded now overlay the filesystem catalog instead of replacing it.
+  - @howaboua/pi-better-skills-tool: Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+  - @howaboua/pi-better-skills-tool: The `skills` tool call line in the TUI now shows the full command instead of only the tool name.
+  - @howaboua/pi-cache-hit-predictor: Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+  - @howaboua/pi-codex-guardian: Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+  - @howaboua/pi-gippity-control: Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+  - @howaboua/pi-gpt-switcher: Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+  - @howaboua/pi-grok-realtime: Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+  - @howaboua/pi-pet: Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+  - @howaboua/pi-shepherdr: Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+  - @howaboua/pi-smart-btw: Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+  - @howaboua/pi-subagent-review: Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+  - @howaboua/pi-unicode-charts: Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+  - @howaboua/pi-memories: Remove retired bundled extension.
+  - @howaboua/pi-semantic-grep: Remove retired bundled extension.
+  - @howaboua/pi-vent: Remove retired bundled extension.
+
 ## 0.0.94
 
 - Include bundled package updates:

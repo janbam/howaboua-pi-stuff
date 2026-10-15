@@ -1,5 +1,9 @@
 # @howaboua/pi-codex-guardian
 
+## 0.0.2
+
+- Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+
 ## 0.0.1
 
 - Initial release of Codex Guardian approval reviews for Pi.
@@ -9,4 +13,3 @@
   - Use `/guardian` to inspect status, enable or disable protection, and reload rules.
 
   Installed separately from the extension bundles. Review requests are not confirmed to be free.
-

@@ -1,5 +1,9 @@
 # @howaboua/pi-codex-web-run
 
+## 0.0.8
+
+- Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+
 ## 0.0.7
 
 - Explain when image generation and web search need a separate legacy OpenAI Codex login rather than ChatGPT sign-in. Access failures now give concise guidance without exposing backend responses or addresses. Existing provider routing is unchanged.

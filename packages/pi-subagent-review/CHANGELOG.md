@@ -1,5 +1,9 @@
 # @howaboua/pi-subagent-review
 
+## 0.2.26
+
+- Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+
 ## 0.2.25
 
 - Reviewer prompts now request evidence-backed findings without issue-count targets.

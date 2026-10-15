@@ -1,6 +1,6 @@
 {
 	"name": "@howaboua/pi-codex-guardian",
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"description": "Action-bound Codex Guardian approval for Pi, Code Mode and Notebook Mode.",
 	"type": "module",
 	"license": "MIT",
@@ -42,7 +42,7 @@
 	"peerDependencies": {
 		"@earendil-works/pi-ai": ">=1.2.0",
 		"@earendil-works/pi-coding-agent": ">=1.2.0",
-		"@howaboua/pi-codex-conversion": ">=3.0.52",
+		"@howaboua/pi-codex-conversion": ">=3.0.53",
 		"@earendil-works/pi-tui": ">=1.2.0"
 	},
 	"peerDependenciesMeta": {
@@ -54,7 +54,7 @@
 		"@biomejs/biome": "^2.5.15",
 		"@earendil-works/pi-ai": "1.2.0",
 		"@earendil-works/pi-coding-agent": "1.2.0",
-		"@howaboua/pi-codex-conversion": "3.0.52",
+		"@howaboua/pi-codex-conversion": "3.0.53",
 		"@types/node": "^26.6.5",
 		"typescript": "^7.0.2"
 	},

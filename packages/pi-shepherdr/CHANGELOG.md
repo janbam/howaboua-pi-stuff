@@ -1,5 +1,9 @@
 # @howaboua/pi-shepherdr
 
+## 0.2.20
+
+- Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+
 ## 0.2.19
 
 - Added Codex parent-child metadata for workers when used with PCC, preserved on resume and independent of shared notes.

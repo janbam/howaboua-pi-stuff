@@ -1,6 +1,6 @@
 {
 	"name": "@howaboua/pi-smart-btw",
-	"version": "0.2.8",
+	"version": "0.2.9",
 	"description": "Async side-session questions for Pi with explicit injection into the main chat.",
 	"type": "module",
 	"license": "MIT",

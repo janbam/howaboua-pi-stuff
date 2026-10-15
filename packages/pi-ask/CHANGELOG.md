@@ -1,5 +1,14 @@
 # @howaboua/pi-ask
 
+## 0.0.15
+
+- Run a notification script whenever an ask needs your attention
+
+  - Set `notifyScript` in `pi-ask.json` to an executable; it runs with the first prompt title as its argument whenever a waiting or steering ask panel appears.
+  - The config file is now `pi-ask.json`; an existing `ask.json` is renamed automatically.
+
+- Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+
 ## 0.0.14
 
 - Ask now separates exact choice labels from descriptions in forwarded questions.

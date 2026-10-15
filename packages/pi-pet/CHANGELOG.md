@@ -1,5 +1,9 @@
 # @howaboua/pi-pet
 
+## 0.1.6
+
+- Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+
 ## 0.1.5
 
 - Pi Pet desktop now requires Node 22.12 or newer.

@@ -1,5 +1,9 @@
 # @howaboua/pi-smart-btw
 
+## 0.2.9
+
+- Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+
 ## 0.2.8
 
 - GPT-6 Sol and Luna now share Astra's Codex support.

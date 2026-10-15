@@ -1,5 +1,9 @@
 # @howaboua/pi-subdir-agents
 
+## 0.0.10
+
+- Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+
 ## 0.0.9
 
 - Expanded AGENTS.md notices now use the same muted theme colour as their summaries.

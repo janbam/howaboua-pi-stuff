@@ -1,6 +1,6 @@
 {
   "name": "@howaboua/pi-pet",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Animated companions for GipPity Remote.",
   "license": "MIT",
   "repository": {
@@ -74,7 +74,7 @@
   },
   "packageManager": "bun@1.4.2",
   "peerDependencies": {
-    "@howaboua/pi-gippity-control": ">=0.0.20",
+    "@howaboua/pi-gippity-control": ">=0.0.27",
     "@earendil-works/pi-coding-agent": ">=1.2.0",
     "@earendil-works/pi-tui": ">=1.2.0",
     "typebox": "*"

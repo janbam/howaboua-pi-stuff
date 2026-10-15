@@ -1,5 +1,13 @@
 # @howaboua/pi-better-skills-tool
 
+## 0.0.10
+
+- Fixed `skills list` returning nothing under `--no-skills` when an extension injected a user-only skill: skills Pi loaded now overlay the filesystem catalog instead of replacing it.
+
+- Require Pi 1.2.0 or newer. Codex conversion prepares both user and extension-triggered runs using the current lifecycle API, preserving prompt and tool contributions without treating custom messages as user prompts.
+
+- The `skills` tool call line in the TUI now shows the full command instead of only the tool name.
+
 ## 0.0.9
 
 - Skills discovery and invalid-input errors now show the JavaScript string-call syntax.

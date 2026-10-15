@@ -1,13 +1,21 @@
 # Fork-owned changes
 
-Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist upstream (`IgorWarzocha/howaboua-pi-stuff`). Consult it when merging `upstream/main`: conflicts in the listed files must keep the fork behavior unless the entry is dropped or upstream adopted it. Remove an entry once upstream ships equivalent behavior.
+Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist upstream (`IgorWarzocha/howaboua-pi-stuff`), plus retained historical fixes. Consult it when merging `upstream/main`: conflicts in the listed files must keep active fork behavior unless the entry is dropped or upstream adopted it. Mark adopted entries as historical rather than erasing the fork history.
 
 - Entry = one feature: commits/PRs, behavior, files touched. Tests and changelogs are omitted; `git show --stat <commit>` has the full list.
 - In-code divergences in shared files may carry `// FORK_MOD: <why>` comments; `rg FORK_MOD packages` lists them. Conflicts on those lines keep the fork side.
 - Upstream status is "not proposed" unless stated.
 - Upstream baseline: `@howaboua/pi-codex-conversion@3.0.52` (`76f20771`). This fork targets Pi 1.2.0 with its TypeBox pin, `1.3.27`.
+- Version policy: package versions follow the upstream release being merged. Fork-only changes are documented here, not in Changesets or upstream changelogs. This fork does not create versioning PRs, publish npm packages or create package releases; do not run the retained upstream release commands locally.
 
 ## Repo
+
+### Upstream-owned versioning and releases
+
+- PR: #28
+- Behavior: this fork's GitHub Release workflow is disabled; its retained source job also runs only in the upstream repository. The changeset check exempts forks. Fork-only changesets were removed after preserving their outcomes in this ledger. Incoming upstream release metadata remains untouched.
+- Rationale: local source and Git commits identify fork modifications without drifting from upstream package versions or publishing under upstream package names.
+- Files: `.github/workflows/release.yml`, `scripts/require-changeset.mjs`, `AGENTS.md`, `.changeset/*.md`
 
 ### Pi 1.2 SDK and checkout linking
 
@@ -64,6 +72,13 @@ Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist ups
 ## pi-codex-conversion
 
 Paths below are relative to `packages/pi-codex-conversion/`.
+
+### Leading system message ordering
+
+- Commit: `ecd31dbd` (PR #17)
+- Historical behavior: on Pi 0.87, reasoning updates recorded before the first prompt could precede the system message. Context projection kept the leading system message ahead of virtual Codex bookkeeping, fixing `Handler removed the leading system message`. Current Pi 1.2 lifecycle handling is described above.
+- Upstream status: equivalent ordering protection is included in baseline `76f20771`.
+- File: `src/adapter/developer-history.ts`
 
 ### Empty shortcut binding disables the shortcut
 

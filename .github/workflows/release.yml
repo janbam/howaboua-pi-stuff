@@ -26,7 +26,8 @@ permissions:
 
 jobs:
   release:
-    if: github.ref == 'refs/heads/main'
+    # Forks inherit upstream versions and do not create release PRs or publish packages.
+    if: github.repository == 'IgorWarzocha/howaboua-pi-stuff' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-26.04
     environment: npm-release
     steps:

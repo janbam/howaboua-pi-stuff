@@ -9,6 +9,12 @@ Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist ups
 
 ## Repo
 
+### Pi 1.2 checkout linking
+
+- PR: #27
+- Behavior: the checkout helper validates and links the four consumed Pi packages, plus `pi-server` only when the checkout still contains it.
+- Files: `scripts/link-pi-checkout.mjs`
+
 ### Root `AGENTS.md` rules
 
 - Commits: `f75e2b8`, `c19a43d`, `99e1ef7`, this ledger

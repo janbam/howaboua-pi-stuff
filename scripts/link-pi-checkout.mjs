@@ -27,8 +27,12 @@ const packageSpecs = [
 	["@earendil-works/pi-agent-core", "agent"],
 	["@earendil-works/pi-tui", "tui"],
 	["@earendil-works/pi-coding-agent", "coding-agent"],
-	["@earendil-works/pi-server", "server"],
 ];
+
+// Pi 1.2 removed the server package; older checkouts still link it when available.
+if (existsSync(join(checkout, "packages/server/package.json"))) {
+	packageSpecs.push(["@earendil-works/pi-server", "server"]);
+}
 
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 const checkoutManifest = readJson(join(checkout, "package.json"));

@@ -5,16 +5,19 @@ import type {
 import { isSettledStatus } from "./activity.js";
 import { getSnapshot } from "./herdr.js";
 import { type HerdrConnection, isDispatchRejected } from "./herdr-client.js";
+import { injectAgentEvent } from "./messages.js";
 import { parseMonitorEvent } from "./monitor-event.js";
 import { MonitorEvents } from "./monitor-events.js";
+import { MonitorExtensionMessages } from "./monitor-extension-messages.js";
 import { MonitorState, type WorkAttempt } from "./monitor-state.js";
-import type { AssistantReader } from "./session-reader.js";
+import { type AssistantReader, SessionReader } from "./session-reader.js";
 import {
 	type ClaimedSettlement,
 	SettlementReporter,
 	type SettlementRequest,
 } from "./settlement.js";
 import type {
+	ExtensionReply,
 	HerdrEvent,
 	MonitoredAgent,
 	MonitoringIssue,
@@ -45,6 +48,7 @@ export class AgentMonitor {
 	private readonly state = new MonitorState();
 	private readonly events: MonitorEvents;
 	private readonly settlements: SettlementReporter;
+	private readonly extensionMessages: MonitorExtensionMessages;
 	private context: ExtensionContext | undefined;
 	private activationGeneration = 0;
 
@@ -54,6 +58,26 @@ export class AgentMonitor {
 		this.onChange = options.onChange;
 		this.onRefresh = options.onRefresh;
 		this.selfPaneId = options.selfPaneId;
+		const reader = options.reader ?? new SessionReader();
+		this.extensionMessages = new MonitorExtensionMessages({
+			client: this.client,
+			reader,
+			state: this.state,
+			notify: (ctx, record, agent, message) => {
+				injectAgentEvent(pi, ctx, {
+					agent,
+					extensionMessages: [message],
+					record,
+					status: "extension-message",
+					labels: {},
+					agentToolName: "agents",
+					machine: this.machine,
+					machineLabel: options.machineLabel(),
+					operatorPrefix: options.operatorPrefix,
+				});
+			},
+			persist: () => this.persist(),
+		});
 		this.settlements = new SettlementReporter(
 			pi,
 			this.client,
@@ -62,7 +86,7 @@ export class AgentMonitor {
 				this.persist();
 				this.refreshAfterEvent();
 			},
-			options.reader,
+			reader,
 			{
 				machine: this.machine,
 				label: options.machineLabel,
@@ -87,6 +111,7 @@ export class AgentMonitor {
 		this.deactivate();
 		const generation = this.activationGeneration;
 		this.context = ctx;
+		this.extensionMessages.start(ctx);
 		const dropped = this.state.restore(restored, this.selfPaneId);
 		if (dropped > 0) {
 			ctx.ui.notify(
@@ -105,6 +130,7 @@ export class AgentMonitor {
 		this.activationGeneration += 1;
 		this.context = undefined;
 		this.events.stop();
+		this.extensionMessages.stop();
 		this.settlements.stop();
 	}
 
@@ -149,6 +175,7 @@ export class AgentMonitor {
 			new Error(`${paneId} was unwatched before its work settled`),
 		);
 		this.persist();
+		await this.extensionMessages.refresh();
 		await this.events.refresh();
 		return true;
 	}
@@ -166,9 +193,13 @@ export class AgentMonitor {
 	claimWork(
 		attempt: WorkAttempt,
 		signal: AbortSignal,
-		answeringAskId?: string,
-	): Promise<ClaimedSettlement> {
-		return this.settlements.claim(attempt, signal, answeringAskId);
+		replyingTo?: ExtensionReply,
+	): Promise<ClaimedSettlement> | undefined {
+		return this.settlements.claim(attempt, signal, replyingTo);
+	}
+
+	noteMessage(paneId: string, message: string): void {
+		if (this.state.noteMessage(paneId, message)) this.persist();
 	}
 
 	releaseWorkClaim(attempt: WorkAttempt | undefined, error: unknown): void {
@@ -232,6 +263,7 @@ export class AgentMonitor {
 			return;
 		}
 		if (this.list().length === 0) {
+			await this.extensionMessages.refresh([]);
 			if (persistRestoration) this.persist();
 			else this.onRefresh();
 			return;
@@ -251,6 +283,7 @@ export class AgentMonitor {
 		}
 		if (changed || persistRestoration) this.persist();
 		else this.onRefresh();
+		await this.extensionMessages.refresh(snapshot.agents);
 		for (const completion of completions) {
 			void this.report(completion);
 		}
@@ -290,6 +323,7 @@ export class AgentMonitor {
 	}
 
 	private refreshAfterEvent(): void {
+		void this.extensionMessages.refresh();
 		// MonitorEvents reports failures through onWarning before rejecting awaited updates.
 		void this.events.refresh().catch(() => undefined);
 	}

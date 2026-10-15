@@ -2,14 +2,16 @@ import type { ProviderHeaders } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { ContextWindowIdentity } from "./messages.ts";
 import { contextAgentIdentity } from "./agent-identity.ts";
+import { relationshipTurnMetadata } from "./agent-relationship.ts";
 
 export function rewriteWindowPayload(
 	payload: unknown,
 	ctx: ExtensionContext,
 	identity: ContextWindowIdentity | undefined,
+	historyIngestRequested = true,
 ): unknown {
 	if (!identity || !isRecord(payload)) return payload;
-	const metadata = requestMetadata(ctx, identity);
+	const metadata = requestMetadata(ctx, identity, historyIngestRequested);
 	const clientMetadata = isRecord(payload["client_metadata"])
 		? payload["client_metadata"]
 		: {};
@@ -30,26 +32,28 @@ export function rewriteWindowHeaders(
 	headers: ProviderHeaders,
 	ctx: ExtensionContext,
 	identity: ContextWindowIdentity | undefined,
+	historyIngestRequested = true,
 ): void {
 	if (!identity) return;
-	const metadata = requestMetadata(ctx, identity);
+	const metadata = requestMetadata(ctx, identity, historyIngestRequested);
 	if (metadata.agent_name !== "/root") headers["response-session-id"] = metadata.session_id;
 	headers["x-codex-window-id"] = metadata.window_id;
 	headers["x-codex-turn-metadata"] = JSON.stringify(metadata);
 }
 
-function requestMetadata(ctx: ExtensionContext, identity: ContextWindowIdentity) {
+function requestMetadata(ctx: ExtensionContext, identity: ContextWindowIdentity, historyIngestRequested: boolean) {
 	const sessionId = ctx.sessionManager.getSessionId();
 	const agent = contextAgentIdentity(ctx);
 	return {
 		session_id: agent.sessionId,
+		...relationshipTurnMetadata(ctx),
 		thread_id: sessionId,
 		agent_name: agent.agentName,
 		window_id: `${sessionId}:${identity.windowNumber}`,
 		window_number: identity.windowNumber,
 		context_window_id: identity.currentWindowId,
 		request_kind: "turn",
-		history_ingest_requested: true,
+		...(historyIngestRequested ? { history_ingest_requested: true } : {}),
 	};
 }
 

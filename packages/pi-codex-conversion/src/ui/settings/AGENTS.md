@@ -1,7 +1,7 @@
-- Settings writes are explicit user actions; session startup and resume only read configuration.
-- Execution mode is a scoped `normal`/`code`/`notebook` setting; never store it in session entries or expose an inherited mode.
-- `config-items.ts` dispatches tabs; `config-items-<tab>.ts` builds each tab; `config-items-shared.ts` owns shared controls and update types.
-- `/codex` opens General; keep feature actions under their tab route. Do not add a default-tab argument or quick-toggle aliases.
-- Keep persistence synchronous and simple. Do not add process locks or concurrency machinery without a reproduced background writer or realistic overlapping-write path.
-- Open settings immediately and save synchronously; defer live config/tool application, not the command or UI, until idle. Pending edits must not leak through config reloads in other controls.
-- For apparent setting flips, trace the config source, read lifecycle, and UI draft first; do not promote a theoretical write race into the cause.
+- Persist explicit user actions only. Startup/resume reads config.
+- Execution mode is scoped normal/code/notebook. Never store it in session entries or expose inherited mode.
+- config-items.ts dispatches tabs, config-items-<tab>.ts builds them, config-items-shared.ts owns shared controls/types.
+- /codex opens General. Feature actions stay under tabs. No default-tab arguments or quick-toggle aliases.
+- Persist synchronously. Add locks/concurrency machinery only for reproduced background writers or realistic overlapping writes.
+- Open/save immediately. Defer live config/tool application until idle, not UI. Other controls' config reloads must not expose pending edits.
+- If settings appear to flip, trace config source, read lifecycle and UI draft before blaming a write race.

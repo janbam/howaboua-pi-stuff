@@ -1,5 +1,25 @@
 # @howaboua/pi-ask
 
+## 0.0.14
+
+- Ask now separates exact choice labels from descriptions in forwarded questions.
+
+## 0.0.13
+
+- Ask now accepts supervisor replies through Shepherdr's `reply` action. Update and reload Ask and Shepherdr together on controllers and workers.
+
+  - Supervisors receive questions, choices and a reply template. Valid replies complete the worker's existing wait or steer panel. Human handoffs still require the user's confirmation.
+  - Unknown or misnamed fields, such as `options` instead of `choices`, and malformed choices now return errors naming the invalid field and accepted shape instead of silently dropping input.
+
+## 0.0.12
+
+- ### Improvements
+  - Ask returns help when called without arguments, including an empty structured object. Explicit help remains supported.
+
+## 0.0.11
+
+- Parents can receive and answer asynchronous questions through Shepherdr while workers continue.
+
 ## 0.0.10
 
 - Requires Pi 1.0.0 or later.

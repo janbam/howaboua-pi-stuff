@@ -41,7 +41,7 @@ For another device, give it an SSH alias and confirm key-based access once outsi
 ssh desktop true
 ```
 
-The remote device needs npm and Node 22 or newer; runtime extraction uses PowerShell on Windows and standard `unzip` on macOS/Linux. Attach it from Pi:
+The remote device needs npm and Node 22.12 or newer; runtime extraction uses PowerShell on Windows and standard `unzip` on macOS/Linux. Attach it from Pi:
 
 ```text
 /pet attach desktop

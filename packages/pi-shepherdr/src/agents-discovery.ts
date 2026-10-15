@@ -23,41 +23,64 @@ function describeProfiles(profiles: Map<string, AgentProfile>) {
 	);
 }
 
-export async function agentsHelp(): Promise<Record<string, unknown>> {
+export async function agentsHelp(
+	boardAvailable = false,
+): Promise<Record<string, unknown>> {
 	const profiles = await loadAgentProfiles();
 	return {
+		commands:
+			"commands: true lists available slash commands with descriptions; defaults to this session, target and machine optionally select another session; does not execute commands",
 		actions: {
 			help: "",
 			list: "machine?",
 			find: "query? status? machine?",
+			focus: "target machine? voice? handoff?",
 			spawn:
-				"agent_type label message name? machine? placement? workspace? pane? cwd? base? blocking?",
+				"agent_type label message name? machine? placement? workspace? pane? cwd? base? blocking?" +
+				(boardAvailable ? " board_thread_id?" : ""),
 			watch: "target machine?",
 			unwatch: "target machine?",
 			send: "target message machine?",
 			assign: "target message machine? blocking?",
-			read: "target machine? source? lines?",
-			answer: "target ask_id answers machine?",
+			attach: "target context board machine?",
+			detach: "target context board machine?",
+			read: "target machine? source=latest|visible|recent? lines?",
+			reply: "target extension id message machine?",
 		},
 		rules: {
+			reply:
+				"Use the extension-authored template from its report/read; send does not resolve it. Blocking messages wait for resumed work; other replies return after semantic delivery",
 			machine:
 				"Omit for local (host running Pi); list/find omit for all machines. Remote: profile ID from list, not label/hostname",
-			target: "Use spawn/find target exactly",
-			label: "2-3 words; tab/session",
-			answers: "[{selections?:string[],other?:string,comment?:string}]",
-			ask_id: "Exact pending Ask ID",
-			send: "Only for a needed answer or to change the recipient's current work. No courtesy updates, acknowledgements or completion echoes. Can wake idle agents; no wait/watch",
-			assign: "Delegate a task to an existing agent",
+			target:
+				"Use spawn/find target exactly; /root selects this family's live root",
+			label: "Concise tab/session name",
+			...(boardAvailable
+				? {
+						board_thread_id:
+							"Existing shared-board thread; child receives a read reference",
+					}
+				: {}),
+			send: "Message or work update; wakes idle agents, no wait/watch. Close finished workers with /quit, not acknowledgement messages",
+			assign:
+				"Delegate or update work; active updates share its pending result, never replace an existing wait",
+			focus:
+				"Select a running session; passive arrival with return call, no task/watch. voice defaults false; true carries the active microphone asynchronously. handoff adds context. Remote focus selects the target's Herdr session, not the client's machine",
+			attach: boardAvailable
+				? "Idle target; context/board booleans choose shared access and board membership independently; no task/watch"
+				: "Idle target; context shares notes/history; use board:false while shared boards are unavailable; no task/watch",
+			detach:
+				"Stop selected membership; retain counterpart checkpoints read-only; idle target",
 			blocking:
 				"spawn/assign default true; profile blocking overrides spawn. Fan out independent implementation workers with false; end your turn when only waiting. Completion/blockage arrives after you reply; no polling or sleep waits",
 			share_context:
 				"Profile false isolates notes/history; otherwise follows controller sharing setting",
 			watch:
-				"Explicit watch persists until unwatch; automatic task watches end on finish/failure, not blockage",
+				"Delegation and watch keep reporting subsequent work until unwatch or close",
 			prompt:
 				"Only task + inaccessible context; no method/evidence/reporting boilerplate",
 			slash:
-				"Leading / uses target Pi commands/skills/templates; extension commands are submission-only, even with assign/spawn; TUI-only commands unavailable",
+				"Leading / routes target commands/skills/templates. Commands skip task waiting, even with assign/spawn; blocked commands return available choices. /quit shuts down Pi and closes its pane",
 			reuse:
 				"Reuse only same investigation; reviews independent; new scope = new agent",
 			...(profiles.has("general")

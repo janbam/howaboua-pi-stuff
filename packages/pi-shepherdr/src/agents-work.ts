@@ -3,10 +3,10 @@ import { activityTask } from "./activity.js";
 import type { ConnectedMachine } from "./fleet.js";
 import { getSnapshot } from "./herdr.js";
 import { isDispatchRejected } from "./herdr-client.js";
-import { agentSource, modelAsk } from "./messages.js";
+import { agentSource } from "./messages.js";
 import type { WorkAttempt } from "./monitor-state.js";
 import type { ClaimedSettlement } from "./settlement.js";
-import type { PaneInfo, PeerDelivery } from "./types.js";
+import type { ExtensionReply, PaneInfo, PeerDelivery } from "./types.js";
 
 export function toolResult(value: Record<string, unknown>, warning?: string) {
 	if (warning) value = { ...value, next: warning };
@@ -81,15 +81,15 @@ export function settlementResult(
 		status: settlement.status,
 		...(workerError ? { worker_error: workerError } : {}),
 		...(settlement.reply ? { reply: settlement.reply.text } : {}),
-		...(settlement.ask
-			? {
-					ask: modelAsk(settlement.ask),
-				}
+		...(settlement.extensionMessages
+			? { extensionMessages: settlement.extensionMessages }
 			: {}),
 		...(settlement.blockedMessage
 			? { blocked_on: settlement.blockedMessage }
 			: {}),
-		...(settlement.status === "done" && !settlement.reply && !settlement.ask
+		...(settlement.status === "done" &&
+		!settlement.reply &&
+		!settlement.extensionMessages?.length
 			? { completed: true }
 			: {}),
 	};
@@ -103,7 +103,7 @@ export async function dispatchAgentWork(
 	signal: AbortSignal,
 	onUpdate: AgentToolUpdateCallback<Record<string, unknown>>,
 	send: () => Promise<PeerDelivery | void>,
-	options: { expectUserMessage?: boolean; answeringAskId?: string } = {},
+	options: { expectUserMessage?: boolean; replyingTo?: ExtensionReply } = {},
 ): Promise<{
 	settlement?: ClaimedSettlement;
 	command?: true;
@@ -133,14 +133,14 @@ export async function dispatchAgentWork(
 		);
 		if (!attempt) throw new Error(`${panel.pane_id} is not monitored`);
 		settlement = blocking
-			? runtime.monitor.claimWork(attempt, signal, options.answeringAskId)
+			? runtime.monitor.claimWork(attempt, signal, options.replyingTo)
 			: undefined;
 		void settlement?.catch(() => undefined);
 		signal.throwIfAborted();
 		sendStarted = true;
 		receipt = await send();
 	} catch (error) {
-		runtime.monitor.releaseWorkClaim(attempt, error);
+		if (settlement) runtime.monitor.releaseWorkClaim(attempt, error);
 		if (sendStarted) await runtime.monitor.handleWorkFailure(attempt, error);
 		else runtime.monitor.rejectWork(attempt);
 		if (addedWatch && (!sendStarted || isDispatchRejected(error))) {
@@ -162,10 +162,11 @@ export async function dispatchAgentWork(
 	}
 	try {
 		if (receipt?.command) {
-			runtime.monitor.releaseWorkClaim(
-				attempt,
-				new Error("Command submitted without task waiting"),
-			);
+			if (settlement)
+				runtime.monitor.releaseWorkClaim(
+					attempt,
+					new Error("Command submitted without task waiting"),
+				);
 			runtime.monitor.rejectWork(attempt);
 			if (addedWatch) {
 				const record = runtime.monitor
@@ -174,21 +175,24 @@ export async function dispatchAgentWork(
 				if (record?.scope === "task" && !activityTask(record.activity))
 					await runtime.monitor.unwatch(record.paneId);
 			}
-		} else runtime.monitor.acceptWork(attempt);
+		} else {
+			runtime.monitor.acceptWork(attempt);
+			runtime.monitor.noteMessage(panel.pane_id, task);
+		}
 		await runtime.monitor.reconcileNow();
 	} catch (error) {
-		runtime.monitor.releaseWorkClaim(attempt, error);
+		if (settlement) runtime.monitor.releaseWorkClaim(attempt, error);
 		return {
 			...(receipt?.command ? { command: true } : {}),
 			warning: `Submitted, but monitoring refresh failed: ${error instanceof Error ? error.message : String(error)}. Inspect the target before resubmitting`,
 		};
 	}
 	if (receipt?.command) return { command: true };
-	if (!blocking) return {};
+	if (!settlement) return {};
 	reportProgress(onUpdate, `Waiting for ${panel.name ?? panel.pane_id}`, {
 		machine: runtime.machine,
 		target: panel.pane_id,
 		status: "working",
 	});
-	return { settlement: await settlement! };
+	return { settlement: await settlement };
 }

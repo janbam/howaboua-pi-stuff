@@ -3,7 +3,8 @@ import { supportsCodexReasoningUpdates } from "../reasoning-updates.ts";
 import { supportsViewImageInputs } from "../tool-support.ts";
 import { isGpt6ModelId, supportsResponsesLiteModel } from "../../providers/openai-codex/responses-lite-model.ts";
 import { isCodexLikeModel, isCodexTransportContext, isOpenAIResponsesContext, isResponsesContext } from "../prompt/codex-model.ts";
-import type { CodexConversionConfig, ContextManagementMode } from "./config.ts";
+import type { CodexConversionConfig, ContextManagementMode, IdleNotesMinutes } from "./config.ts";
+import { FAST_MODE_FAMILIES } from "./config-contract.ts";
 import type { ExecutionMode } from "./execution-mode.ts";
 import type { AdapterState } from "./state.ts";
 import {
@@ -28,12 +29,14 @@ interface RuntimePlanBase {
 	nativeCompaction: boolean;
 	nativeReplay: boolean;
 	contextManagement: boolean;
+	contextManagementExternal: boolean;
 	contextManagementMode: ContextManagementMode;
 	contextManagementRemote: boolean;
 	contextManagementNested: boolean;
+	notesTreeHandoff: boolean;
 	shareSubagentContext: boolean;
 	compactOnRollover: boolean;
-	idleNotesRollover: boolean;
+	idleNotesRollover: IdleNotesMinutes;
 	autoReasoning: boolean;
 }
 
@@ -130,7 +133,8 @@ export function hasCodexTransportConfigChanged(previous: CodexConversionConfig, 
 	return next.voiceFeaturesOnly !== previous.voiceFeaturesOnly
 		|| next.executionMode !== previous.executionMode
 		|| next.prompt.heavySystemPromptOverwrite !== previous.prompt.heavySystemPromptOverwrite
-		|| next.openai.fast !== previous.openai.fast
+		|| [...FAST_MODE_FAMILIES, "other" as const].some((family) => next.openai.fast[family] !== previous.openai.fast[family])
+		|| next.openai.daybreak !== previous.openai.daybreak
 		|| next.openai.harnessIdentifierHeader !== previous.openai.harnessIdentifierHeader
 		|| nativeCompactionConfigured(next.compaction) !== nativeCompactionConfigured(previous.compaction)
 		|| next.compaction.continuity !== previous.compaction.continuity
@@ -141,6 +145,7 @@ export function resolveCodexRuntimePlan(
 	ctx: RuntimeContext,
 	config: CodexConversionConfig,
 	executionMode?: ExecutionMode,
+	externalNotes = false,
 	adapterEnabled = true,
 ): CodexRuntimePlan {
 	const scope = config.scope.allProviders;
@@ -166,12 +171,14 @@ export function resolveCodexRuntimePlan(
 		nativeCompaction: false,
 		nativeReplay: false,
 		contextManagement: false,
+		contextManagementExternal: externalNotes,
 		contextManagementMode: "off" as const,
 		contextManagementRemote: false,
 		contextManagementNested: false,
+		notesTreeHandoff: false,
 		shareSubagentContext: false,
 		compactOnRollover: false,
-		idleNotesRollover: false,
+		idleNotesRollover: 0 as IdleNotesMinutes,
 		autoReasoning: false,
 	};
 	// The master switch suppresses every adapter surface, including standalone extras.
@@ -193,7 +200,7 @@ export function resolveCodexRuntimePlan(
 	// Preserve the existing configured-provider adapter path in mixed scope; only non-Responses providers fall back to extras.
 	const active = mixedScope ? mixedFullAdapter : scope === "on" || isConfigured || codexLike;
 	if (!active) return { ...base, kind: "inactive", toolNames: [], prompt: undefined, transport: undefined };
-	const configuredContextManagementMode = isResponsesContext(ctx) && config.compaction.continuity !== "compaction"
+	const configuredContextManagementMode = !externalNotes && isResponsesContext(ctx) && config.compaction.continuity !== "compaction"
 		? config.compaction.historyStorage
 		: "off";
 	const contextManagement = configuredContextManagementMode !== "off" &&
@@ -202,11 +209,12 @@ export function resolveCodexRuntimePlan(
 		? configuredContextManagementMode
 		: "off";
 	const contextManagementRemote = contextManagementMode === "remote";
+	base.notesTreeHandoff = contextManagement && config.compaction.notesTreeHandoff;
 	base.shareSubagentContext = contextManagement && config.compaction.shareSubagentContext;
 	base.compactOnRollover = contextManagement && config.compaction.continuity === "notes-and-compaction";
-	base.idleNotesRollover = contextManagement && config.compaction.continuity === "notes" && config.compaction.idleNotesRollover;
+	base.idleNotesRollover = contextManagement && config.compaction.continuity === "notes" ? config.compaction.idleNotesRollover : 0;
 	base.nativeReplay = effectiveOpenAICodex;
-	const nativeCompaction = effectiveOpenAICodex && nativeCompactionConfigured(config.compaction);
+	const nativeCompaction = effectiveOpenAICodex && (externalNotes ? config.compaction.method !== "pi" : nativeCompactionConfigured(config.compaction));
 	base.autoReasoning = config.tools.autoReasoning && supportsCodexReasoningUpdates(ctx.model);
 	const configuredExecutionMode = executionMode ?? config.executionMode;
 	const requestedCodeMode = configuredExecutionMode === "code" || configuredExecutionMode === "notebook"
@@ -216,7 +224,7 @@ export function resolveCodexRuntimePlan(
 			: undefined;
 	if (requestedCodeMode) {
 		const contextManagementNested = contextManagement;
-		const contextTools = !contextManagement ? []
+		const contextTools = !contextManagement && !externalNotes ? []
 			: ["new_context"];
 		const transport = usesResponsesLite(ctx, config)
 			? "responses-lite"
@@ -257,7 +265,7 @@ export function resolveCodexRuntimePlan(
 	return {
 		...base,
 		kind: "normal",
-		toolNames: [...normalToolNames(ctx, config, contextManagement), ...(base.autoReasoning ? ["change_reasoning"] : [])],
+		toolNames: [...normalToolNames(ctx, config, contextManagement || externalNotes), ...(base.autoReasoning ? ["change_reasoning"] : [])],
 		prompt: "normal",
 		transport: "responses",
 		nativeCompaction,
@@ -269,9 +277,14 @@ export function resolveCodexRuntimePlan(
 
 export function resolveCodexRuntimePlanForState(
 	ctx: RuntimeContext,
-	state: Pick<AdapterState, "adapterEnabled" | "config" | "executionMode" | "availableToolNames">,
+	state: Pick<AdapterState, "adapterEnabled" | "config" | "executionMode" | "availableToolNames" | "externalNotes">,
 ): CodexRuntimePlan {
-	const plan = resolveCodexRuntimePlan(ctx, state.config, state.executionMode, state.adapterEnabled);
+	const plan = resolveCodexRuntimePlan(ctx, state.config, state.executionMode, Boolean(state.externalNotes), state.adapterEnabled);
+	if (state.externalNotes) plan.shareSubagentContext = state.config.compaction.shareSubagentContext;
+	if (state.externalNotes && (plan.kind === "inactive" || plan.kind === "extras"))
+		plan.ownedToolNames = plan.ownedToolNames.filter(name => !CONTEXT_MANAGEMENT_TOOL_NAMES.includes(name));
+	if (state.externalNotes && plan.kind === "extras")
+		plan.toolNames = [...plan.toolNames, ...CONTEXT_MANAGEMENT_TOOL_NAMES];
 	const missingToolNames = state.availableToolNames === undefined
 		? []
 		: [...plan.toolNames, ...(plan.contextManagementNested ? ["history", "notes"] : [])]
@@ -290,9 +303,10 @@ export function resolveCodexRuntimePlanForState(
 		contextManagementMode: "off",
 		contextManagementRemote: false,
 		contextManagementNested: false,
+		notesTreeHandoff: false,
 		shareSubagentContext: false,
 		compactOnRollover: false,
-		idleNotesRollover: false,
+		idleNotesRollover: 0,
 		autoReasoning: false,
 	};
 }

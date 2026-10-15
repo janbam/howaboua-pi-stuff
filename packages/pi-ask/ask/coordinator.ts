@@ -1,8 +1,9 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { AskPrompt, PendingAsk } from "./contracts.js";
+import type { AskPrompt, AskResponse, PendingAsk } from "./contracts.js";
 import { normalizeResponses, summarizeResponses } from "./normalize.js";
 import type { PendingAskUpdate } from "./pending.js";
 import { askWithPiUi } from "./pi-ui.js";
+import { AskRequests, type RequestChange } from "./requests.js";
 import { askInTui } from "./tui.js";
 
 type AskInComposer = (
@@ -14,11 +15,13 @@ export interface AskCoordinatorOptions {
 	askInComposer?: AskInComposer;
 	deliverSteer?: (message: string) => void;
 	onPendingChange?: (update: PendingAskUpdate) => void;
+	onRequestChange?: (change: RequestChange) => void;
 	/** Called when a panel actually appears (after queued panels ahead of it), for both wait and steer asks. */
 	onPresent?: (ctx: ExtensionContext, prompts: AskPrompt[]) => void;
 }
 
 interface PresentAskOptions {
+	id: string;
 	onActiveChange?: (active: boolean) => void;
 	handoff?: boolean;
 	steering?: boolean;
@@ -36,8 +39,10 @@ export function createAskCoordinator({
 	askInComposer,
 	deliverSteer,
 	onPendingChange,
+	onRequestChange,
 	onPresent,
 }: AskCoordinatorOptions = {}) {
+	const requests = new AskRequests(onRequestChange);
 	let generation = 0;
 	let sessionAbort = new AbortController();
 	let presentationTail = Promise.resolve();
@@ -47,30 +52,35 @@ export function createAskCoordinator({
 		ctx: ExtensionContext,
 		prompts: AskPrompt[],
 		{
+			id,
 			handoff = false,
 			steering = false,
 			signal,
 			onActiveChange,
-		}: PresentAskOptions = {},
+		}: PresentAskOptions,
 	): Promise<unknown> => {
+		const request = requests.open({ id, prompts, handoff, steering }, signal);
 		const run = async () => {
-			if (signal?.aborted) return null;
+			if (request.signal.aborted) return;
 			try {
 				onActiveChange?.(true);
 				onPresent?.(ctx, prompts);
-				return askInComposer
-					? await askInComposer(prompts, signal)
+				const response = askInComposer
+					? await askInComposer(prompts, request.signal)
 					: ctx.mode === "tui"
 						? await askInTui(ctx, prompts, {
 								handoff,
 								steering,
-								...(signal ? { signal } : {}),
+								signal: request.signal,
 							})
 						: await askWithPiUi(ctx, prompts, {
 								handoff,
 								steering,
-								...(signal ? { signal } : {}),
+								signal: request.signal,
 							});
+				request.select(response);
+			} catch (error) {
+				request.fail(error);
 			} finally {
 				onActiveChange?.(false);
 			}
@@ -80,7 +90,7 @@ export function createAskCoordinator({
 			() => undefined,
 			() => undefined,
 		);
-		return result;
+		return request.response;
 	};
 
 	const notifyFailure = (ctx: ExtensionContext, error: unknown) => {
@@ -99,12 +109,23 @@ export function createAskCoordinator({
 		}
 	};
 
-	const close = (ctx: ExtensionContext, id: string) => {
+	const close = (
+		ctx: ExtensionContext,
+		id: string,
+		responses?: AskResponse[],
+	): boolean => {
 		activeSteers.delete(id);
 		try {
-			onPendingChange?.({ version: 1, state: "closed", id });
+			onPendingChange?.({
+				version: 1,
+				state: "closed",
+				id,
+				...(responses ? { responses } : { dismissed: true }),
+			});
+			return true;
 		} catch (error) {
 			notifyFailure(ctx, error);
+			return false;
 		}
 	};
 
@@ -125,38 +146,74 @@ export function createAskCoordinator({
 		activeSteers.add(request.id);
 		const requestGeneration = generation;
 		void present(ctx, request.prompts, {
+			id: request.id,
 			steering: true,
 			signal: sessionAbort.signal,
-		}).then(
-			(responses) => {
+		})
+			.then(
+				(responses) => {
+					if (requestGeneration !== generation || sessionAbort.signal.aborted)
+						return;
+					if (deliver(ctx, steerResponse(request.prompts, responses))) {
+						const saved = close(
+							ctx,
+							request.id,
+							normalizeResponses(request.prompts, responses) ?? undefined,
+						);
+						requests.complete(
+							request.id,
+							saved
+								? undefined
+								: "Answer delivered, but question state could not be saved; inspect the agent before retrying",
+						);
+					} else {
+						requests.complete(
+							request.id,
+							"Answer could not be delivered; the question is open again",
+						);
+						activeSteers.delete(request.id);
+						startSteer(request, ctx, false);
+					}
+				},
+				(error: unknown) => {
+					if (requestGeneration !== generation || sessionAbort.signal.aborted)
+						return;
+					const message = notifyFailure(ctx, error);
+					if (
+						deliver(
+							ctx,
+							`The asynchronous ask failed before I could answer: ${message}`,
+						)
+					) {
+						const saved = close(ctx, request.id);
+						requests.complete(
+							request.id,
+							saved
+								? undefined
+								: "Question state could not be saved; inspect the agent before retrying",
+						);
+					} else requests.complete(request.id, message);
+				},
+			)
+			.catch((error: unknown) => {
 				if (requestGeneration !== generation || sessionAbort.signal.aborted)
 					return;
-				if (deliver(ctx, steerResponse(request.prompts, responses)))
-					close(ctx, request.id);
-			},
-			(error: unknown) => {
-				if (requestGeneration !== generation || sessionAbort.signal.aborted)
-					return;
-				const message = notifyFailure(ctx, error);
-				if (
-					deliver(
-						ctx,
-						`The asynchronous ask failed before I could answer: ${message}`,
-					)
-				)
-					close(ctx, request.id);
-			},
-		);
+				requests.complete(request.id, String(error));
+				notifyFailure(ctx, error);
+			});
 	};
 
 	return {
 		canSteer: deliverSteer !== undefined,
 		present,
+		reply: (id: string, message: string) => requests.reply(id, message),
+		complete: (id: string, error?: string) => requests.complete(id, error),
 		requestSteer(request: PendingAsk, ctx: ExtensionContext) {
 			startSteer(request, ctx, true);
 		},
 		restorePending(pending: readonly PendingAsk[], ctx: ExtensionContext) {
 			generation++;
+			requests.reset();
 			sessionAbort.abort();
 			sessionAbort = new AbortController();
 			presentationTail = Promise.resolve();
@@ -166,6 +223,7 @@ export function createAskCoordinator({
 		},
 		shutdown() {
 			generation++;
+			requests.reset();
 			sessionAbort.abort();
 			activeSteers.clear();
 		},

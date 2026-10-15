@@ -12,8 +12,8 @@ import {
 	type Usage,
 } from "@earendil-works/pi-ai";
 import type {
-	ResponseCreateParamsStreaming,
-	ResponseInput,
+	ResponseInput as OpenAIResponseInput,
+	ResponseOutputMessage,
 	ResponseInputItem,
 	ResponseToolSearchOutputItemParam,
 	Tool as OpenAITool,
@@ -24,23 +24,28 @@ import {
 	resolveGrammarConstrainedSampling,
 	resolveJsonSchemaStrictSampling,
 } from "../constrained-sampling.js";
-import { parseTextSignature, shortHash } from "./signatures.ts";
+import { parseTextSignature, shortHash, type TextSignaturePhase } from "./signatures.ts";
 import { normalizeResponsesToolHistory } from "./tool-history.ts";
 import { normalizeResponsesMessageHistory } from "./message-history.ts";
 import { encryptedToolOutputFromDetails, opaqueToolOutputsFromDetails, imageDetailForResponses, isImageGenerationCallBlock, isWebSearchCallBlock, sanitizeImageGenerationCallItem, sanitizeWebSearchCallItem, recordedCustomInputProperty, recordedResponsesNamespace, type ImageDetail, type ImageGenerationCallBlock, type WebSearchCallBlock } from "./native-items.ts";
 import { unrouteContextNamespaceToolCall } from "../../context-management/namespace-tools.ts";
+import type { ServiceTier } from "../openai-codex/types.ts";
 
 type InternalAssistantContent = Extract<Message, { role: "assistant" }>["content"][number] | ImageGenerationCallBlock | WebSearchCallBlock;
 type ImageContentWithDetail = { type: "image"; data: string; mimeType: string; detail?: ImageDetail | undefined };
 
+// Codex supports partial_answer before the OpenAI SDK's Responses declarations.
+type ResponseInput = Array<Exclude<OpenAIResponseInput[number], ResponseOutputMessage> |
+	(Omit<ResponseOutputMessage, "phase"> & { phase?: TextSignaturePhase | null })>;
+
 export interface OpenAIResponsesStreamOptions {
-	serviceTier?: ResponseCreateParamsStreaming["service_tier"] | undefined;
+	serviceTier?: ServiceTier;
 	grammarToolInputProperties?: ReadonlyMap<string, string> | undefined;
 	resolveServiceTier?: (
-		responseServiceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
-		requestServiceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
-	) => ResponseCreateParamsStreaming["service_tier"] | undefined;
-	applyServiceTierPricing?: (usage: Usage, serviceTier: ResponseCreateParamsStreaming["service_tier"] | undefined) => void;
+		responseServiceTier: ServiceTier,
+		requestServiceTier: ServiceTier,
+	) => ServiceTier;
+	applyServiceTierPricing?: (usage: Usage, serviceTier: ServiceTier) => void;
 	onOutputItemDone?: (item: unknown) => void;
 }
 
@@ -252,6 +257,7 @@ export function convertResponsesMessages<TApi extends Api>(
 			const hasText = textResult.length > 0;
 			const [callId] = msg.toolCallId.split("|");
 			const encryptedToolOutput = encryptedToolOutputFromDetails(msg.details);
+			const attachmentHint = (msg.details as { codexHistoryNotes?: { attachment_hint?: unknown } } | undefined)?.codexHistoryNotes?.attachment_hint;
 			const opaqueOutputs = opaqueToolOutputsFromDetails(msg.details);
 			if (opaqueOutputs.length && callId !== undefined && customCallIds.has(callId))
 				throw new Error("Protected results require a native tool output");
@@ -269,6 +275,7 @@ export function convertResponsesMessages<TApi extends Api>(
 					]
 				: encryptedToolOutput
 				? [
+						...(typeof attachmentHint === "string" ? [{ type: "input_text" as const, text: sanitizeSurrogates(attachmentHint) }] : []),
 						{ type: "encrypted_content" as const, encrypted_content: encryptedToolOutput },
 						...(hasImages && model.input.includes("image")
 							? msg.content

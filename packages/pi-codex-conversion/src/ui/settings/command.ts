@@ -1,5 +1,7 @@
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { CodexConversionConfig } from "../../adapter/activation/config.ts";
+import { FAST_MODE_FAMILIES } from "../../adapter/activation/config-contract.ts";
+import { allModelsFastModeState } from "../../adapter/activation/fast-mode.ts";
 import {
 	clearFolderCodexConversionConfig,
 	getCodexConversionConfigPath,
@@ -133,7 +135,7 @@ export function registerCodexCommand(
 				}
 				return;
 			}
-			ctx.ui.notify(formatCodexSettings(state.config, state.adapterEnabled), "info");
+			ctx.ui.notify(formatCodexSettings(state.config, state.adapterEnabled) + (state.externalNotes ? "\nNotes continuity is externally managed; saved PCC continuity settings are inactive." : ""), "info");
 			return;
 		}
 		let configScope: CodexConversionConfigScope = hasFolderCodexConversionConfig(
@@ -157,11 +159,16 @@ export function registerCodexCommand(
 				openai: {
 					...selected.openai,
 					lunaCacheKeepaliveMinutes: effective.openai.lunaCacheKeepaliveMinutes,
+					lunaCacheKeepaliveIntervalMinutes: effective.openai.lunaCacheKeepaliveIntervalMinutes,
 					cacheKeepalive: effective.openai.cacheKeepalive,
+					cacheKeepaliveIntervalMinutes: effective.openai.cacheKeepaliveIntervalMinutes,
 				},
 			};
 		};
 		await openCodexSettingsScreen(ctx, {
+			setModel: model => pi.setModel(model),
+			waitForIdle: async () => { do { await ctx.waitForIdle(); } while (!ctx.isIdle()); },
+			externalNotes: Boolean(state.externalNotes),
 			initialConfig: readSelectedConfig(),
 			initialTab: tab,
 			adapterEnabled: {
@@ -176,8 +183,8 @@ export function registerCodexCommand(
 				},
 			},
 			onChange: (config) => saveAndApply(ctx, configScope, config),
-			onGlobalLunaCacheKeepalive: (minutes) => {
-				const result = setGlobalCodexLunaCacheKeepalive(minutes);
+			onGlobalLunaCacheKeepalive: (minutes, interval) => {
+				const result = setGlobalCodexLunaCacheKeepalive(minutes, undefined, interval);
 				if (!result.ok) {
 					ctx.ui.notify(`Failed to save global Luna cache keepalive: ${result.error}`, "error");
 					return undefined;
@@ -185,8 +192,8 @@ export function registerCodexCommand(
 				applyEffectiveConfig(ctx);
 				return readSelectedConfig();
 			},
-			onProjectCacheKeepalive: (enabled) => {
-				const result = setProjectCodexCacheKeepalive(ctx.cwd, ctx.isProjectTrusted(), enabled);
+			onProjectCacheKeepalive: (enabled, interval) => {
+				const result = setProjectCodexCacheKeepalive(ctx.cwd, ctx.isProjectTrusted(), enabled, interval);
 				if (!result.ok) {
 					ctx.ui.notify(`Failed to save project cache keepalive: ${result.error}`, "error");
 					return undefined;
@@ -293,5 +300,8 @@ function formatAllProvidersMode(value: CodexConversionConfig["scope"]["allProvid
 
 /** Summarize persisted settings and the session-local adapter switch outside the TUI. */
 function formatCodexSettings(config: CodexConversionConfig, adapterEnabled: boolean): string {
-	return `Codex settings: adapter ${adapterEnabled ? "enabled" : "disabled"}, extension ${config.voiceFeaturesOnly ? "voice only" : "adapter and voice"}, execution ${config.executionMode}, providers ${formatAllProvidersMode(config.scope.allProviders)}, Rust binaries ${config.tools.customRustBinariesDir || "bundled"}, heavy prompt overwrite ${config.prompt.heavySystemPromptOverwrite ? "on" : "off"}, Codex prompt appendix ${config.prompt.appendSystemPromptFile ? "on" : "off"}, harness identifier ${config.openai.harnessIdentifierHeader ? "on" : "off"}, Proxy Responses Lite ${config.openai.proxyResponsesLite ? "on" : "off"}, continuity ${CONTINUITY_LABELS[config.compaction.continuity]}, history and notes storage ${config.compaction.historyStorage}, share subagent context ${config.compaction.shareSubagentContext ? "on" : "off"}, compaction method ${COMPACTION_METHOD_LABELS[config.compaction.method]}, preserved user messages (V2 only) ${config.compaction.v2UserMessageRetention}k, Luna cache keepalive ${config.openai.lunaCacheKeepaliveMinutes === 0 ? "off" : `${config.openai.lunaCacheKeepaliveMinutes} mins`}, Sol/Terra cache keepalive ${config.openai.cacheKeepalive ? "25 mins" : "off"}, cache diagnostics ${config.openai.cacheDiagnostics}, fast ${config.openai.fast ? "on" : "off"}, verbosity ${config.openai.verbosity}`;
+	const fast = [`all models ${allModelsFastModeState(config.openai.fast)}`,
+		...FAST_MODE_FAMILIES.map((family) => `${family} ${config.openai.fast[family] === "ultrafast" ? "ultrafast" : config.openai.fast[family] ? "on" : "off"}`)].join(", ");
+	const accessProgram = config.openai.daybreak ? "on" : "off";
+	return `Codex settings: adapter ${adapterEnabled ? "enabled" : "disabled"}, extension ${config.voiceFeaturesOnly ? "voice only" : "adapter and voice"}, execution ${config.executionMode}, providers ${formatAllProvidersMode(config.scope.allProviders)}, Rust binaries ${config.tools.customRustBinariesDir || "bundled"}, heavy prompt overwrite ${config.prompt.heavySystemPromptOverwrite ? "on" : "off"}, Codex prompt appendix ${config.prompt.appendSystemPromptFile ? "on" : "off"}, harness identifier ${config.openai.harnessIdentifierHeader ? "on" : "off"}, Proxy Responses Lite ${config.openai.proxyResponsesLite ? "on" : "off"}, continuity ${CONTINUITY_LABELS[config.compaction.continuity]}, history and notes storage ${config.compaction.historyStorage}, share subagent context ${config.compaction.shareSubagentContext ? "on" : "off"}, compaction method ${COMPACTION_METHOD_LABELS[config.compaction.method]}, preserved user messages (V2 only) ${config.compaction.v2UserMessageRetention}k, Luna cache keepalive ${config.openai.lunaCacheKeepaliveMinutes === 0 ? "off" : `${config.openai.lunaCacheKeepaliveMinutes} mins duration, ${config.openai.lunaCacheKeepaliveIntervalMinutes} mins request interval`}, Astra/Sol/Terra cache keepalive ${config.openai.cacheKeepalive ? `${config.openai.cacheKeepaliveIntervalMinutes} mins request interval` : "off"}, cache diagnostics ${config.openai.cacheDiagnostics}, Daybreak ${accessProgram}, Fast Mode ${fast}, verbosity ${config.openai.verbosity}`;
 }

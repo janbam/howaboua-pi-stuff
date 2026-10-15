@@ -122,7 +122,7 @@ function extractOutputText(value: unknown): string | undefined {
 
 export async function describeImageContentForTextModel(image: ViewImageContent, ctx: ExtensionContext, signal: AbortSignal | undefined): Promise<string> {
 	const provider = await resolveCodexToolProvider(ctx);
-	const headers = buildSSEHeaders(undefined, undefined, provider.accountId, provider.token, undefined, true);
+	const headers = buildSSEHeaders(undefined, undefined, provider.accountId, provider.token, undefined, true, "pi", { model: IMAGE_DESCRIPTION_MODEL });
 	const response = await fetch(resolveCodexResponsesUrl(provider.baseUrl), {
 		method: "POST",
 		headers,

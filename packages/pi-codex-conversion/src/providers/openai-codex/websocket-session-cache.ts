@@ -11,6 +11,8 @@ const CONTINUATION_HEADERS = new Set([
 	"session-id",
 	"thread-id",
 	"x-client-request-id",
+	// Upgrade-time model/tier hints may differ from later authoritative bodies.
+	"x-codex-routing-hint",
 ]);
 
 function routeIdentityHeaders(headers: Headers): [string, string][] {

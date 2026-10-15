@@ -14,10 +14,11 @@ import { injectAgentEvent } from "./messages.js";
 import type { MonitorState, WorkAttempt } from "./monitor-state.js";
 import { type AssistantReader, SessionReader } from "./session-reader.js";
 import type {
+	ExtensionMessage,
+	ExtensionReply,
 	LatestAssistant,
 	MonitoredAgent,
 	PaneInfo,
-	PendingAsk,
 	SessionView,
 	SettledAgentStatus,
 } from "./types.js";
@@ -29,7 +30,7 @@ interface SettlementLabels {
 
 interface CollectedSettlement {
 	agent: PaneInfo;
-	ask?: PendingAsk;
+	extensionMessages?: ExtensionMessage[];
 	labels: SettlementLabels;
 	reply?: LatestAssistant;
 	status: SettledAgentStatus;
@@ -45,7 +46,7 @@ export interface ClaimedSettlement extends CollectedSettlement {
 }
 
 interface SettlementClaim {
-	answeringAskId?: string;
+	replyingTo?: ExtensionReply;
 	cleanup(): void;
 	reject(error: Error): void;
 	resolve(settlement: ClaimedSettlement): void;
@@ -169,7 +170,9 @@ export class SettlementCollector {
 				...(tab ? { tab } : {}),
 			},
 			...(view.assistant ? { reply: view.assistant } : {}),
-			...(status === "blocked" && view.ask ? { ask: view.ask } : {}),
+			...(view.extensionMessages
+				? { extensionMessages: view.extensionMessages }
+				: {}),
 			session: view,
 			status,
 		};
@@ -229,12 +232,11 @@ export class SettlementReporter {
 	claim(
 		attempt: WorkAttempt,
 		signal: AbortSignal,
-		answeringAskId?: string,
-	): Promise<ClaimedSettlement> {
+		replyingTo?: ExtensionReply,
+	): Promise<ClaimedSettlement> | undefined {
 		signal.throwIfAborted();
-		if (this.claims.has(attempt.attemptId)) {
-			throw new Error(`work attempt ${attempt.attemptId} is already claimed`);
-		}
+		// Updates share the worker's current settlement, without stealing its waiter.
+		if (this.claims.has(attempt.attemptId)) return;
 		return new Promise<ClaimedSettlement>((resolve, reject) => {
 			const abort = () => {
 				const claim = this.claims.get(attempt.attemptId);
@@ -248,7 +250,7 @@ export class SettlementReporter {
 				);
 			};
 			const claim: SettlementClaim = {
-				...(answeringAskId ? { answeringAskId } : {}),
+				...(replyingTo ? { replyingTo } : {}),
 				cleanup: () => signal.removeEventListener("abort", abort),
 				reject,
 				resolve,
@@ -303,9 +305,12 @@ export class SettlementReporter {
 		}
 		this.reporting.set(key, request.status);
 		try {
+			const replyingTo = retryState.attemptId
+				? this.claims.get(retryState.attemptId)?.replyingTo
+				: undefined;
 			const settlement = await this.collector.collect(
 				request.record,
-				request.status === "blocked" ? "blocked" : undefined,
+				request.status === "blocked" && !replyingTo ? "blocked" : undefined,
 			);
 			if (!settlement || !lifecycle.isCurrent()) return;
 			if (this.pendingBlocked.has(key)) return;
@@ -330,17 +335,28 @@ export class SettlementReporter {
 			const retryRequest = task ? { ...request, task } : request;
 			const expectedUser = activityExpectedUser(current.activity);
 			const blocked = settlement.status === "blocked";
-			const answeringAskId = retryState.attemptId
-				? this.claims.get(retryState.attemptId)?.answeringAskId
-				: undefined;
-			// The original Ask's blocked snapshot is not settlement of its answer.
-			if (
-				blocked &&
-				answeringAskId &&
-				settlement.ask?.toolCallId === answeringAskId &&
-				!settlement.session.askResults?.[answeringAskId]
-			) {
-				return;
+			// Closing a message and publishing resumed status use separate transports.
+			if (blocked && replyingTo) {
+				if (
+					settlement.extensionMessages?.some(
+						(message) =>
+							message.extension === replyingTo.extension &&
+							message.id === replyingTo.id,
+					)
+				)
+					return;
+				if (
+					!settlement.extensionMessages?.some((message) => message.blocking)
+				) {
+					if (!this.retry(lifecycle, retryRequest, retryState)) {
+						this.failReconciliation(
+							lifecycle,
+							current,
+							"the worker remained blocked after its extension reply",
+						);
+					}
+					return;
+				}
 			}
 			// A blocked status is authoritative even when Pi has not persisted the turn.
 			// Pi persists expanded skills/templates, not the submitted command text.
@@ -400,6 +416,7 @@ export class SettlementReporter {
 			}
 		} catch (error) {
 			if (!lifecycle.isCurrent()) return;
+			if (!this.state.byTerminal(request.record.terminalId)) return;
 			if (request.status === "blocked") {
 				const current = this.state.byTerminal(request.record.terminalId);
 				if (current) {
@@ -484,7 +501,9 @@ export class SettlementReporter {
 		injectAgentEvent(this.pi, lifecycle.context, {
 			agent: settlement.agent,
 			agentToolName: "agents",
-			...(settlement.ask ? { ask: settlement.ask } : {}),
+			...(settlement.extensionMessages
+				? { extensionMessages: settlement.extensionMessages }
+				: {}),
 			machine: this.origin.machine,
 			machineLabel: this.origin.label(),
 			operatorPrefix: this.origin.operatorPrefix,

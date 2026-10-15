@@ -82,7 +82,37 @@ export interface CodexDiagnosticsFailure {
 	code?: string | undefined;
 	status?: number | undefined;
 }
-export type CodexDiagnosticsEvent =
+export interface CodexRequestDiagnostics {
+	headersSent: boolean;
+	reasoningEffort: string;
+	serviceTier: string;
+	accessProgram: "standard" | "daybreak_blue" | "daybreak_red" | "unset";
+	responsesLite: boolean;
+	routingHint: "present" | "absent" | "guardian_suppressed";
+	guardianReviewer: boolean;
+	parentThreadLinked: boolean;
+	subagentKind: string;
+}
+
+export type CodexDiagnosticsEvent = { requestId?: string | undefined } & (
+	| {
+			type: "timing";
+			lane: CodexDiagnosticsLane;
+			transport: CodexDiagnosticsTransport;
+			requestId: string;
+			attempt: number;
+			outcome: "completed" | "failed" | "aborted";
+			requestElapsedMs: number;
+			attemptElapsedMs: number;
+			sendMs: number | null;
+			firstEventMs: number | null;
+			firstVisibleTextMs: number | null;
+			completionMs: number | null;
+			outputTokens: number | null;
+			reasoningTokens: number | null;
+			outputTokensPerSecond: number | null;
+			backend: Record<string, number | string | null>;
+	  }
 	| {
 			type: "request";
 			lane: CodexDiagnosticsLane;
@@ -101,6 +131,7 @@ export type CodexDiagnosticsEvent =
 			prewarm?: CodexPrewarmDiagnostics | undefined;
 			compaction?: CodexCompactionDiagnostic | undefined;
 			previousResponseId?: boolean | undefined;
+			requestMetadata?: CodexRequestDiagnostics | undefined;
 	  }
 	| {
 			type: "usage";
@@ -121,7 +152,7 @@ export type CodexDiagnosticsEvent =
 	  }
 	| {
 			type: "fallback";
-			lane: Exclude<CodexDiagnosticsLane, "prewarm">;
+			lane: CodexDiagnosticsLane;
 			from: CodexDiagnosticsTransport;
 			to: CodexDiagnosticsTransport;
 			reason: "upgrade_required" | "message_too_big" | "unauthorized" | "retry_budget_exhausted";
@@ -148,7 +179,7 @@ export type CodexDiagnosticsEvent =
 			intervalMs?: number | undefined;
 			requestSource?: "captured" | "reconstructed" | undefined;
 			action?: "generated-refresh" | undefined;
-	  };
+	  });
 
 export type CodexDiagnosticsSink = (event: CodexDiagnosticsEvent) => void;
 
@@ -159,10 +190,14 @@ export interface CachedWebSocketRequestBodyResult {
 	decision: WebSocketContinuationDecision;
 }
 
-export type ServiceTier = ResponseCreateParamsStreaming["service_tier"];
+export type ServiceTier = ResponseCreateParamsStreaming["service_tier"] | "ultrafast";
+export interface AccessPrograms {
+	cyber: "standard" | "daybreak_blue" | "daybreak_red";
+}
 export type ProviderEnv = Record<string, string>;
 export type CodexProviderStreamOptions = Omit<SimpleStreamOptions, "toolChoice"> & {
 	serviceTier?: ServiceTier | undefined;
+	accessPrograms?: AccessPrograms | undefined;
 	textVerbosity?: string | undefined;
 	reasoningSummary?: string | null | undefined;
 	toolChoice?: "auto" | "none" | "required" | undefined;
@@ -195,6 +230,7 @@ export interface ResponsesBody {
 	parallel_tool_calls: boolean;
 	temperature?: number | undefined;
 	service_tier?: string | undefined;
+	access_programs?: AccessPrograms | undefined;
 	tools?: unknown[] | undefined;
 	reasoning?: {
 		effort?: string | undefined;

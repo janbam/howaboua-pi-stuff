@@ -7,14 +7,14 @@ import {
 	Spacer,
 	Text,
 } from "@earendil-works/pi-tui";
-import type { CodexConversionConfig } from "../../adapter/activation/config.ts";
+import type { CodexConversionConfig, CacheKeepaliveIntervalMinutes } from "../../adapter/activation/config.ts";
 
 export interface ConfigSetting {
 	item: SettingItem & { description: string };
 	update?:
 		| ((value: string, config: CodexConversionConfig) => CodexConversionConfig)
 		| undefined;
-	action?: "adapter-enabled" | "edit-config" | "global-luna-cache-keepalive" | "project-cache-keepalive" | undefined;
+	action?: "adapter-enabled" | "edit-config" | "global-luna-cache-keepalive" | "global-luna-cache-keepalive-interval" | "project-cache-keepalive" | undefined;
 }
 
 export class TextSettingSubmenu extends Container implements Focusable {
@@ -78,11 +78,11 @@ export function toggle(
 	);
 }
 
-export function projectCacheKeepalive(id: string, label: string, current: boolean): ConfigSetting {
+export function projectCacheKeepalive(id: string, label: string, current: boolean, interval: CacheKeepaliveIntervalMinutes): ConfigSetting {
 	return {
 		item: {
-			id, label, currentValue: current ? "25 mins" : "off", values: ["off", "25 mins"],
-			description: "Send idle requests every 25 minutes to keep this project\u0027s Sol or Terra prompt cache warm. Uses quota.",
+			id, label, currentValue: current ? `${interval} mins` : "off", values: ["off", "25 mins", "55 mins"],
+			description: "Request interval for Astra, Sol and Terra across versions in this project. Uses quota. Cache retention is not guaranteed.",
 		},
 		action: "project-cache-keepalive",
 	};

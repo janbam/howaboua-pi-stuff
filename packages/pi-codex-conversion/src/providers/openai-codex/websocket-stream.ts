@@ -1,4 +1,6 @@
 import type { Api, AssistantMessage, AssistantMessageEventStream, Model } from "@earendil-works/pi-ai";
+import { createCodexRequestTiming, type CodexAttemptTiming } from "./diagnostic-timing.ts";
+import { codexRequestDiagnostics } from "./diagnostic-request.ts";
 import { normalizeTimeoutMs } from "./sse.ts";
 import { buildCachedWebSocketRequestBody } from "./websocket-continuation.ts";
 import { acquireWebSocket, parseWebSocket, startWebSocketOutputOnFirstEvent } from "./websocket.ts";
@@ -24,7 +26,7 @@ export async function processWebSocketStream<TApi extends Api>(
 	onStart: () => void,
 	options: OpenAICodexStreamOptions | undefined,
 	turnState?: CodexTurnState,
-	diagnostics?: { lane: Exclude<CodexDiagnosticsLane, "prewarm">; attempt: number; record: CodexDiagnosticsSink } | undefined,
+	diagnostics?: { lane: Exclude<CodexDiagnosticsLane, "prewarm">; attempt: number; record: CodexDiagnosticsSink; requestId: string; timing: CodexAttemptTiming } | undefined,
 	canonical?: {
 		reconstructedRequestBody: ResponsesBody;
 		token?: CanonicalSessionToken | undefined;
@@ -73,6 +75,8 @@ export async function processWebSocketStream<TApi extends Api>(
 				lane: diagnostics.lane,
 				transport: "websocket",
 				attempt: diagnostics.attempt,
+				requestId: diagnostics.requestId,
+				requestMetadata: codexRequestDiagnostics(fullBody, headers, !reused),
 				fullInputItems: fullBody.input.length,
 				sentInputItems: requestBody.input.length,
 				model: fullBody.model,
@@ -89,13 +93,17 @@ export async function processWebSocketStream<TApi extends Api>(
 				previousResponseId: Boolean(requestBody.previous_response_id),
 			});
 		}
+		diagnostics?.timing.sent();
 		socket.send(JSON.stringify({ type: "response.create", ...requestBody }));
 		await processMappedCodexResponsesStream(
 			startWebSocketOutputOnFirstEvent(
 				mapCodexEvents(
 					parseWebSocket(socket, options?.signal, idleTimeoutMs, (value) => turnState?.capture(value)),
 					output,
-					(event) => options?.onProviderStreamEvent?.(event, model),
+					(event) => {
+						diagnostics?.timing.observe(event);
+						return options?.onProviderStreamEvent?.(event, model);
+					},
 				),
 				() => {
 					if (!streamStarted) {
@@ -168,11 +176,17 @@ export async function prewarmWebSocket<TApi extends Api>(
 ): Promise<CodexPrewarmResult> {
 	const recordDiagnostics = noThrowCodexDiagnosticsSink(diagnostics);
 	const websocketConnectTimeoutMs = normalizeTimeoutMs(options.websocketConnectTimeoutMs, "websocketConnectTimeoutMs");
+	const requestTiming = createCodexRequestTiming(recordDiagnostics);
+	const timing = requestTiming.start("prewarm", "websocket", generate);
 	const socketSessionId = preserveContinuation && options.sessionId
 		? codexCacheKeepaliveSocketSessionId(options.sessionId)
 		: options.sessionId;
 	const socketLane = preserveContinuation ? "keepalive" : "main";
-	const { socket, entry, release, reused, socketAgeMs } = await acquireWebSocket(url, headers, socketSessionId, accountId, options.signal, websocketConnectTimeoutMs, options.env);
+	const { socket, entry, release, reused, socketAgeMs } = await acquireWebSocket(url, headers, socketSessionId, accountId, options.signal, websocketConnectTimeoutMs, options.env).catch(error => {
+		timing.finish(options.signal?.aborted ? "aborted" : "failed");
+		recordDiagnostics?.({ type: "failure", lane: "prewarm", transport: "websocket", requestId: requestTiming.requestId, failure: codexDiagnosticsFailure(error) });
+		throw error;
+	});
 	let keepConnection = true;
 	const responseItems: unknown[] = [];
 	let responseId: string | undefined;
@@ -189,14 +203,16 @@ export async function prewarmWebSocket<TApi extends Api>(
 		// existing baseline; the real request still validates its exact continuation.
 		if (!preserveContinuation && !generate && reused && entry?.continuation
 			&& (prewarm.kind === "ordinary" || (cachedRequest.decision === "delta" && requestBody.input.length === 0))) {
-			recordDiagnostics?.({ type: "prewarm-ready", transport: "websocket", socketReused: reused, socketAgeMs, socketLane, prewarm });
+			recordDiagnostics?.({ type: "prewarm-ready", requestId: requestTiming.requestId, transport: "websocket", socketReused: reused, socketAgeMs, socketLane, prewarm });
 			return { socketReused: reused };
 		}
 		recordDiagnostics?.({
 			type: "request",
 			lane: "prewarm",
 			transport: "websocket",
-			attempt: 1,
+			attempt: timing.attempt,
+			requestId: requestTiming.requestId,
+			requestMetadata: codexRequestDiagnostics(body, headers, !reused),
 			fullInputItems: body.input.length,
 			sentInputItems: requestBody.input.length,
 			model: body.model,
@@ -207,10 +223,11 @@ export async function prewarmWebSocket<TApi extends Api>(
 			continuation: cachedRequest.decision,
 			previousResponseId: Boolean(requestBody.previous_response_id),
 		});
+		timing.sent();
 		socket.send(JSON.stringify({ type: "response.create", ...requestBody, ...(generate ? {} : { generate: false }) }));
 		for await (const event of mapCodexEvents(parseWebSocket(socket, options.signal, idleTimeoutMs, (value) => {
 			if (!preserveContinuation) turnState?.capturePrewarm(value);
-		}), undefined, (event) => options.onProviderStreamEvent?.(event, model))) {
+		}), undefined, (event) => { timing.observe(event); return options.onProviderStreamEvent?.(event, model); })) {
 			if (event.type === "response.created" && event.response?.id) responseId = event.response.id;
 			if (event.type === "response.output_item.done" && event.item) responseItems.push(event.item);
 			if (event.type === "response.completed") {
@@ -235,6 +252,7 @@ export async function prewarmWebSocket<TApi extends Api>(
 		}
 		recordDiagnostics?.({
 			type: "prewarm-ready",
+			requestId: requestTiming.requestId,
 			transport: "websocket",
 			socketReused: reused,
 			socketAgeMs,
@@ -242,12 +260,15 @@ export async function prewarmWebSocket<TApi extends Api>(
 			prewarm,
 			...(usage ? { usage } : {}),
 		});
+		timing.finish(options.signal?.aborted ? "aborted" : "completed");
 		return { socketReused: reused, ...(usage ? { usage } : {}) };
 	} catch (error) {
+		timing.finish(options.signal?.aborted ? "aborted" : "failed");
 		keepConnection = false;
 		recordDiagnostics?.({
 			type: "failure",
 			lane: "prewarm",
+			requestId: requestTiming.requestId,
 			transport: "websocket",
 			failure: codexDiagnosticsFailure(error),
 		});

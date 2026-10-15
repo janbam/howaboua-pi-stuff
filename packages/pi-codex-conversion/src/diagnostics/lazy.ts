@@ -48,7 +48,7 @@ export function createLazyCodexDiagnostics(): LazyCodexDiagnostics {
 		} catch (error) {
 			try {
 				ctx.ui.notify(
-					`Could not close the previous Codex cache log: ${error instanceof Error ? error.message : String(error)}`,
+					`Could not close the previous Codex diagnostics log: ${error instanceof Error ? error.message : String(error)}`,
 					"warning",
 				);
 			} catch {
@@ -94,7 +94,7 @@ export function createLazyCodexDiagnostics(): LazyCodexDiagnostics {
 					sinkFailed = true;
 					try {
 						options.ctx.ui.notify(
-							`Codex cache diagnostics stopped: ${error instanceof Error ? error.message : String(error)}`,
+							`Codex diagnostics stopped: ${error instanceof Error ? error.message : String(error)}`,
 							"warning",
 						);
 					} catch {

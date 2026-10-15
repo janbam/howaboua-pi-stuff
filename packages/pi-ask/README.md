@@ -26,6 +26,8 @@ For work only you can complete—sign-in, authorization, hardware access, or ano
 
 When Pi runs inside Herdr with its Pi integration installed, only a waiting ask marks the pane as blocked. A steering ask remains pending while the agent continues.
 
+With Shepherdr, supervising agents receive the question, choices and a ready-to-fill reply. Replying completes the same panel. Ordinary agent messages do not answer it, and pending questions remain visible in later reports. Human handoffs still require your action and confirmation.
+
 `Other/rephrase` is always available. Submit it blank when the prompt needs to be rephrased, split, or followed up instead of answered as written.
 
 ## Notifications

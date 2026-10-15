@@ -4,6 +4,7 @@ import {
 	existsSync,
 	lstatSync,
 	mkdirSync,
+	readdirSync,
 	readFileSync,
 	realpathSync,
 	renameSync,
@@ -20,14 +21,12 @@ if (args.length !== 1) {
 }
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const packageRoot = join(repoRoot, "packages/pi-codex-conversion");
 const checkout = realpathSync(resolve(args[0]));
 const packageSpecs = [
 	["@earendil-works/pi-ai", "ai"],
 	["@earendil-works/pi-agent-core", "agent"],
 	["@earendil-works/pi-tui", "tui"],
 	["@earendil-works/pi-coding-agent", "coding-agent"],
-	["@earendil-works/pi-server", "server"],
 ];
 
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
@@ -89,16 +88,21 @@ if (
 	throw new Error("The built Pi CLI is missing");
 }
 
-const roots = [repoRoot, packageRoot];
-const plans = roots.flatMap((root, index) =>
-	packageSpecs
-		.filter(([name]) => index === 0 || name !== "@earendil-works/pi-server")
+// Every workspace must resolve its declared Pi peers to the same checkout, not a mixed SDK graph.
+const roots = [repoRoot, ...readdirSync(join(repoRoot, "packages"), { withFileTypes: true })
+	.filter(entry => entry.isDirectory() && existsSync(join(repoRoot, "packages", entry.name, "package.json")))
+	.map(entry => join(repoRoot, "packages", entry.name))];
+const plans = roots.flatMap(root => {
+	const manifest = readJson(join(root, "package.json"));
+	const dependencies = { ...manifest.dependencies, ...manifest.devDependencies, ...manifest.peerDependencies };
+	return packageSpecs
+		.filter(([name]) => Object.hasOwn(dependencies, name))
 		.map(([name]) => ({
 			name,
 			source: packages.get(name).root,
 			target: join(root, "node_modules", ...name.split("/")),
-		})),
-);
+		}));
+});
 
 function stat(path) {
 	try {

@@ -1,3 +1,4 @@
+import { normalizeTaskBoundaryReminder } from "../../context-management/task-boundary.ts";
 import {
 	type CodexConversionConfig,
 	DEFAULT_CODEX_CONVERSION_CONFIG,
@@ -15,6 +16,7 @@ import {
 	normalizeCustomRustBinariesDir,
 	normalizeDictationShortcutMode,
 	normalizeHistoryStorage,
+	normalizeIdleNotesMinutes,
 	normalizeLunaCacheKeepaliveMinutes,
 	normalizeProviderList,
 	normalizeRealtimeV3Voice,
@@ -30,6 +32,7 @@ import {
 	normalizeVoiceContextModel,
 } from "./config-values.ts";
 import { normalizeExecutionMode } from "./execution-mode.ts";
+import { normalizeFastMode } from "./fast-mode.ts";
 
 export function normalizeCodexConversionConfig(
 	value: unknown,
@@ -114,6 +117,10 @@ export function normalizeCodexConversionConfig(
 				ui["backgroundShellWidget"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.ui["backgroundShellWidget"],
 			),
+			noteSaveMarkers: normalizeBoolean(
+				ui["noteSaveMarkers"],
+				DEFAULT_CODEX_CONVERSION_CONFIG.ui.noteSaveMarkers,
+			),
 			backgroundShellToggleShortcut: normalizeShortcutString(
 				ui["backgroundShellToggleShortcut"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.ui["backgroundShellToggleShortcut"],
@@ -136,14 +143,16 @@ export function normalizeCodexConversionConfig(
 				?? DEFAULT_CODEX_CONVERSION_CONFIG.compaction.continuity,
 			historyStorage: normalizeHistoryStorage(compaction["historyStorage"])
 				?? DEFAULT_CODEX_CONVERSION_CONFIG.compaction.historyStorage,
+			notesTreeHandoff: normalizeBoolean(
+				compaction["notesTreeHandoff"],
+				DEFAULT_CODEX_CONVERSION_CONFIG.compaction.notesTreeHandoff,
+			),
 			shareSubagentContext: normalizeBoolean(
 				compaction["shareSubagentContext"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.compaction.shareSubagentContext,
 			),
-			idleNotesRollover: normalizeBoolean(
-				compaction["idleNotesRollover"],
-				DEFAULT_CODEX_CONVERSION_CONFIG.compaction.idleNotesRollover,
-			),
+			idleNotesRollover: normalizeIdleNotesMinutes(compaction["idleNotesRollover"]),
+			taskBoundaryReminder: normalizeTaskBoundaryReminder(compaction["taskBoundaryReminder"]),
 			method: normalizeCompactionMethod(compaction["method"])
 				?? DEFAULT_CODEX_CONVERSION_CONFIG.compaction.method,
 			v2UserMessageRetention:
@@ -167,6 +176,9 @@ export function normalizeCodexConversionConfig(
 			v3Voice:
 				normalizeRealtimeV3Voice(voice["v3Voice"]) ??
 				DEFAULT_CODEX_CONVERSION_CONFIG.voice.v3Voice,
+			v3AlternateVoice:
+				normalizeRealtimeV3Voice(voice["v3AlternateVoice"]) ??
+				DEFAULT_CODEX_CONVERSION_CONFIG.voice.v3AlternateVoice,
 			autoResumeRealtime: normalizeBoolean(
 				voice["autoResumeRealtime"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.voice.autoResumeRealtime,
@@ -214,10 +226,8 @@ export function normalizeCodexConversionConfig(
 			...(outputDevice ? { outputDevice } : {}),
 		},
 		openai: {
-			fast: normalizeBoolean(
-				openai["fast"],
-				DEFAULT_CODEX_CONVERSION_CONFIG.openai["fast"],
-			),
+			fast: normalizeFastMode(openai["fast"]),
+			daybreak: openai["daybreak"] === true,
 			verbosity:
 				normalizeCodexVerbosity(openai["verbosity"]) ??
 				DEFAULT_CODEX_CONVERSION_CONFIG.openai["verbosity"],
@@ -229,6 +239,8 @@ export function normalizeCodexConversionConfig(
 				openai["cacheKeepalive"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.openai["cacheKeepalive"],
 			),
+			lunaCacheKeepaliveIntervalMinutes: openai["lunaCacheKeepaliveIntervalMinutes"] === 4.5 ? 4.5 : 2.5,
+			cacheKeepaliveIntervalMinutes: openai["cacheKeepaliveIntervalMinutes"] === 55 ? 55 : 25,
 			proxyResponsesLite: normalizeBoolean(
 				openai["proxyResponsesLite"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.openai.proxyResponsesLite,

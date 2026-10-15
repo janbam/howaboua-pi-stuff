@@ -1,15 +1,22 @@
 import type { ExecutionMode } from "./execution-mode.ts";
 
 export type CodexVerbosity = "low" | "medium" | "high";
+export const FAST_MODE_FAMILIES = ["astra", "sol", "terra", "luna"] as const;
+export type FastModeFamily = (typeof FAST_MODE_FAMILIES)[number];
+export type FastModeConfig = Record<FastModeFamily | "other", boolean | "ultrafast">;
 export type CacheDiagnosticsMode = "off" | "status" | "status-and-log";
 export type CompactToolsMode = "off" | "on" | "minimal";
 export type LunaCacheKeepaliveMinutes = 0 | 5 | 10 | 15;
+export type LunaCacheKeepaliveIntervalMinutes = 2.5 | 4.5;
+export type CacheKeepaliveIntervalMinutes = 25 | 55;
 /** Selects which providers receive the full adapter or standalone extra tools. */
 export type AllProvidersMode = "off" | "on" | "extras" | "codex-plus-extras";
 export type ContinuityStrategy = "compaction" | "notes" | "notes-and-compaction";
 export type HistoryStorage = "local" | "tree" | "remote";
 export type ContextManagementMode = "off" | HistoryStorage;
 export type CompactionMethod = "pi" | "v2" | "both";
+export const IDLE_NOTES_MINUTES_OPTIONS = [0, 5, 15, 25, 55] as const;
+export type IdleNotesMinutes = (typeof IDLE_NOTES_MINUTES_OPTIONS)[number];
 export type V2UserMessageRetention = 16 | 32 | 64;
 export const MIN_NOTEBOOK_HEAP_MIB = 256;
 export const MAX_NOTEBOOK_HEAP_MIB = 65_536;
@@ -67,6 +74,7 @@ export interface CodexConversionConfig {
 		toolRenaming: boolean;
 		compactTools: CompactToolsMode;
 		codeModeDetails: boolean;
+		noteSaveMarkers: boolean;
 		backgroundShellWidget: boolean;
 		backgroundShellToggleShortcut: string;
 		backgroundShellPrevShortcut: string;
@@ -76,8 +84,10 @@ export interface CodexConversionConfig {
 	compaction: {
 		continuity: ContinuityStrategy;
 		historyStorage: HistoryStorage;
+		notesTreeHandoff: boolean;
 		shareSubagentContext: boolean;
-		idleNotesRollover: boolean;
+		idleNotesRollover: IdleNotesMinutes;
+		taskBoundaryReminder: number;
 		method: CompactionMethod;
 		v2UserMessageRetention: V2UserMessageRetention;
 	};
@@ -88,6 +98,7 @@ export interface CodexConversionConfig {
 	};
 	voice: {
 		v3Voice: RealtimeV3Voice;
+		v3AlternateVoice: RealtimeV3Voice;
 		autoResumeRealtime: boolean;
 		refreshRealtimeAfterCompaction: boolean;
 		audioSetupCompleted: boolean;
@@ -104,10 +115,13 @@ export interface CodexConversionConfig {
 		outputDevice?: string | undefined;
 	};
 	openai: {
-		fast: boolean;
+		fast: FastModeConfig;
+		daybreak: boolean;
 		verbosity: CodexVerbosity;
 		lunaCacheKeepaliveMinutes: LunaCacheKeepaliveMinutes;
+		lunaCacheKeepaliveIntervalMinutes: LunaCacheKeepaliveIntervalMinutes;
 		cacheKeepalive: boolean;
+		cacheKeepaliveIntervalMinutes: CacheKeepaliveIntervalMinutes;
 		proxyResponsesLite: boolean;
 		forceCachedWebSockets: boolean;
 		cacheDiagnostics: CacheDiagnosticsMode;
@@ -136,6 +150,7 @@ export const DEFAULT_CODEX_CONVERSION_CONFIG: CodexConversionConfig = {
 		toolRenaming: true,
 		compactTools: "off",
 		codeModeDetails: false,
+		noteSaveMarkers: false,
 		backgroundShellWidget: true,
 		backgroundShellToggleShortcut: "alt+w",
 		backgroundShellPrevShortcut: "alt+q",
@@ -145,14 +160,17 @@ export const DEFAULT_CODEX_CONVERSION_CONFIG: CodexConversionConfig = {
 	compaction: {
 		continuity: "compaction",
 		historyStorage: "local",
+		notesTreeHandoff: true,
 		shareSubagentContext: false,
-		idleNotesRollover: false,
+		idleNotesRollover: 0,
+		taskBoundaryReminder: 0,
 		method: "pi",
 		v2UserMessageRetention: 64,
 	},
 	notebook: { maxHeapMiB: 4_096, plainCommandOutput: false },
 	voice: {
 		v3Voice: "cove",
+		v3AlternateVoice: "ember",
 		autoResumeRealtime: true,
 		refreshRealtimeAfterCompaction: true,
 		audioSetupCompleted: false,
@@ -170,10 +188,13 @@ export const DEFAULT_CODEX_CONVERSION_CONFIG: CodexConversionConfig = {
 		contextReasoning: DEFAULT_VOICE_CONTEXT_REASONING,
 	},
 	openai: {
-		fast: false,
+		fast: { astra: false, sol: false, terra: false, luna: false, other: false },
+		daybreak: false,
 		verbosity: "low",
 		lunaCacheKeepaliveMinutes: 0,
+		lunaCacheKeepaliveIntervalMinutes: 2.5,
 		cacheKeepalive: false,
+		cacheKeepaliveIntervalMinutes: 25,
 		proxyResponsesLite: false,
 		forceCachedWebSockets: true,
 		cacheDiagnostics: "off",

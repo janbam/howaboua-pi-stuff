@@ -1,3 +1,7 @@
+import { createCodexRequestTiming, type CodexAttemptTiming } from "./diagnostic-timing.ts";
+import { codexRequestDiagnostics } from "./diagnostic-request.ts";
+import { readServiceTier } from "./usage.ts";
+import { resolveDaybreakAccess } from "./daybreak.ts";
 import {
 	appendAssistantMessageDiagnostic,
 	createAssistantMessageDiagnostic,
@@ -115,16 +119,22 @@ async function openCodexSSE<TApi extends Api>(
 	options: OpenAICodexStreamOptions | undefined,
 	turnState: CodexTurnState | undefined,
 	waitBeforeRetry: (error: unknown, retryCount: number) => Promise<void>,
+	startAttempt: () => CodexAttemptTiming,
 ): Promise<Response> {
 	let lastError: Error | undefined;
-	for (let attempt = 0; attempt <= MAX_SSE_REQUEST_RETRIES; attempt++) {
+	const maxRetries = options?.maxRetries === undefined
+		? MAX_SSE_REQUEST_RETRIES
+		: Math.min(codexStreamMaxRetries(options), MAX_SSE_REQUEST_RETRIES);
+	for (let attempt = 0; attempt <= maxRetries; attempt++) {
 		if (options?.signal?.aborted) throw new Error("Request was aborted");
+		const timing = startAttempt();
 		let response: Response;
 		try {
 			const headerTimeout = createSSEHeaderTimeout(DEFAULT_SSE_HEADER_TIMEOUT_MS);
 			const combinedSignal = combineAbortSignals([options?.signal, headerTimeout.signal]);
 			try {
-				response = await fetch(resolveCodexUrl(model.baseUrl), {
+				timing.sent();
+				response = await (options?.fetch ?? fetch)(resolveCodexUrl(model.baseUrl), {
 					method: "POST",
 					headers: withCodexTurnStateHeader(baseHeaders, turnState),
 					body,
@@ -138,11 +148,12 @@ async function openCodexSSE<TApi extends Api>(
 				headerTimeout.clear();
 			}
 		} catch (error) {
+			timing.finish(options?.signal?.aborted ? "aborted" : "failed");
 			if (error instanceof Error && (error.name === "AbortError" || error.message === "Request was aborted")) {
 				throw new Error("Request was aborted");
 			}
 			lastError = error instanceof Error ? error : new Error(String(error));
-			if (attempt < MAX_SSE_REQUEST_RETRIES) {
+			if (attempt < maxRetries) {
 				await waitBeforeRetry(lastError, attempt + 1);
 				continue;
 			}
@@ -157,9 +168,10 @@ async function openCodexSSE<TApi extends Api>(
 		const info = await parseErrorResponse(response);
 		const message = info.friendlyMessage || info.message;
 		const error = createCodexHttpError(message, info.code, response.status, retryAfter);
+		timing.finish("failed");
 		if (isCodexOverloadError(error)) throw error;
 		const requestRetryable = isRetryableRequestStatus(response.status) && isRetryableCodexStreamError(error);
-		if (requestRetryable && attempt < MAX_SSE_REQUEST_RETRIES) {
+		if (requestRetryable && attempt < maxRetries) {
 			await waitBeforeRetry(error, attempt + 1);
 			continue;
 		}
@@ -199,7 +211,9 @@ export function createCodexTransportStream<TApi extends Api>(
 
 	(async () => {
 		let output = createInitialAssistantMessage(model);
-		const diagnostics = noThrowCodexDiagnosticsSink(deps.getDiagnostics?.());
+		const sink = noThrowCodexDiagnosticsSink(deps.getDiagnostics?.());
+		const requestTiming = createCodexRequestTiming(sink);
+		const diagnostics: CodexDiagnosticsSink | undefined = sink ? event => sink({ ...event, requestId: requestTiming.requestId }) : undefined;
 		let lane: Exclude<CodexDiagnosticsLane, "prewarm"> = "response";
 		let diagnosticsFailureRecorded = false;
 		let preconnect: ReturnType<typeof preconnectWebSocket> | undefined;
@@ -229,7 +243,8 @@ export function createCodexTransportStream<TApi extends Api>(
 				await osInfoReady;
 				preconnect = preconnectWebSocket(
 					resolveCodexWebSocketUrl(model.baseUrl),
-					buildWebSocketHeaders(model.headers, effectiveOptions.headers, accountId, apiKey, websocketRequestId, originator),
+					buildWebSocketHeaders(model.headers, effectiveOptions.headers, accountId, apiKey, websocketRequestId, originator,
+						{ model: model.id, service_tier: effectiveOptions.serviceTier ?? undefined }),
 					effectiveOptions.sessionId, accountId, effectiveOptions.signal,
 					normalizeTimeoutMs(effectiveOptions.websocketConnectTimeoutMs, "websocketConnectTimeoutMs"), effectiveOptions.env,
 					(error) => diagnostics?.({ type: "failure", lane: "prewarm", transport: "websocket", failure: codexDiagnosticsFailure(error) }),
@@ -239,7 +254,7 @@ export function createCodexTransportStream<TApi extends Api>(
 			const body = reconstructedBody;
 			if (hasRemoteCompactionV2Input(body.input)) effectiveOptions.headers = withRemoteCompactionV2Feature(effectiveOptions.headers);
 			if (preconnect) {
-				const finalHeaders = buildWebSocketHeaders(model.headers, effectiveOptions.headers, accountId, apiKey, websocketRequestId, originator);
+				const finalHeaders = buildWebSocketHeaders(model.headers, effectiveOptions.headers, accountId, apiKey, websocketRequestId, originator, body);
 				const failure = await preconnect.handoff(resolveCodexWebSocketUrl(model.baseUrl), finalHeaders, accountId, effectiveOptions.env,
 					getEffectiveCodexTransport(options?.transport, runtimeConfig?.openai, options?.sessionId) !== "sse");
 				if (failure && !(failure.error instanceof CodexProtocolError)
@@ -249,7 +264,14 @@ export function createCodexTransportStream<TApi extends Api>(
 						reason: isWebSocketUpgradeRequiredError(failure.error) ? "upgrade_required" : "message_too_big" });
 				}
 			}
+			if (runtimeConfig) {
+				const accessPrograms = await resolveDaybreakAccess(model, effectiveOptions, runtimeConfig.openai.daybreak, body.model, originator);
+				delete body.access_programs;
+				if (accessPrograms) body.access_programs = accessPrograms;
+			}
 			await deps.beforeRequestSend?.(model, resolvedContext, body, effectiveOptions, responsesLite);
+			// Payload hooks own the final wire tier, including user-selected speed.
+			effectiveOptions.serviceTier = readServiceTier(body.service_tier);
 			const canonicalHistory: CanonicalHistoryDecision | undefined = effectiveOptions?.canonicalCompaction
 				? "compaction"
 				: validateCanonicalSessionRequest(
@@ -260,8 +282,8 @@ export function createCodexTransportStream<TApi extends Api>(
 				);
 			lane = diagnosticsLane(body);
 			deps.onPreparedPayload?.(body);
-			const baseSseHeaders = buildSSEHeaders(model.headers, effectiveOptions?.headers, accountId, apiKey, effectiveOptions?.sessionId, responsesLite, originator);
-			const websocketHeaders = buildWebSocketHeaders(model.headers, effectiveOptions?.headers, accountId, apiKey, websocketRequestId, originator);
+			const baseSseHeaders = buildSSEHeaders(model.headers, effectiveOptions?.headers, accountId, apiKey, effectiveOptions?.sessionId, responsesLite, originator, body);
+			const websocketHeaders = buildWebSocketHeaders(model.headers, effectiveOptions?.headers, accountId, apiKey, websocketRequestId, originator, body);
 			const bodyJson = JSON.stringify(body);
 			const websocketBody = responsesLite ? applyResponsesLiteWebSocketMetadata(body) : body;
 			const compressedBody = compressRequestBodyZstd(bodyJson);
@@ -312,6 +334,7 @@ export function createCodexTransportStream<TApi extends Api>(
 					// next content-start replace failed-attempt output without a second message start.
 					if (attempt > 0) output = createInitialAssistantMessage(model);
 					let websocketStarted = false;
+					const timing = requestTiming.start(lane, "websocket");
 					try {
 						await processWebSocketStream(
 							resolveCodexWebSocketUrl(model.baseUrl),
@@ -330,7 +353,7 @@ export function createCodexTransportStream<TApi extends Api>(
 							},
 							effectiveOptions,
 							deps.turnState,
-							diagnostics ? { lane, attempt: attempt + 1, record: diagnostics } : undefined,
+							diagnostics ? { lane, attempt: timing.attempt, record: diagnostics, requestId: requestTiming.requestId, timing } : undefined,
 							{
 								reconstructedRequestBody: reconstructedBody,
 								token: canonicalSessionToken,
@@ -340,12 +363,14 @@ export function createCodexTransportStream<TApi extends Api>(
 						if (effectiveOptions?.signal?.aborted) throw new Error("Request was aborted");
 						finalizeUsage(output);
 						assertSuccessfulCodexOutput(output);
+						timing.finish("completed");
 						recordUsage(diagnostics, lane, "websocket", output);
 						await deps.recordUsage?.(accountId, { ...model, id: body.model }, output.usage);
 						stream.push({ type: "done", reason: output.stopReason, message: output });
 						stream.end();
 						return;
 					} catch (error) {
+						timing.finish(effectiveOptions?.signal?.aborted ? "aborted" : "failed");
 						if (effectiveOptions?.signal?.aborted) throw error;
 						const upgradeRequired = isWebSocketUpgradeRequiredError(error);
 						const messageTooBig = isWebSocketMessageTooBigError(error);
@@ -371,7 +396,7 @@ export function createCodexTransportStream<TApi extends Api>(
 								type: "retry",
 								lane,
 								transport: "websocket",
-								attempt: attempt + 2,
+								attempt: requestTiming.nextAttempt,
 								...(retryPlan.delayMs !== undefined ? { delayMs: retryPlan.delayMs } : {}),
 								failure: codexDiagnosticsFailure(error),
 							});
@@ -416,6 +441,7 @@ export function createCodexTransportStream<TApi extends Api>(
 			for (let attempt = 0; attempt <= streamMaxRetries; attempt++) {
 				if (attempt > 0) output = createInitialAssistantMessage(model);
 				const responseItems: unknown[] = [];
+				let timing: CodexAttemptTiming | undefined;
 				try {
 					if (effectiveOptions?.compactionDiagnostics) {
 						Object.assign(effectiveOptions.compactionDiagnostics, {
@@ -426,18 +452,27 @@ export function createCodexTransportStream<TApi extends Api>(
 							sentInputItems: body.input.length,
 						});
 					}
-					diagnostics?.({
-						type: "request",
-						lane,
-						transport: "sse",
-						attempt: attempt + 1,
-						fullInputItems: body.input.length,
-						sentInputItems: body.input.length,
-						model: body.model,
-						...(canonicalHistory ? { canonicalHistory } : {}),
-						...(effectiveOptions?.compactionDiagnostics ? { compaction: structuredClone(effectiveOptions.compactionDiagnostics) } : {}),
+					const response = await openCodexSSE(model, sseBody, baseSseHeaders, effectiveOptions, deps.turnState, async (error, retryCount) => {
+						const plan = planRetry(error, retryCount);
+						diagnostics?.({ type: "retry", lane, transport: "sse", attempt: requestTiming.nextAttempt,
+							...(plan.delayMs !== undefined ? { delayMs: plan.delayMs } : {}), failure: codexDiagnosticsFailure(error) });
+						await waitBeforeRetry(error, retryCount, plan);
+					}, () => {
+						timing = requestTiming.start(lane, "sse");
+						diagnostics?.({
+							type: "request",
+							lane,
+							transport: "sse",
+							attempt: timing.attempt,
+							requestMetadata: codexRequestDiagnostics(body, baseSseHeaders),
+							fullInputItems: body.input.length,
+							sentInputItems: body.input.length,
+							model: body.model,
+							...(canonicalHistory ? { canonicalHistory } : {}),
+							...(effectiveOptions?.compactionDiagnostics ? { compaction: structuredClone(effectiveOptions.compactionDiagnostics) } : {}),
+						});
+						return timing;
 					});
-					const response = await openCodexSSE(model, sseBody, baseSseHeaders, effectiveOptions, deps.turnState, waitBeforeRetry);
 					if (!response.body) throw new Error("No response body");
 					if (!streamStarted) {
 						streamStarted = true;
@@ -448,11 +483,19 @@ export function createCodexTransportStream<TApi extends Api>(
 						output,
 						stream,
 						model,
-						{ ...effectiveOptions, onOutputItemDone: (item) => responseItems.push(item) },
+						{
+							...effectiveOptions,
+							onOutputItemDone: (item) => responseItems.push(item),
+							onProviderStreamEvent: (event, eventModel) => {
+								timing?.observe(event);
+								return effectiveOptions?.onProviderStreamEvent?.(event, eventModel);
+							},
+						},
 					);
 					finalizeUsage(output);
 					if (effectiveOptions?.signal?.aborted) throw new Error("Request was aborted");
 					assertSuccessfulCodexOutput(output);
+					timing?.finish("completed");
 					recordUsage(diagnostics, lane, "sse", output);
 					await deps.recordUsage?.(accountId, { ...model, id: body.model }, output.usage);
 					for (const item of responseItems) effectiveOptions?.onOutputItemDone?.(item);
@@ -469,6 +512,7 @@ export function createCodexTransportStream<TApi extends Api>(
 					stream.end();
 					return;
 				} catch (error) {
+					timing?.finish(effectiveOptions?.signal?.aborted ? "aborted" : "failed");
 					if (effectiveOptions?.signal?.aborted) throw error;
 					const retryable = !(error instanceof NonRetryableProviderError) && isRetryableCodexStreamError(error);
 					const retryPlan = planRetry(error, attempt + 1);
@@ -488,7 +532,7 @@ export function createCodexTransportStream<TApi extends Api>(
 							type: "retry",
 							lane,
 							transport: "sse",
-							attempt: attempt + 2,
+							attempt: requestTiming.nextAttempt,
 							...(retryPlan.delayMs !== undefined ? { delayMs: retryPlan.delayMs } : {}),
 							failure: codexDiagnosticsFailure(error),
 						});

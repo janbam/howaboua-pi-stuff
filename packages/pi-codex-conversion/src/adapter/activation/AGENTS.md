@@ -1,7 +1,7 @@
-- `runtime-plan.ts` is the sole model/provider activation, tool-surface, prompt, transport, and compaction policy; consumers execute its plan rather than reconstructing predicates.
-- Runtime variants: `inactive`, `extras`, `normal`, `code`, `notebook`. Recommend Notebook; never auto-select mode. Ignore legacy `mode: "path"`; never restore PATH injection or shell interception.
-- Execution mode follows adapter scope independently of provider transport. Responses Lite is an eligible-route transport choice, not a mode gate.
-- Startup/resume may read and normalize config in memory; persistence belongs only to explicit settings actions.
-- Explicit writes preserve unknown fields while updating the adapter-owned config.
-- Continuity, history storage and compaction method are independent choices. Migrate legacy coupling only at the read boundary; hiding an inactive control never clears its saved choice.
-- `config.ts` is the compatibility facade; contracts/defaults, shared value readers, public normalizers, and aggregate normalization stay in their named `config-*` modules.
+- runtime-plan.ts alone decides activation, tool surface, prompt, transport and compaction. Consumers execute its plan, never rebuild predicates.
+- Variants: inactive, extras, normal, code, notebook. Recommend Notebook, never auto-select. Ignore legacy mode: path. Never restore PATH injection or shell interception.
+- Execution mode follows adapter scope, independently of transport. Responses Lite eligibility never gates modes.
+- Startup/resume normalises config in memory only. Persist only explicit settings actions.
+- Explicit writes preserve unknown fields while updating owned config.
+- Continuity, storage and compaction method are independent. Migrate legacy coupling only on read. Hidden controls retain saved choices.
+- config.ts is the facade. Keep contracts/defaults, readers and normalizers in their named config-* owners.

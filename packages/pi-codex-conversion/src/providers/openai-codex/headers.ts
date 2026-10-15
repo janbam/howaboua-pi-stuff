@@ -1,6 +1,7 @@
 import { DEFAULT_CODEX_BASE_URL, JWT_CLAIM_PATH, OPENAI_BETA_RESPONSES_WEBSOCKETS } from "./constants.ts";
 import { osInfo } from "./node-runtime.ts";
 import { RESPONSES_LITE_HEADER } from "./responses-lite.ts";
+import type { ResponsesBody } from "./types.ts";
 export { headersToRecord } from "./header-record.ts";
 
 type ProviderHeaders = Record<string, string | null>;
@@ -85,6 +86,7 @@ function buildBaseCodexHeaders(
 	accountId: string,
 	token: string,
 	originator: string,
+	routingRequest?: Pick<ResponsesBody, "model" | "service_tier">,
 ): Headers {
 	const headers = new Headers(modelHeaders);
 	for (const [key, value] of Object.entries(additionalHeaders ?? {})) {
@@ -100,6 +102,15 @@ function buildBaseCodexHeaders(
 	headers.set("originator", originator);
 	const os = osInfo.current;
 	headers.set("User-Agent", os ? `pi (${os.platform()} ${os.release()}; ${os.arch()})` : "pi (browser)");
+	if (headers.get("x-codex-guardian") === "reviewer") {
+		headers.delete("x-codex-routing-hint");
+	} else if (routingRequest) {
+		// Only the ChatGPT-authenticated Codex transport calls these builders.
+		// This is advisory: the response.create/HTTP body remains authoritative.
+		const hint = `model=${routingRequest.model}${routingRequest.service_tier === undefined ? "" : `;tier=${routingRequest.service_tier}`}`;
+		headers.delete("x-codex-routing-hint");
+		if (/^[\x20-\x7e]+$/.test(hint)) headers.set("x-codex-routing-hint", hint);
+	}
 	return headers;
 }
 
@@ -111,8 +122,9 @@ export function buildSSEHeaders(
 	sessionId: string | undefined,
 	responsesLite = false,
 	originator = "pi",
+	routingRequest?: Pick<ResponsesBody, "model" | "service_tier">,
 ): Headers {
-	const headers = buildBaseCodexHeaders(modelHeaders, additionalHeaders, accountId, token, originator);
+	const headers = buildBaseCodexHeaders(modelHeaders, additionalHeaders, accountId, token, originator, routingRequest);
 	headers.set("OpenAI-Beta", "responses=experimental");
 	headers.set("accept", "text/event-stream");
 	headers.set("content-type", "application/json");
@@ -134,13 +146,15 @@ export function buildWebSocketHeaders(
 	token: string,
 	requestId: string,
 	originator = "pi",
+	routingRequest?: Pick<ResponsesBody, "model" | "service_tier">,
 ): Headers {
-	const headers = buildBaseCodexHeaders(modelHeaders, additionalHeaders, accountId, token, originator);
+	const headers = buildBaseCodexHeaders(modelHeaders, additionalHeaders, accountId, token, originator, routingRequest);
 	headers.delete("accept");
 	headers.delete("content-type");
 	headers.delete("OpenAI-Beta");
 	headers.delete("openai-beta");
 	headers.set("OpenAI-Beta", OPENAI_BETA_RESPONSES_WEBSOCKETS);
+	headers.set("x-responsesapi-include-timing-metrics", "true");
 	headers.set("x-client-request-id", requestId);
 	headers.set("session-id", requestId);
 	headers.set("thread-id", requestId);

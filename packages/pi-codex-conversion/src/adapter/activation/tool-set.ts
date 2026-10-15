@@ -17,7 +17,7 @@ export function buildExtraToolsOnlyStatusText(tools: string[], theme?: StatusThe
 	return formatStatusText(` • extra tools${tools.length > 0 ? `: ${tools.join(", ")}` : ""}`, theme);
 }
 
-export function buildStatusText(options: { mode?: "normal" | "code" | "notebook" | undefined; verbosity?: string | undefined; fast: boolean; useOnAllModels: boolean; additionalProvider?: boolean | undefined; compaction?: boolean | undefined; contextManagement?: ContextManagementMode | undefined; usageStatus?: CodexUsageStatus | undefined }, theme?: StatusTheme | undefined): string {
+export function buildStatusText(options: { mode?: "normal" | "code" | "notebook" | undefined; verbosity?: string | undefined; fast: "priority" | "ultrafast" | undefined; baseTierEstimate?: boolean | undefined; daybreak?: boolean | undefined; useOnAllModels: boolean; additionalProvider?: boolean | undefined; compaction?: boolean | undefined; contextManagement?: ContextManagementMode | undefined; usageStatus?: CodexUsageStatus | undefined }, theme?: StatusTheme | undefined): string {
 	const extras = [
 		options.mode === "notebook" ? "notebook mode" : options.mode === "code" ? "code mode" : undefined,
 		options.useOnAllModels ? "all models" : undefined,
@@ -27,7 +27,9 @@ export function buildStatusText(options: { mode?: "normal" | "code" | "notebook"
 			: undefined,
 		// FORK_MOD: fork hides the compact v2 indicator; restore this entry to re-enable it.
 		// options.compaction ? "compact v2" : undefined,
-		options.fast ? "fast" : undefined,
+		options.fast === "ultrafast" ? "ultrafast" : options.fast ? "fast" : undefined,
+		options.baseTierEstimate ? "base cost estimate" : undefined,
+		options.daybreak ? "Daybreak" : undefined,
 		// FORK_MOD: usage segments drop the "left" suffix to keep the footer compact.
 		options.usageStatus?.fiveHourUsageLeft === undefined ? undefined : `5h: ${Math.round(options.usageStatus.fiveHourUsageLeft)}%`,
 		options.usageStatus?.weeklyUsageLeft === undefined ? undefined : `weekly: ${Math.round(options.usageStatus.weeklyUsageLeft)}%`,

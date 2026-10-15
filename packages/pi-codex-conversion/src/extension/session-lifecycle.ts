@@ -14,9 +14,11 @@ import type { CodeModeRegistration } from "../tools/code-mode/tools.ts";
 import { initializeBashParser } from "../shell/bash.ts";
 import { appendNotebookTreeEpoch } from "../tools/notebook-mode/session-identity.ts";
 import type { CodexExtensionRuntime } from "./runtime.ts";
+import { discoverExternalNotesOwner } from "../context-management/external-notes-bridge.ts";
 import type { CodexToolRegistration } from "./tools.ts";
 import type { CodexUiController } from "./ui.ts";
 import { registerCodexDeveloperMessageBroker, updateCodexPreparedIdleKickoff } from "../developer-messages.ts";
+import { registerCodexContextBriefingHost } from "../context-briefings.ts";
 import type { ExtensionHandler, SessionStartEvent, ModelSelectEvent, SessionBeforeSwitchEvent, SessionBeforeForkEvent, SessionBeforeTreeEvent, SessionTreeEvent, SessionShutdownEvent, SessionBeforeSwitchResult, SessionBeforeForkResult, SessionBeforeTreeResult } from "@earendil-works/pi-coding-agent";
 
 /** Own session restoration, provider activation, navigation, and shutdown. */
@@ -33,6 +35,7 @@ export function createCodexSessionLifecycle(
 	const { state, tracker, sessions } = runtime;
 	let activeContext: ExtensionContext | undefined;
 	let pendingExtensionToolRefresh = false;
+	const unregisterContextBriefingHost = registerCodexContextBriefingHost(pi);
 	const unregisterDeveloperMessageBroker = registerCodexDeveloperMessageBroker(
 		pi,
 		() => Boolean(
@@ -66,6 +69,7 @@ export function createCodexSessionLifecycle(
 
 	return {
 		start: async (event, ctx) => {
+			discoverExternalNotesOwner(pi, state);
 			updateCodexPreparedIdleKickoff(pi, "session_reset");
 			activate(ctx);
 			state.notebookStatusMessageId = undefined;
@@ -78,7 +82,7 @@ export function createCodexSessionLifecycle(
 			state.developerMessages.clear();
 			state.contextWindows.reset();
 			state.contextKickoff.reset();
-			state.contextTree.beginSession(pi);
+			if (!state.externalNotes) state.contextTree.beginSession(pi);
 			runtime.backgroundWidget.ctx = ctx;
 			state.cwd = ctx.cwd;
 			state.config = readEffectiveCodexConversionConfig({
@@ -104,14 +108,14 @@ export function createCodexSessionLifecycle(
 			ui.renderBackgroundWidget();
 			syncAdapter(pi, ctx, state);
 			// A fresh worker may adopt its family before its first prepared turn.
-			state.contextWindows.restore(ctx.sessionManager.getBranch());
+			if (!state.externalNotes) state.contextWindows.restore(ctx.sessionManager.getBranch());
 			await runtime.configureDiagnostics(ctx);
 			void ui.refreshUsageStatus(ctx);
 			prepareCodeModeHost(codeMode, ctx);
 			if (event.reason === "startup") await maybeWarnLocalCheckoutVersion(ctx);
 		},
 		modelSelected: async (_event, ctx) => {
-			state.contextTree.handoff.reset();
+			if (!state.externalNotes) state.contextTree.handoff.reset();
 			modelSelected(ctx);
 			activate(ctx);
 			ui.invalidateUsageStatus();
@@ -126,23 +130,21 @@ export function createCodexSessionLifecycle(
 				return;
 			}
 			const plan = syncAdapter(pi, ctx, state);
-			state.contextWindows.ensureInitialized(
-				pi,
-				ctx,
-				plan.contextManagement,
-			);
+			// Keep existing window state, but leave initial creation to the first prepared turn.
+			if (!state.externalNotes) state.contextWindows.ensureInitialized(pi, ctx, plan.contextManagement, { createIfMissing: false });
 			await runtime.configureDiagnostics(ctx);
 			void ui.refreshUsageStatus(ctx);
 			prepareCodeModeHost(codeMode, ctx);
 		},
-		beforeSwitch: () => state.contextTree.handoff.active || state.contextKickoff.hasIdleInput ? { cancel: true } : undefined,
-		beforeFork: () => state.contextTree.handoff.active || state.contextKickoff.hasIdleInput ? { cancel: true } : undefined,
+		beforeSwitch: () => !state.externalNotes && (state.contextTree.handoff.active || state.contextKickoff.hasIdleInput) ? { cancel: true } : undefined,
+		beforeFork: () => !state.externalNotes && (state.contextTree.handoff.active || state.contextKickoff.hasIdleInput) ? { cancel: true } : undefined,
 		beforeTree: (event, ctx) => {
+			if (state.externalNotes) return;
 			if (state.contextTree.handoff.active) return { cancel: true };
 			if (state.contextTree.archiving) return;
 			if (state.contextKickoff.hasIdleInput) return { cancel: true };
 			const plan = resolveCodexRuntimePlanForState(ctx, state);
-			if (!plan.contextManagement || !event.preparation.userWantsSummary) return;
+			if (!plan.notesTreeHandoff || !event.preparation.userWantsSummary) return;
 			return state.contextTree.handoff.prepare(pi, event, ctx, plan.contextManagementMode);
 		},
 		tree: async (event, ctx) => {
@@ -150,7 +152,7 @@ export function createCodexSessionLifecycle(
 			const previousMode = state.executionMode;
 			runtime.resetTransport(ctx.sessionManager.getSessionId());
 			// Internal rollover is still preparing the same claimed user kickoff.
-			if (state.contextTree.handleSessionTree(event)) return;
+			if (!state.externalNotes && state.contextTree.handleSessionTree(event)) return;
 			updateCodexPreparedIdleKickoff(pi, "session_reset");
 			state.notebookStatusMessageId = undefined;
 			if (previousMode === "notebook" || state.executionMode === "notebook") appendNotebookTreeEpoch(pi);
@@ -162,11 +164,7 @@ export function createCodexSessionLifecycle(
 			await runtime.configureDiagnostics(ctx);
 			ui.applyAdapterEnabled(ctx);
 			const plan = syncAdapter(pi, ctx, state);
-			state.contextWindows.ensureInitialized(
-				pi,
-				ctx,
-				plan.contextManagement,
-			);
+			if (!state.externalNotes) state.contextWindows.ensureInitialized(pi, ctx, plan.contextManagement, { createIfMissing: false });
 			if (state.adapterEnabled && !state.config.voiceFeaturesOnly)
 				prepareCodeModeHost(codeMode, ctx);
 			if (previousMode === "notebook" || state.executionMode === "notebook") {
@@ -184,6 +182,7 @@ export function createCodexSessionLifecycle(
 			// Voice's persisted end policy still needs the active developer broker.
 			activeContext = undefined;
 			await runShutdownStep(failures, unregisterDeveloperMessageBroker);
+			await runShutdownStep(failures, unregisterContextBriefingHost);
 			await runShutdownStep(failures, () => runtime.shutdownTransport(ctx.sessionManager.getSessionId()));
 			await runShutdownStep(failures, () => runtime.shutdownDiagnostics());
 			await runShutdownStep(failures, () => sessions.shutdown());

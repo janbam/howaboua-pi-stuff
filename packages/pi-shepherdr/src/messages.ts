@@ -5,16 +5,21 @@ import {
 	getMarkdownTheme,
 } from "@earendil-works/pi-coding-agent";
 import { Box, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
+import type { BoardBinding } from "@howaboua/pi-agent-board/integration";
 import { activityTask } from "./activity.js";
 import { sendPolicyMessage, startPreparedIdleTurn } from "./delivery.js";
 import { getCurrentPane, getSnapshot } from "./herdr.js";
 import type { HerdrConnection } from "./herdr-client.js";
+import { readExtensionMessage } from "./remote/shepherdr-session.mjs";
 import type {
+	ExtensionMessage,
+	FocusRequest,
 	LatestAssistant,
+	MachineStatus,
 	MonitoredAgent,
 	PaneInfo,
 	PeerMessage,
-	PendingAsk,
+	ScopedMonitoredAgent,
 	SettledAgentStatus,
 } from "./types.js";
 
@@ -24,6 +29,146 @@ const REALTIME_VOICE_PROMPT_CHANNEL =
 const MAX_REALTIME_VOICE_PROMPT_BYTES = 8 * 1_024;
 const DELEGATED_WORKER_GUIDANCE =
 	"If blocked mid-run, use a question-asking tool, not peer messages. Without one, end with the blocker. Finish with an assistant reply, not a separate send report; never watch your parent.";
+
+function focusOrigin({ source }: FocusRequest) {
+	return { host: source.host, session: source.session, pane: source.pane };
+}
+
+export function focusArrivalContent(
+	request: FocusRequest,
+	machine: string,
+	codeMode: boolean,
+) {
+	const returnFocus = {
+		action: "focus",
+		target: request.source.pane,
+		machine,
+		voice: request.voice === true,
+	};
+	const args = JSON.stringify(returnFocus);
+	const callable = codeMode ? `await tools.agents(${args})` : `agents ${args}`;
+	return {
+		returnFocus,
+		content: `User arrived from ${JSON.stringify({ ...focusOrigin(request), machine })}\nReturn: ${callable}${request.voice ? "\nVoice transfer pending" : ""}${request.handoff ? `\nHandoff from that session:\n${request.handoff}` : ""}`,
+	};
+}
+
+export function voiceFocusContinuity(request: FocusRequest): string {
+	return `User transferring voice from ${JSON.stringify(focusOrigin(request))}${request.handoff ? `\nHandoff from that session:\n${request.handoff}` : ""}`;
+}
+
+export function voiceFocusReport(
+	side: "source" | "destination",
+	target: string,
+	error?: unknown,
+): string {
+	return error === undefined
+		? `Voice transfer complete (${side}, ${target}); replacement call active`
+		: `Voice transfer failed (${side}, ${target}): ${error instanceof Error ? error.message : String(error)}. Voice availability is not confirmed; inspect the session before retrying`;
+}
+
+export function orchestrationGuidance(enabled: boolean, general: boolean) {
+	const ownership = "Own a scope or delegate it; don't do both.";
+	if (!enabled)
+		return `Work normally. Delegate only when useful or requested. ${ownership}`;
+	const guidance = general
+		? "Your main goal from now on is to orchestrate agents. Fan out suitable work to general agents, synthesize their results, and report the outcome. Work directly only when asked or for routine local tasks."
+		: "Your main goal from now on is to orchestrate agents. Fan out suitable work, synthesize agent results, and report the outcome. Work directly only when asked or for routine local tasks.";
+	return `${guidance} ${ownership}`;
+}
+export function activeAgentsBriefing(
+	agents: ScopedMonitoredAgent[],
+	machines: MachineStatus[],
+): string | undefined {
+	if (!agents.length) return;
+	return [
+		"Supervised agents after context rollover. Do not duplicate running work. Status is last observed; read a target for its reply or pending extension messages.",
+		JSON.stringify(
+			agents.map((agent) => ({
+				machine: agent.machine,
+				target: agent.paneId,
+				...(agent.name ? { name: agent.name } : {}),
+				status:
+					agent.activity.phase === "settled"
+						? agent.activity.status
+						: agent.activity.phase,
+				connection:
+					machines.find((machine) => machine.id === agent.machine)?.status ??
+					"unavailable",
+				...(agent.cwd ? { cwd: agent.cwd } : {}),
+				...((agent.instructions ?? activityTask(agent.activity))
+					? { instructions: agent.instructions ?? activityTask(agent.activity) }
+					: {}),
+			})),
+		),
+	].join("\n");
+}
+export function boardMigrationWarning() {
+	return "Boards moved to Pi Agent Board. Install @howaboua/pi-agent-board for the same features as a separate extension. Your saved boards are preserved.";
+}
+
+export function boardBriefing(
+	member: boolean,
+	population: "empty" | "populated" | "unavailable",
+) {
+	const state =
+		population === "populated"
+			? "Read relevant board threads."
+			: population === "empty"
+				? "Shared board available; no posts yet."
+				: "Shared board status unavailable. Check board help and retry reading when available.";
+	const setup = member
+		? "The root agent owns setup; follow your assigned task."
+		: "";
+	return (
+		[
+			state,
+			setup,
+			"Post only new information that changes another agent's work: ownership, decisions, findings or blockers. Reply in existing threads; link rather than repeat. Keep personal checkpoints in notes. Skip acknowledgements, routine status and duplicated completion reports. Use agents for assignments and urgent messages.",
+		]
+			.filter(Boolean)
+			.join(" ") +
+		"\n\nChannels group shared workstreams; threads group topics. Reuse a relevant channel, not a catch-all. Create a channel only for a distinct coordination need, never just to announce a task or result."
+	);
+}
+
+export function attachmentMessage(
+	controllerContextAgent?: string,
+	boardAgent?: string,
+) {
+	return {
+		customType: "herdr-agent-attachment",
+		content: [
+			...(controllerContextAgent
+				? [
+						`Controller notes/history: ${controllerContextAgent}; own context unchanged`,
+					]
+				: []),
+			...(boardAgent ? [`Shared board: ${boardAgent}`] : []),
+		].join("\n"),
+		display: true,
+	};
+}
+
+export function detachmentMessage(
+	controllerContextAgent?: string,
+	board?: BoardBinding,
+) {
+	return {
+		customType: "herdr-agent-detachment",
+		content: [
+			...(controllerContextAgent
+				? [
+						`Detached controller: ${controllerContextAgent}; checkpoints read-only, history unavailable; own context unchanged`,
+					]
+				: []),
+			...(board
+				? [`Board restored: ${board.boardId} as ${board.agentName}`]
+				: []),
+		].join("\n"),
+		display: true,
+	};
+}
 
 function xml(value: string): string {
 	return value
@@ -94,7 +239,8 @@ export async function attributeAgentPrompt(
 interface AgentEventOptions {
 	agent: PaneInfo;
 	agentToolName: string;
-	ask?: PendingAsk;
+	codeMode?: boolean;
+	extensionMessages?: ExtensionMessage[];
 	blockedMessage?: string;
 	labels: AgentEventLabels;
 	machine: string;
@@ -102,19 +248,11 @@ interface AgentEventOptions {
 	operatorPrefix: string;
 	record: MonitoredAgent;
 	reply?: LatestAssistant;
-	status: SettledAgentStatus;
-}
-
-export function modelAsk(ask: PendingAsk) {
-	return {
-		ask_id: ask.toolCallId,
-		handoff: ask.handoff,
-		prompts: ask.prompts,
-	};
+	status: SettledAgentStatus | "extension-message";
 }
 
 interface AgentEventDetails {
-	ask?: PendingAsk;
+	extensionMessages?: ExtensionMessage[];
 	blockedOn?: string;
 	cwd?: string;
 	machine: string;
@@ -122,58 +260,23 @@ interface AgentEventDetails {
 	name?: string;
 	paneId: string;
 	response?: string;
-	state: "blocked" | "failed" | "finished";
+	state: "blocked" | "failed" | "finished" | "extension-message";
 	tab?: string;
 	task?: string;
 	workspace?: string;
 }
 
-function eventAsk(value: unknown): PendingAsk | undefined {
-	if (typeof value !== "object" || value === null) return undefined;
-	const record = value as Record<string, unknown>;
-	if (
-		typeof record["toolCallId"] !== "string" ||
-		typeof record["handoff"] !== "boolean" ||
-		!Array.isArray(record["prompts"])
-	) {
-		return undefined;
-	}
-	const prompts: PendingAsk["prompts"] = [];
-	for (const value of record["prompts"]) {
-		if (typeof value !== "object" || value === null) return undefined;
-		const prompt = value as Record<string, unknown>;
-		if (
-			typeof prompt["title"] !== "string" ||
-			typeof prompt["multiple"] !== "boolean" ||
-			!Array.isArray(prompt["choices"])
-		) {
-			return undefined;
-		}
-		const choices: PendingAsk["prompts"][number]["choices"] = [];
-		for (const value of prompt["choices"]) {
-			if (typeof value !== "object" || value === null) return undefined;
-			const choice = value as Record<string, unknown>;
-			if (typeof choice["label"] !== "string") return undefined;
-			choices.push({
-				label: choice["label"],
-				...(typeof choice["description"] === "string"
-					? { description: choice["description"] }
-					: {}),
-			});
-		}
-		prompts.push({
-			title: prompt["title"],
-			multiple: prompt["multiple"],
-			choices,
-			...(typeof prompt["body"] === "string" ? { body: prompt["body"] } : {}),
-		});
-	}
-	if (prompts.length === 0) return undefined;
-	return {
-		toolCallId: record["toolCallId"],
-		handoff: record["handoff"],
-		prompts,
-	};
+function eventExtensionMessages(
+	value: unknown,
+): ExtensionMessage[] | undefined {
+	if (!Array.isArray(value)) return undefined;
+	const messages = value.map((message) => {
+		if (typeof message !== "object" || message === null) return undefined;
+		return readExtensionMessage({ ...message, version: 1, state: "pending" });
+	});
+	return messages.every((message) => message !== undefined)
+		? messages
+		: undefined;
 }
 
 function boundedVoicePrompt(prompt: string): string {
@@ -193,16 +296,17 @@ function agentVoicePrompt(details: AgentEventDetails): string {
 	];
 	if (details.task?.trim()) lines.push(`Task:\n${details.task.trim()}`);
 	let instruction: string;
-	if (details.state === "blocked") {
+	if (details.state === "blocked" || details.state === "extension-message") {
 		instruction =
-			"Briefly tell the user why this monitored worker is blocked and what attention may be required.";
+			details.state === "extension-message"
+				? "Briefly tell the user what this worker reports."
+				: "Briefly tell the user why this monitored worker is blocked and what attention may be required.";
 		if (details.blockedOn?.trim())
 			lines.push(`Reason:\n${details.blockedOn.trim()}`);
-		if (details.ask) {
+		if (details.extensionMessages)
 			lines.push(
-				`Questions:\n${details.ask.prompts.map((prompt) => prompt.title).join(", ")}`,
+				...details.extensionMessages.map((message) => message.message),
 			);
-		}
 	} else {
 		instruction =
 			details.state === "failed"
@@ -277,6 +381,7 @@ function eventDetails(value: unknown): AgentEventDetails | undefined {
 		(details["machine"] !== undefined &&
 			typeof details["machine"] !== "string") ||
 		(details["state"] !== "blocked" &&
+			details["state"] !== "extension-message" &&
 			details["state"] !== "failed" &&
 			details["state"] !== "finished")
 	) {
@@ -286,13 +391,15 @@ function eventDetails(value: unknown): AgentEventDetails | undefined {
 		typeof details[field] === "string"
 			? { [field]: details[field] as string }
 			: {};
-	const ask = eventAsk(details["ask"]);
+	const extensionMessages = eventExtensionMessages(
+		details["extensionMessages"],
+	);
 	return {
 		machine:
 			typeof details["machine"] === "string" ? details["machine"] : "local",
 		paneId: details["paneId"],
 		state: details["state"],
-		...(ask ? { ask } : {}),
+		...(extensionMessages ? { extensionMessages } : {}),
 		...optional("blockedOn"),
 		...optional("cwd"),
 		...optional("machineLabel"),
@@ -311,7 +418,8 @@ function agentEvent(options: AgentEventOptions): {
 	const {
 		agent,
 		agentToolName,
-		ask,
+		codeMode,
+		extensionMessages,
 		blockedMessage,
 		labels,
 		machine,
@@ -323,13 +431,16 @@ function agentEvent(options: AgentEventOptions): {
 	} = options;
 	const task = activityTask(record.activity);
 	const blocked = status === "blocked";
+	const notification = status === "extension-message";
 	const failed = !blocked && reply?.stopReason === "error";
 	const cwd = agent.foreground_cwd ?? agent.cwd ?? record.cwd;
-	const tag = blocked
-		? "herdr_agent_blocked"
-		: failed
-			? "herdr_agent_failed"
-			: "herdr_agent_result";
+	const tag = notification
+		? "herdr_agent_extension_message"
+		: blocked
+			? "herdr_agent_blocked"
+			: failed
+				? "herdr_agent_failed"
+				: "herdr_agent_result";
 	const attributes = sourceAttributes({
 		machine,
 		machine_name: machineLabel !== machine ? machineLabel : undefined,
@@ -338,12 +449,26 @@ function agentEvent(options: AgentEventOptions): {
 		directory: cwd,
 	});
 	const lines = [`<${tag} ${attributes}>`];
-	if (task) lines.push(`<task>${xml(task)}</task>`);
+	if (task && !notification) lines.push(`<task>${xml(task)}</task>`);
 	if (blockedMessage) {
 		lines.push(`<blocked_on>${xml(blockedMessage)}</blocked_on>`);
 	}
-	if (blocked && ask) {
-		lines.push(`<ask>${xml(JSON.stringify(modelAsk(ask)))}</ask>`);
+	for (const message of extensionMessages ?? []) {
+		lines.push(message.message);
+		if (message.reply !== undefined) {
+			const request = {
+				action: "reply",
+				machine,
+				target: agent.pane_id,
+				extension: message.extension,
+				id: message.id,
+				message: message.reply,
+			};
+			const call = codeMode
+				? `await tools.${agentToolName}(${JSON.stringify(request)})`
+				: `${agentToolName} ${JSON.stringify(request)}`;
+			lines.push(`Reply: ${call}`);
+		}
 	}
 	if (blocked) {
 		lines.push(
@@ -364,13 +489,19 @@ function agentEvent(options: AgentEventOptions): {
 			machine,
 			machineLabel,
 			paneId: agent.pane_id,
-			state: blocked ? "blocked" : failed ? "failed" : "finished",
-			...(blocked && ask ? { ask } : {}),
+			state: notification
+				? "extension-message"
+				: blocked
+					? "blocked"
+					: failed
+						? "failed"
+						: "finished",
+			...(extensionMessages ? { extensionMessages } : {}),
 			...(agent.name || record.name ? { name: agent.name || record.name } : {}),
 			...(cwd ? { cwd } : {}),
 			...(labels.workspace ? { workspace: labels.workspace } : {}),
 			...(labels.tab ? { tab: labels.tab } : {}),
-			...(task ? { task } : {}),
+			...(task && !notification ? { task } : {}),
 			...(blockedMessage ? { blockedOn: blockedMessage } : {}),
 			...(reply ? { response: reply.text } : {}),
 		},
@@ -382,7 +513,14 @@ export function injectAgentEvent(
 	ctx: ExtensionContext,
 	options: AgentEventOptions,
 ): void {
-	const message = agentEvent(options);
+	const tools = pi.getActiveTools();
+	const message = agentEvent({
+		...options,
+		codeMode:
+			tools.includes("exec") ||
+			tools.includes("code") ||
+			tools.includes("notebook"),
+	});
 	const idle = ctx.isIdle();
 	const delivery = idle
 		? { triggerTurn: false, deliverAs: "nextTurn" as const }
@@ -427,13 +565,14 @@ export function registerAgentEventRenderer(pi: ExtensionAPI): void {
 			}
 			const blocked = details?.state === "blocked";
 			const failed = details?.state === "failed";
+			const notification = details.state === "extension-message";
 			const agentIdentity = details?.name
 				? `${details.name} (${details.paneId})`
 				: (details?.paneId ?? "unknown");
 			const identity = `${details.machineLabel ?? details.machine} / ${agentIdentity}`;
 			const title = theme.fg(
 				blocked || failed ? "error" : "success",
-				`Herdr agent ${identity} · ${blocked ? "blocked" : failed ? "failed" : "finished"}`,
+				`Herdr agent ${identity} · ${notification ? "extension message pending" : blocked ? "blocked" : failed ? "failed" : "finished"}`,
 			);
 			const location = [details?.workspace, details?.tab]
 				.filter(Boolean)
@@ -444,48 +583,27 @@ export function registerAgentEventRenderer(pi: ExtensionAPI): void {
 			);
 			box.addChild(new Text(title, 0, 0));
 			if (metadata) box.addChild(new Text(theme.fg("dim", metadata), 0, 0));
-			if (blocked) {
+			if (blocked || notification) {
 				box.addChild(new Spacer(1));
 				box.addChild(
 					new Text(
 						theme.fg(
 							"warning",
-							details?.blockedOn ?? "Agent needs input or approval",
+							details?.blockedOn ??
+								(notification
+									? "Extension message pending"
+									: "Agent needs input or approval"),
 						),
 						0,
 						0,
 					),
 				);
-				if (details.ask) {
-					box.addChild(
-						new Text(
-							theme.fg(
-								"muted",
-								`Questions: ${details.ask.prompts.map((prompt) => prompt.title).join(", ")}`,
-							),
-							0,
-							0,
-						),
-					);
-					if (expanded) {
-						for (const prompt of details.ask.prompts) {
-							box.addChild(new Spacer(1));
-							box.addChild(new Text(theme.fg("muted", prompt.title), 0, 0));
-							if (prompt.body) {
-								box.addChild(
-									new Markdown(prompt.body, 0, 0, getMarkdownTheme()),
-								);
-							}
-							if (prompt.choices.length > 0) {
-								box.addChild(
-									new Text(
-										`Choices: ${prompt.choices.map((choice) => choice.label).join(", ")}`,
-										0,
-										0,
-									),
-								);
-							}
-						}
+				if (details.extensionMessages && expanded) {
+					for (const message of details.extensionMessages) {
+						box.addChild(new Spacer(1));
+						box.addChild(
+							new Markdown(message.message, 0, 0, getMarkdownTheme()),
+						);
 					}
 				}
 			}

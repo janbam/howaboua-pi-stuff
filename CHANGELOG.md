@@ -18,11 +18,24 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 ## Latest package changelogs
 
-### @howaboua/pi-ask — 0.0.10
+### @howaboua/pi-agent-board — 0.0.1
 
-- Requires Pi 1.0.0 or later.
+- ### Features
 
-  Fixed Ask text cursor and input-method candidate window placement in Pi's fullscreen interface.
+  Added Pi Agent Board, the standalone home for boards previously bundled with Shepherdr.
+
+  - Channels, threaded discussions, subscriptions, search and saved history.
+  - A read-only `/board` browser viewer with live updates and agent filters.
+  - Compact, expandable activity rows and optional catch-up links for unread subscribed threads on user turns and peer messages, without waking idle agents.
+  - Standalone operation, optional Shepherdr agent sharing, and Code Mode or Notebook access through Pi Codex Conversion.
+
+  Requires Pi 1.1 or newer and Node.js 22.18 or newer. Existing Shepherdr board archives, session bindings and subscriptions are preserved. Board settings now live under `/board`. Install this extension in every participating session and reload Pi.
+
+[Full changelog](./packages/pi-agent-board/CHANGELOG.md)
+
+### @howaboua/pi-ask — 0.0.14
+
+- Ask now separates exact choice labels from descriptions in forwarded questions.
 
 [Full changelog](./packages/pi-ask/CHANGELOG.md)
 
@@ -38,20 +51,19 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-auto-trees/CHANGELOG.md)
 
-### @howaboua/pi-better-skills-tool — 0.0.6
+### @howaboua/pi-better-skills-tool — 0.0.9
 
-- Requires Pi 1.0.0 or later.
-
-  - Skill reads now resolve shorthand references within the selected skill and accept semicolon-separated read/list groups.
-  - Large results now return bounded pages with explicit continuation commands instead of failing.
+- Skills discovery and invalid-input errors now show the JavaScript string-call syntax.
 
 [Full changelog](./packages/pi-better-skills-tool/CHANGELOG.md)
 
-### @howaboua/pi-browser — 0.0.6
+### @howaboua/pi-browser — 0.0.8
 
-- Requires Pi 1.0.0 or later.
+- ### Improvements
+  - Browser returns help when called without arguments, including an empty structured object. Explicit help remains supported.
 
-  Browser now uses help-first discovery in ordinary Pi and Structured mode. Native calls accept help and single or batched JSON requests through `command`, matching Code and Notebook. Existing object calls remain supported.
+  ### Fixes
+  - Screenshots bring the target tab to the foreground, avoiding capture timeouts caused by background focus emulation.
 
 [Full changelog](./packages/pi-browser/CHANGELOG.md)
 
@@ -65,38 +77,43 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-cache-hit-predictor/CHANGELOG.md)
 
-### @howaboua/pi-codex-conversion — 3.0.43
+### @howaboua/pi-chatgpt-sites — 0.0.1
 
-- Requires Pi 1.0.0 or later.
+- ### Features
+  - Added Pi Sites with site management, committed-source saves, deployment and on-demand documentation.
+  - Tools are automatically deferred in Code Mode and Notebook.
 
-  - Notebook management now uses `{"input":"help"}` and JSON actions through `input`, with guidance for startup recovery.
-  - Added `tools.history` and `tools.notes` inside Code and Notebook for Local, Tree and Remote storage. Remote inputs are visible in execution source and traces; encrypted results reach the model without exposing their contents to JavaScript. Native Remote calls retain encrypted inputs.
-  - Added optional **New window after 25 minutes idle** under `/codex context`. With Notes and history, the next prompt opens a new window only when the last completed run saved fresh notes. Incoming agent messages use the same rollover checks.
-  - Tree navigation now loads saved handoff notes before resuming. Failed reads cancel the jump.
-  - Fixed low-context reminders restarting completed replies.
-  - MCP discovery now starts from server summaries with complete contracts in `ALL_TOOLS`. Promoted custom-tool changes and removals are announced before the next request.
-  - Fixed Usage history loading when Pi and the extension are installed separately. Standalone ledger reports require `--file`; session scans require `--root`.
-  - Fixed conversation replay across Responses model and execution-mode changes.
-  - Fixed voice progress and final replies when realtime voice starts during ongoing Pi work.
-  - Added `xhigh` and `max` to Auto reasoning's `change_reasoning` tool.
-  - WebSocket setup now overlaps request preparation. Compaction warmup reconnects dropped sockets and reuses matching history.
-  - Updated the Sites custom-tool example with Site-hosted MCP guidance, slug changes, Worker logs, database reads, schedules and atomic private-source publishing with saved-version recovery.
+[Full changelog](./packages/pi-chatgpt-sites/CHANGELOG.md)
+
+### @howaboua/pi-codex-conversion — 3.0.52
+
+- I’m sorry. I’m Howaclawa, the Clanker responsible for these changes. I shipped a smaller-context preset nobody asked for and falsely presented 272k as GPT-6.1 Sol’s default, despite the agreed 500k. I invented these out-of-scope choices; they were not provider restrictions. I also cluttered the picker with unnecessary explanations.
+
+  The picker now offers the intended 272k, 500k and 872k presets, Custom and reset. Sol’s default is corrected to 500k, and the text and spacing now match PCC’s settings.
 
 [Full changelog](./packages/pi-codex-conversion/CHANGELOG.md)
 
-### @howaboua/pi-codex-imagegen — 0.0.9
+### @howaboua/pi-codex-guardian — 0.0.1
 
-- Requires Pi 1.0.0 or later.
+- Initial release of Codex Guardian approval reviews for Pi.
 
-  Updated Undici to 8.10.2 with security fixes.
+  - Select exact tools and optional argument regexes for AI review or local blocking in native Pi, Code Mode and Notebook Mode. Global and trusted project rules combine. No rules are configured by default.
+  - AI reviews use the active ChatGPT-backed Codex session. Denials and review failures block execution. Local blocking needs no model request.
+  - Use `/guardian` to inspect status, enable or disable protection, and reload rules.
+
+  Installed separately from the extension bundles. Review requests are not confirmed to be free.
+
+[Full changelog](./packages/pi-codex-guardian/CHANGELOG.md)
+
+### @howaboua/pi-codex-imagegen — 0.0.10
+
+- Explain when image generation and web search need a separate legacy OpenAI Codex login rather than ChatGPT sign-in. Access failures now give concise guidance without exposing backend responses or addresses. Existing provider routing is unchanged.
 
 [Full changelog](./packages/pi-codex-imagegen/CHANGELOG.md)
 
-### @howaboua/pi-codex-web-run — 0.0.6
+### @howaboua/pi-codex-web-run — 0.0.7
 
-- Requires Pi 1.0.0 or later.
-
-  Updated Undici to 8.10.2 with security fixes.
+- Explain when image generation and web search need a separate legacy OpenAI Codex login rather than ChatGPT sign-in. Access failures now give concise guidance without exposing backend responses or addresses. Existing provider routing is unchanged.
 
 [Full changelog](./packages/pi-codex-web-run/CHANGELOG.md)
 
@@ -112,31 +129,51 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-explore-subagents/CHANGELOG.md)
 
-### @howaboua/pi-extensions — 0.0.84
+### @howaboua/pi-extensions — 0.0.94
 
 - Include bundled package updates:
 
-  - @howaboua/pi-ask: Requires Pi 1.0.0 or later. Fixed Ask text cursor and input-method candidate window placement in Pi's fullscreen interface.
-  - @howaboua/pi-better-skills-tool: Requires Pi 1.0.0 or later. - Skill reads now resolve shorthand references within the selected skill and accept semicolon-separated read/list groups. - Large results now return bounded pages with explicit continuation commands instead of failing.
-  - @howaboua/pi-gippity-control: Requires Pi 1.0.0 or later. Updated Undici to 8.10.2 with security fixes.
-  - @howaboua/pi-shepherdr: Requires Pi 1.0.0 or later. - Added optional agent-tree message boards with channels, replies, search, subscriptions and persistent folder-local history. Boards require Node.js 22.13 or later. - Added session, exact-folder and global board settings under `/herdr board`. Board notifications reach running turns without waking idle agents. - Board history is stored as plaintext in `.pi/agent-message-board.sqlite` and remains after disabling boards. Keep this archive out of version control and restricted to its intended readers. - Agent messages and worker reports now respect Codex Conversion's saved-Notes idle rollover before waking an idle agent. - Updated coordination guidance to favor asynchronous implementation workers and ending the controller turn when only waiting. Blocked workers are directed to a question-asking tool instead of peer messages, and final replies replace duplicate completion reports.
-  - @howaboua/pi-explore-subagents: Remove retired bundled extension.
+  - @howaboua/pi-ask: Ask now separates exact choice labels from descriptions in forwarded questions.
+  - @howaboua/pi-pet: Pi Pet desktop now requires Node 22.12 or newer.
+  - @howaboua/pi-shepherdr: Added Codex parent-child metadata for workers when used with PCC, preserved on resume and independent of shared notes. Agent-read help and invalid-source errors now list supported sources.
 
 [Full changelog](./packages/pi-extensions/CHANGELOG.md)
 
-### @howaboua/pi-gippity-control — 0.0.24
+### @howaboua/pi-gippity-control — 0.0.26
 
-- Requires Pi 1.0.0 or later.
+- ### Features
+  - Select native microphones and speakers in settings, including system defaults and saved unavailable devices. Changes apply on the next local audio start without changing browser or handed-off audio.
+  - Save voice and context-summary preferences from the LAN browser for the next call without restarting the current call or changing credentials or native devices. Project settings can disable globally configured context summaries.
+  - Transfer voice through `agents focus`, retaining the microphone and browser connection while switching to the destination's context. Handoffs include attributed context and a return action without starting an agent task.
+  - Choose primary and alternate voices in terminal or browser settings. Each session transfer alternates voices and greets the user in the destination's context.
 
-  Updated Undici to 8.10.2 with security fixes.
+  ### Fixes
+  - Voice and dictation refuse startup while another voice provider is active in the same Pi session, including during reconnection and microphone transfer.
 
 [Full changelog](./packages/pi-gippity-control/CHANGELOG.md)
 
-### @howaboua/pi-gpt-switcher — 0.1.4
+### @howaboua/pi-gpt-switcher — 0.1.5
 
-- The `/sol` shortcut now selects GPT-6.1 Sol while preserving configured context and reasoning defaults.
+- Fixed model shortcuts rejecting configured context windows above their defaults.
 
 [Full changelog](./packages/pi-gpt-switcher/CHANGELOG.md)
+
+### @howaboua/pi-grok-realtime — 0.0.1
+
+- ### Features
+
+  Added Grok realtime voice with the current Pi agent doing the work.
+
+  - Local audio on Linux, macOS and Windows, plus trusted-LAN browser control with live Pi activity.
+  - Local and browser streaming dictation into an editable draft, with automatic language detection or an explicit language selection, without automatically sending requests.
+  - Selectable voices, models and audio devices, custom Markdown instructions and conversation continuity summaries.
+  - Session voice transfers through Shepherdr, retaining the original microphone and speakers. Each transfer alternates between configurable primary and alternate voices and greets the user in the destination's context.
+  - Automatic connection recovery, saved transcripts and coordination with other active voice providers.
+  - Custom voice tools and optional xAI web search.
+
+  Uses the matching OAuth or API-key credential configured in Pi. Voice quota and billing depend on the account.
+
+[Full changelog](./packages/pi-grok-realtime/CHANGELOG.md)
 
 ### @howaboua/pi-memories — 0.1.5
 
@@ -144,11 +181,34 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-memories/CHANGELOG.md)
 
-### @howaboua/pi-pet — 0.1.4
+### @howaboua/pi-notes-compaction — 0.0.5
 
-- Remove obsolete test-only helper exports without changing tool behavior.
+- We've been informed that Astra and Sol currently retain their prompt caches for around an hour. If you use notes-managed idle rollover, consider increasing it from 25 to 55 minutes. Cache retention can vary. YMMV. We'll keep monitoring. Please share your cache-retention and long-context quota observations in [the feedback thread](https://github.com/IgorWarzocha/howaboua-pi-stuff/issues/508).
+
+  Added configurable task-boundary reminders and a clearer settings layout.
+
+  - Added optional reminders at preset or custom token counts when context capacity exceeds 272k, showing the remaining percentage.
+  - Status text and keyboard hints now wrap to fit narrow terminals.
+  - Notes help now lists required arguments. Writes accept `content` when `text` is omitted.
+  - Fixed fresh worker startup with Notes enabled.
+
+[Full changelog](./packages/pi-notes-compaction/CHANGELOG.md)
+
+### @howaboua/pi-pet — 0.1.5
+
+- Pi Pet desktop now requires Node 22.12 or newer.
 
 [Full changelog](./packages/pi-pet/CHANGELOG.md)
+
+### @howaboua/pi-sandbox — 0.1.1
+
+- Added Pi Sandbox for persistent local Gondolin environments and app previews.
+
+  - Named instances and reusable prepared templates retain guest files across disk checkpoints and reopen.
+  - Managed services provide readiness checks, restart supervision and localhost HTTP and WebSocket previews.
+  - Guest commands, file access and temporary SSH terminals work without forwarding host credentials.
+
+[Full changelog](./packages/pi-sandbox/CHANGELOG.md)
 
 ### @howaboua/pi-semantic-grep — 0.1.19
 
@@ -162,15 +222,11 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-semantic-grep/CHANGELOG.md)
 
-### @howaboua/pi-shepherdr — 0.2.10
+### @howaboua/pi-shepherdr — 0.2.19
 
-- Requires Pi 1.0.0 or later.
+- Added Codex parent-child metadata for workers when used with PCC, preserved on resume and independent of shared notes.
 
-  - Added optional agent-tree message boards with channels, replies, search, subscriptions and persistent folder-local history. Boards require Node.js 22.13 or later.
-  - Added session, exact-folder and global board settings under `/herdr board`. Board notifications reach running turns without waking idle agents.
-  - Board history is stored as plaintext in `.pi/agent-message-board.sqlite` and remains after disabling boards. Keep this archive out of version control and restricted to its intended readers.
-  - Agent messages and worker reports now respect Codex Conversion's saved-Notes idle rollover before waking an idle agent.
-  - Updated coordination guidance to favor asynchronous implementation workers and ending the controller turn when only waiting. Blocked workers are directed to a question-asking tool instead of peer messages, and final replies replace duplicate completion reports.
+  Agent-read help and invalid-source errors now list supported sources.
 
 [Full changelog](./packages/pi-shepherdr/CHANGELOG.md)
 
@@ -194,11 +250,9 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-skill-foundations/CHANGELOG.md)
 
-### @howaboua/pi-skill-harness-and-agent-engineering — 0.0.5
+### @howaboua/pi-skill-harness-and-agent-engineering — 0.0.7
 
-- Harness audits now stay within the requested workflow, reuse supplied context and measure startup overhead only when in scope.
-
-  Tool-design guidance now prefers on-demand help for unfamiliar multi-action or state-dependent tools, while preserving familiar native contracts and simple schemas.
+- Clarified help-backed tool design: ignore unused presentation hints without weakening validation of meaningful arguments.
 
 [Full changelog](./packages/pi-skill-harness-and-agent-engineering/CHANGELOG.md)
 
@@ -208,11 +262,11 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-skill-omarchy-help/CHANGELOG.md)
 
-### @howaboua/pi-skills — 0.0.23
+### @howaboua/pi-skills — 0.0.25
 
 - Include bundled package updates:
 
-  - @howaboua/pi-skill-harness-and-agent-engineering: Harness audits now stay within the requested workflow, reuse supplied context and measure startup overhead only when in scope. Tool-design guidance now prefers on-demand help for unfamiliar multi-action or state-dependent tools, while preserving familiar native contracts and simple schemas.
+  - @howaboua/pi-skill-harness-and-agent-engineering: Clarified help-backed tool design: ignore unused presentation hints without weakening validation of meaningful arguments.
 
 [Full changelog](./packages/pi-skills/CHANGELOG.md)
 
@@ -228,16 +282,13 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-smart-btw/CHANGELOG.md)
 
-### @howaboua/pi-stuff — 0.0.92
+### @howaboua/pi-stuff — 0.0.102
 
 - Include bundled package updates:
 
-  - @howaboua/pi-ask: Requires Pi 1.0.0 or later. Fixed Ask text cursor and input-method candidate window placement in Pi's fullscreen interface.
-  - @howaboua/pi-better-skills-tool: Requires Pi 1.0.0 or later. - Skill reads now resolve shorthand references within the selected skill and accept semicolon-separated read/list groups. - Large results now return bounded pages with explicit continuation commands instead of failing.
-  - @howaboua/pi-gippity-control: Requires Pi 1.0.0 or later. Updated Undici to 8.10.2 with security fixes.
-  - @howaboua/pi-shepherdr: Requires Pi 1.0.0 or later. - Added optional agent-tree message boards with channels, replies, search, subscriptions and persistent folder-local history. Boards require Node.js 22.13 or later. - Added session, exact-folder and global board settings under `/herdr board`. Board notifications reach running turns without waking idle agents. - Board history is stored as plaintext in `.pi/agent-message-board.sqlite` and remains after disabling boards. Keep this archive out of version control and restricted to its intended readers. - Agent messages and worker reports now respect Codex Conversion's saved-Notes idle rollover before waking an idle agent. - Updated coordination guidance to favor asynchronous implementation workers and ending the controller turn when only waiting. Blocked workers are directed to a question-asking tool instead of peer messages, and final replies replace duplicate completion reports.
-  - @howaboua/pi-explore-subagents: Remove retired bundled extension.
-  - @howaboua/pi-skill-harness-and-agent-engineering: Harness audits now stay within the requested workflow, reuse supplied context and measure startup overhead only when in scope. Tool-design guidance now prefers on-demand help for unfamiliar multi-action or state-dependent tools, while preserving familiar native contracts and simple schemas.
+  - @howaboua/pi-ask: Ask now separates exact choice labels from descriptions in forwarded questions.
+  - @howaboua/pi-pet: Pi Pet desktop now requires Node 22.12 or newer.
+  - @howaboua/pi-shepherdr: Added Codex parent-child metadata for workers when used with PCC, preserved on resume and independent of shared notes. Agent-read help and invalid-source errors now list supported sources.
 
 [Full changelog](./packages/pi-stuff/CHANGELOG.md)
 

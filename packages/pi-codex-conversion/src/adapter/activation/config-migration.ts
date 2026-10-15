@@ -8,6 +8,7 @@ import {
 	type CodexConversionConfig,
 } from "./config.ts";
 import { normalizeExecutionMode } from "./execution-mode.ts";
+import { normalizeFastMode } from "./fast-mode.ts";
 
 export function migrateCodexConversionConfigIfNeeded(
 	value: unknown,
@@ -64,6 +65,7 @@ export function migrateCodexConversionConfigIfNeeded(
 			toolRenaming: DEFAULT_CODEX_CONVERSION_CONFIG.ui["toolRenaming"],
 			compactTools: DEFAULT_CODEX_CONVERSION_CONFIG.ui["compactTools"],
 			codeModeDetails: DEFAULT_CODEX_CONVERSION_CONFIG.ui["codeModeDetails"],
+			noteSaveMarkers: DEFAULT_CODEX_CONVERSION_CONFIG.ui.noteSaveMarkers,
 			backgroundShellWidget: typeof value["backgroundShellWidget"] === "boolean" ? value["backgroundShellWidget"] : DEFAULT_CODEX_CONVERSION_CONFIG.ui["backgroundShellWidget"],
 			backgroundShellToggleShortcut: stringValue(value["backgroundShellToggleShortcut"], DEFAULT_CODEX_CONVERSION_CONFIG.ui["backgroundShellToggleShortcut"]),
 			backgroundShellPrevShortcut: stringValue(value["backgroundShellPrevShortcut"], DEFAULT_CODEX_CONVERSION_CONFIG.ui["backgroundShellPrevShortcut"]),
@@ -75,10 +77,13 @@ export function migrateCodexConversionConfigIfNeeded(
 			method: value["responsesCompaction"] === true ? "v2" : "pi",
 		},
 		openai: {
-			fast: typeof value["fast"] === "boolean" ? value["fast"] : DEFAULT_CODEX_CONVERSION_CONFIG.openai["fast"],
+			fast: normalizeFastMode(value["fast"]),
+			daybreak: DEFAULT_CODEX_CONVERSION_CONFIG.openai.daybreak,
 			verbosity: normalizeCodexVerbosity(value["verbosity"]) ?? DEFAULT_CODEX_CONVERSION_CONFIG.openai["verbosity"],
 			lunaCacheKeepaliveMinutes: DEFAULT_CODEX_CONVERSION_CONFIG.openai.lunaCacheKeepaliveMinutes,
+			lunaCacheKeepaliveIntervalMinutes: DEFAULT_CODEX_CONVERSION_CONFIG.openai.lunaCacheKeepaliveIntervalMinutes,
 			cacheKeepalive: DEFAULT_CODEX_CONVERSION_CONFIG.openai.cacheKeepalive,
+			cacheKeepaliveIntervalMinutes: DEFAULT_CODEX_CONVERSION_CONFIG.openai.cacheKeepaliveIntervalMinutes,
 			proxyResponsesLite: DEFAULT_CODEX_CONVERSION_CONFIG.openai.proxyResponsesLite,
 			forceCachedWebSockets: typeof value["forceCachedWebSockets"] === "boolean" ? value["forceCachedWebSockets"] : DEFAULT_CODEX_CONVERSION_CONFIG.openai["forceCachedWebSockets"],
 			cacheDiagnostics: DEFAULT_CODEX_CONVERSION_CONFIG.openai.cacheDiagnostics,

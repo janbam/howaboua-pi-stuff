@@ -1,5 +1,83 @@
 # @howaboua/pi-shepherdr
 
+## 0.2.19
+
+- Added Codex parent-child metadata for workers when used with PCC, preserved on resume and independent of shared notes.
+
+  Agent-read help and invalid-source errors now list supported sources.
+
+## 0.2.18
+
+- Replaced the Ask-specific `answer` action with `reply` for extension replies. Update and reload Ask and Shepherdr together on controllers and workers.
+
+  - Assignments now update running agents without losing pending results or replacing existing waiters. Messages and assignments also reach blocked workers.
+  - Extension messages and reply templates now travel between local and remote agents. Replies reach the owning extension without an extra model turn, including while a worker is busy or blocked.
+  - Pending extension messages remain visible until their producer closes them. Blocking messages arrive with the blocked result. Nonblocking messages notify separately once.
+  - Context rollover now retains supervised workers and their full follow-up instructions.
+  - Spawn labels no longer have a word-count restriction.
+
+## 0.2.17
+
+- Added slash-command discovery with configured descriptions for the current session or another agent, without executing commands or interrupting its work.
+
+## 0.2.16
+
+- ### Breaking changes
+  - **BREAKING CHANGE:** Boards moved to `@howaboua/pi-agent-board`. Install it in every participating session and reload Pi. Existing archives, session bindings and subscriptions are preserved. Board settings now live under `/board`, not `/herdr`. The board extension requires Pi 1.1 or newer and Node.js 22.18 or newer.
+  - **BREAKING CHANGE:** Custom extension commands sent through `agents` require an `extensionCommands` allowlist in the receiving session's global `pi-shepherdr.json`. Add the commands you use, then update and reload both controllers and receiving agents. `/herdr` Settings shows the config path and format.
+
+  ### Features
+  - Route `/quit`, `/model`, `/thinking`, `/name`, `/new`, `/reload`, `/resume` and `/compact` to agents. `/quit` shuts down Pi before closing its pane. Blocked commands return available commands instead of becoming model prompts. Skills and prompt templates remain supported.
+  - Focus running Pi sessions with `agents focus`, optionally transferring voice through GipPity Control, Codex Conversion or Grok Realtime. Handoffs retain the microphone and browser connection, identify the source device, session and pane without exposing session-file paths, and offer a return action without starting an agent task. Remote focus selects the destination's Herdr session. Client machine selection remains manual.
+  - Pass a shared-board thread to a spawned agent with `board_thread_id` so its initial task can read that context.
+  - Support shared and attached agents with different notes owners. Local checkpoints remain available after detachment.
+  - Accept `/root` as the live root of an agent's own family, including across connected machines. Missing or ambiguous roots fail explicitly. Exact spawn and find targets remain unchanged.
+
+  ### Improvements
+  - Agents returns help when called without arguments, including an empty structured object.
+  - Delegation guidance keeps task ownership with either the parent or its delegated agent, avoiding duplicated work.
+
+  ### Fixes
+  - Reduce redundant monitoring warnings when workers close, move or are unwatched. Retire question watches and suppress late collection failures.
+  - Coalesce repeated board-owner outage warnings until connectivity recovers. Preserve Herdr event-stream error details locally and over SSH.
+
+## 0.2.15
+
+- Show a quiet, theme-aware notice with the channel name after an agent successfully posts to the board. Notices remain visible in restored history without adding model context.
+
+## 0.2.14
+
+- Delegated agents keep reporting after task completion, including follow-up work.
+
+  - Added shared-board awareness across native, Code and Notebook modes.
+  - Preserves orchestration guidance across compaction and context rollover.
+  - Restores running workers' targets and full tasks after compaction or context rollover to prevent duplicate delegation.
+  - Parents receive and answer asynchronous Ask questions while workers continue.
+  - Updated agent guidance to close finished workers without sending extra messages.
+
+## 0.2.13
+
+- Added Remote notes and history to existing-agent attachment, including mixed Local, Tree and Remote storage.
+
+## 0.2.12
+
+- Manage orchestration, board defaults and SSH connections in `/herdr`, and attach existing agents without replacing their context.
+
+  ### Control panel
+  - `/herdr` opens Settings, Status and Connections instead of toggling orchestration. Panel controls replace `/herdr board` and `/herdr connect`; outside the TUI, `/herdr` reports status without changes.
+  - Add SSH machines through Herdr's interactive setup, preserving its installation approvals and machine catalog. Inspect connection errors and reconnect from Status.
+  - Fixed board startup when the global agent directory overlaps the launch folder's `.pi` directory. The global config is no longer mistaken for folder config.
+
+  ### Agent attachment
+  - `agents` gains `attach` and `detach` with independent context and board choices that persist across resume. Agent management stays in the tool, not the human panel.
+  - Local and Tree notes/history retain their original identities and use aliases for shared access. Board attachment preserves previous archives.
+  - Detachment retains read-only counterpart checkpoints. After an owner exits, reads use its reachable saved session or a timestamped retained snapshot with an explicit staleness warning. Counterpart history still needs its live owner.
+  - Remote notes/history attachment is unsupported; board-only attachment remains available.
+
+## 0.2.11
+
+- Shepherdr now tells agents to use an enabled shared board for plans, decisions and findings in substantial multi-agent work, while keeping task assignment and urgent messages in agents. Spawned agents receive the same guidance.
+
 ## 0.2.10
 
 - Requires Pi 1.0.0 or later.

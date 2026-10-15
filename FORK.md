@@ -5,8 +5,15 @@ Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist ups
 - Entry = one feature: commits/PRs, behavior, files touched. Tests and changelogs are omitted; `git show --stat <commit>` has the full list.
 - In-code divergences in shared files may carry `// FORK_MOD: <why>` comments; `rg FORK_MOD packages` lists them. Conflicts on those lines keep the fork side.
 - Upstream status is "not proposed" unless stated.
+- Upstream baseline: `@howaboua/pi-codex-conversion@3.0.52` (`76f20771`). This fork targets Pi 1.2.0 with its TypeBox pin, `1.3.27`.
 
 ## Repo
+
+### Pi 1.2 SDK and checkout linking
+
+- PR: #27
+- Behavior: extensions require Pi 1.2.0, share its TypeBox pin, and prepare both user and custom kickoffs without treating custom messages as user-text handoffs. The checkout helper links declared Pi dependencies across all workspaces; the removed server package is no longer referenced.
+- Files: `package.json`, `bun.lock`, `packages/*/package.json`, package requirement documentation, `scripts/{link-pi-checkout,pi-sdk-policy}.mjs`, `packages/pi-codex-conversion/src/extension/turn-lifecycle.ts`
 
 ### Root `AGENTS.md` rules
 
@@ -16,15 +23,9 @@ Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist ups
 
 ### Generated `changelog.js` handling
 
-- Commits: `f987721`, `e340b30`
-- Behavior: `changelog.js` is ignored once at the repo root instead of per package, and every package `biome.json` excludes it so local lint passes once it is generated.
-- Files: `.gitignore`, `packages/pi-codex-conversion/.gitignore` (entry removed), `packages/*/biome.json`
-
-### TypeBox pinned to Pi's version
-
-- Commit: `99e1ef7`
-- Behavior: root and pi-codex-conversion dev dependency on `typebox` match Pi's pin so schema helpers share one type identity.
-- Files: `package.json`, `packages/pi-codex-conversion/package.json`, `bun.lock`
+- Commits: `f987721`, `e340b30`, PR #27
+- Behavior: `changelog.js` is ignored once at the repo root instead of per package, and every package `biome.json` excludes it so local lint passes once it is generated. Knip explicitly includes source changelog entry points whose generated imports are ignored, plus the retained skills contract tests.
+- Files: `.gitignore`, `packages/pi-codex-conversion/.gitignore` (entry removed), `packages/*/biome.json`, `knip.jsonc`
 
 ## pi-ask
 
@@ -81,7 +82,7 @@ Paths below are relative to `packages/pi-codex-conversion/`.
 - Commit: `b452e63` (`FORK_MOD`)
 - Behavior: optional user-owned file appended after Pi's prompt construction and conversion, controlled by a default-on General setting with global/project scope. Realtime Voice Mode's prompt is untouched.
 - Fork-only files: `src/prompt/append-system-prompt.ts`
-- Shared files: `src/prompt/build-system-prompt.ts`, `src/adapter/activation/config-{contract,normalize}.ts`, `src/extension/{register,runtime,turn-lifecycle}.ts`, `src/ui/settings/{command,config-items-adapter}.ts`, `src/voice/delegation-preflight.ts`, `README.md`
+- Shared files: `src/prompt/build-system-prompt.ts`, `src/adapter/activation/config-{contract,normalize}.ts`, `src/extension/{register,runtime,turn-lifecycle}.ts`, `src/ui/settings/{command,config-items-adapter}.ts`, `README.md`
 
 ### Codex + Extra tools provider scope
 
@@ -106,4 +107,4 @@ Paths below are relative to `packages/pi-codex-conversion/`.
 - Commits: `352af15` (PR #15), `a563eca` (changeset restore); `FORK_MOD` in tests
 - Behavior: a session-local "Adapter enabled" toggle at the top of `/codex` General settings. When off, all adapter overlays and tools are suppressed and the adapter's Codex provider is unregistered so stock Pi takes over; the setting is stored as a session entry and restored on branch navigation. Failed `apply_patch` results render the exact model-visible error and the full rejected patch, also in resumed sessions.
 - Fork-only files: `src/adapter/activation/session-state.ts`
-- Shared files: `src/adapter/activation/{runtime-plan,state}.ts`, `src/adapter/provider-request.ts`, `src/extension/{events,register,runtime,session-lifecycle,turn-lifecycle,ui}.ts`, `src/providers/{code-mode-proxy-provider,openai-codex-custom-provider}.ts`, `src/tools/apply-patch/{render-state,tool}.ts`, `src/ui/settings/command.ts`, `README.md`
+- Shared files: `src/adapter/activation/{runtime-plan,state}.ts`, `src/adapter/provider-request.ts`, `src/context-management/{external-notes-remote,notes-response-projection}.ts` (direct and routed protected delivery follow the live toggle), `src/extension/{events,register,runtime,session-lifecycle,turn-lifecycle,ui}.ts`, `src/providers/{code-mode-proxy-provider,openai-codex-custom-provider}.ts`, `src/tools/apply-patch/{render-state,tool}.ts`, `src/ui/settings/command.ts`, `README.md`

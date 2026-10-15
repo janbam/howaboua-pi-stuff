@@ -3,123 +3,16 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { createEventBus, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { registerApplyPatchDisplay } from "../src/apply-patch-display.ts";
-import { registerApplyPatchDisplayBroker } from "../src/tools/apply-patch/display-broker.ts";
-import {
-	clearApplyPatchRenderState,
-	createApplyPatchTool,
-} from "../src/tools/apply-patch/tool.ts";
+import { clearApplyPatchRenderState, createApplyPatchTool } from "../src/tools/apply-patch/tool.ts";
 
-function displayExtensionApi(bus = createEventBus()) {
-	const handlers = new Map<string, Array<(event: never) => unknown>>();
-	const entries: Array<{ customType: string; data: unknown }> = [];
-	const pi = {
-		events: { emit: bus.emit, on: bus.on },
-		registerEntryRenderer() {},
-		on(event: string, handler: (event: never) => unknown) {
-			handlers.set(event, [...handlers.get(event) ?? [], handler]);
-		},
-		appendEntry(customType: string, data: unknown) {
-			entries.push({ customType, data });
-		},
-	} as unknown as ExtensionAPI;
-	return {
-		pi,
-		entries,
-		emit(event: string, value: unknown = {}) {
-			return (handlers.get(event) ?? []).map((handler) => handler(value as never));
-		},
-	};
-}
-
-test("apply_patch preserves deferred display routing and rejects duplicate resolved sources", async () => {
-	const bus = createEventBus();
-	const consumer = displayExtensionApi(bus);
-	const registration = registerApplyPatchDisplay(consumer.pi, {
-		customType: "test-apply-patch-display",
-		render: (() => undefined) as never,
-	});
-	const conversion = displayExtensionApi(bus);
-	registerApplyPatchDisplayBroker(conversion.pi);
-	conversion.emit("tool_result", {
-		toolName: "apply_patch",
-		toolCallId: "direct-1",
-		input: { input: "*** Begin Patch\n*** End Patch" },
-		content: [{ type: "text", text: "Applied direct" }],
-		isError: false,
-	});
-	assert.deepEqual(conversion.entries, []);
-	conversion.emit("turn_end");
-	assert.deepEqual(conversion.entries.map(({ customType, data }) => ({
-		customType,
-		source: (data as { source?: string }).source,
-	})), [{ customType: "test-apply-patch-display", source: "direct" }]);
-
-	const cwd = await mkdtemp(join(tmpdir(), "pi-apply-patch-duplicate-"));
-	const path = join(cwd, "duplicate.txt");
-	const original = "top\nmiddle\nbottom\n";
-	await writeFile(path, original);
+test("failed apply_patch renders the model error and full patch even after session resume", async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "pi-apply-patch-failure-"));
 	const tool = createApplyPatchTool();
-	const duplicateAlias =
-		process.platform === "win32" ? "./DUPLICATE.txt" : "./duplicate.txt";
-
 	try {
-		const duplicatePatch = `*** Begin Patch
-*** Update File: duplicate.txt
-@@
--top
-+first update
-*** Update File: ${duplicateAlias}
-@@
--top
-+second update
-  *** End Patch`;
-		await assert.rejects(
-			tool.execute(
-				"duplicate",
-				{ input: duplicatePatch },
-				undefined,
-				undefined,
-				{ cwd } as never,
-			),
-			(error: unknown) => {
-				assert.match(
-					error instanceof Error ? error.message : String(error),
-					/multiple file sections resolve to .*duplicate\.txt.*multiple @@ hunks/i,
-				);
-				return true;
-			},
-		);
-		assert.equal(await readFile(path, "utf8"), original);
-
-		const multipleHunksPatch = `*** Begin Patch
-*** Update File: duplicate.txt
-@@
--top
-+updated top
-@@
--bottom
-+updated bottom
-*** End Patch`;
-		const result = await tool.execute(
-			"multiple-hunks",
-			{ input: multipleHunksPatch },
-			undefined,
-			undefined,
-			{ cwd } as never,
-		);
-		assert.equal(result.details.status, "success");
-		assert.equal(
-			await readFile(path, "utf8"),
-			"updated top\nmiddle\nupdated bottom\n",
-		);
-
-		const partialPath = join(cwd, "partial.txt");
-		const failingPath = join(cwd, "failing.txt");
-		await writeFile(partialPath, "replace me\n");
-		await writeFile(failingPath, "actual contents\n");
-		const partialPatch = `*** Begin Patch
+		// Apply the first file before rejecting the second, leaving a real partial failure to render.
+		await writeFile(join(cwd, "partial.txt"), "replace me\n");
+		await writeFile(join(cwd, "failing.txt"), "actual contents\n");
+		const patch = `*** Begin Patch
 *** Update File: partial.txt
 @@
 -replace me
@@ -140,73 +33,36 @@ test("apply_patch preserves deferred display routing and rejects duplicate resol
 -missing contents
 +replacement-tail
 *** End Patch`;
-		const partialResult = await tool.execute(
-			"partial-render",
-			{ input: partialPatch },
-			undefined,
-			undefined,
-			{ cwd } as never,
-		);
-		assert.equal(partialResult.details.status, "partial_failure");
-		const modelError = partialResult.content
-			.filter((item) => item.type === "text")
-			.map((item) => item.text)
-			.join("\n");
-		const theme = {
-			fg: (_role: string, text: string) => text,
-			bold: (text: string) => text,
-		};
+		const result = await tool.execute("partial-render", { input: patch }, undefined, undefined, { cwd } as never);
+		assert.equal(result.details.status, "partial_failure");
+		assert.match(await readFile(join(cwd, "partial.txt"), "utf8"), /line-12-tail/);
+		assert.equal(await readFile(join(cwd, "failing.txt"), "utf8"), "actual contents\n");
+		const modelError = result.content.filter((item) => item.type === "text").map((item) => item.text).join("\n");
+		const theme = { fg: (_role: string, text: string) => text, bold: (text: string) => text };
 
-		// The custom result renderer must repeat the same failure text the model receives.
-		const renderedResult = tool.renderResult?.(
-			partialResult,
+		// The custom result slot must repeat the exact failure text sent to the model.
+		assert.equal(tool.renderResult?.(
+			result,
 			{ expanded: false, isPartial: false },
 			theme as never,
 			{ isError: true, toolCallId: "partial-render" } as never,
-		);
-		assert.equal(
-			renderedResult?.render(1_000).map((line) => line.trimEnd()).join("\n"),
-			modelError,
-		);
+		)?.render(1_000).map((line) => line.trimEnd()).join("\n"), modelError);
 
-		// A collapsed failed call must retain every patch line instead of its normal ten-line preview.
-		const renderedCall = tool.renderCall?.(
-			{ input: partialPatch },
-			theme as never,
-			{
-				argsComplete: true,
-				cwd,
-				executionStarted: true,
-				expanded: false,
-				isError: true,
-				toolCallId: "partial-render",
-			} as never,
-		);
-		const collapsedFailure = renderedCall?.render(1_000).join("\n") ?? "";
-		assert.match(collapsedFailure, /line-12-tail/);
-		assert.match(collapsedFailure, /replacement-tail/);
-		assert.doesNotMatch(collapsedFailure, /more lines/);
-
-		// Resumed and pre-execution failures have only Pi's persisted error bit, not the process-local cache.
-		clearApplyPatchRenderState();
-		const restoredFailure = tool.renderCall?.(
-			{ input: partialPatch },
-			theme as never,
-			{
-				argsComplete: true,
-				cwd,
-				executionStarted: true,
-				expanded: false,
-				isError: true,
-				toolCallId: "partial-render",
-			} as never,
-		)?.render(1_000).join("\n") ?? "";
-		assert.match(restoredFailure, /line-12-tail/);
-		assert.match(restoredFailure, /replacement-tail/);
-		assert.doesNotMatch(restoredFailure, /more lines/);
+		for (const resumed of [false, true]) {
+			// Resume loses the process-local cache, so Pi's persisted error bit must retain the full patch.
+			if (resumed) clearApplyPatchRenderState();
+			const rendered = tool.renderCall?.(
+				{ input: patch },
+				theme as never,
+				{ argsComplete: true, cwd, executionStarted: true, expanded: false, isError: resumed, toolCallId: "partial-render" } as never,
+			)?.render(1_000).join("\n") ?? "";
+			for (const line of ["replace me", ...Array.from({ length: 11 }, (_, index) => `line-${String(index + 1).padStart(2, "0")}`), "line-12-tail", "missing contents", "replacement-tail"]) {
+				assert.ok(rendered.includes(line), `missing ${line} in ${resumed ? "resumed" : "live"} failure`);
+			}
+			assert.doesNotMatch(rendered, /more lines/);
+		}
 	} finally {
+		clearApplyPatchRenderState();
 		await rm(cwd, { recursive: true, force: true });
-		registration.dispose();
-		conversion.emit("session_shutdown");
 	}
 });

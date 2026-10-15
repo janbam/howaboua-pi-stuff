@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import type { AccessPrograms, ServiceTier } from "../../providers/openai-codex/types.ts";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { convertToLlm, getAgentDir, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
@@ -18,6 +19,7 @@ import { isProviderContextExcludedMessage } from "../prompt/context-filter.ts";
 import { CodexDeveloperMessageBridge } from "../developer-messages.ts";
 import { projectCodexDeveloperHistory } from "../developer-history.ts";
 import { projectTreeHandoffReads } from "../../context-management/tree-handoff-read.ts";
+import type { TextSignaturePhase } from "../../providers/openai-responses/signatures.ts";
 
 /**
  * Responses compaction reuses the provider's serializer.
@@ -25,7 +27,7 @@ import { projectTreeHandoffReads } from "../../context-management/tree-handoff-r
  * Replay parity must match the actual OpenAI Codex provider payload, including
  * tool-call id normalization and cross-model/provider history handling.
  */
-export type AssistantPhase = "commentary" | "final_answer";
+export type AssistantPhase = TextSignaturePhase;
 
 type ResponsesTextInputItem = {
 	type: "input_text";
@@ -92,7 +94,8 @@ export type NativeCompactionRequestBody = {
 	instructions?: string | undefined;
 	parallel_tool_calls?: boolean | undefined;
 	prompt_cache_key?: string | undefined;
-	service_tier?: string | undefined;
+	service_tier?: ServiceTier;
+	access_programs?: AccessPrograms | undefined;
 	text?: { verbosity: string } | undefined;
 	tools?: unknown[] | undefined;
 	reasoning?: unknown | undefined;
@@ -100,10 +103,11 @@ export type NativeCompactionRequestBody = {
 
 export type NativeCompactionRequestOptions = Pick<
 	NativeCompactionRequestBody,
-	"parallel_tool_calls" | "prompt_cache_key" | "service_tier" | "text" | "tools" | "reasoning"
+	"parallel_tool_calls" | "prompt_cache_key" | "service_tier" | "access_programs" | "text" | "tools" | "reasoning"
 >;
 
 export type SerializeResponsesMessagesOptions = {
+	projectMessages?: ((messages: readonly AgentMessage[]) => AgentMessage[]) | undefined;
 	instructions?: string | undefined;
 	includeInstructionsInInput?: boolean | undefined;
 	blockImages?: boolean | undefined;
@@ -172,6 +176,7 @@ export function serializeMessagesToResponsesInput<TApi extends Api>(
 	options: SerializeResponsesMessagesOptions = {},
 ): ResponsesInputItem[] {
 	const developerMessages = new CodexDeveloperMessageBridge();
+	if (options.projectMessages) messages = options.projectMessages(messages);
 	const llmMessages = applyBlockImages(
 		convertToLlm(developerMessages.prepare(messages, true, model)),
 		options.blockImages ?? readBlockImagesSetting(),
@@ -251,7 +256,7 @@ function describeResponsesInputItem(item: unknown): string {
 	const type = typeof record["type"]! === "string" ? record["type"]! : undefined;
 	if (type === "message") {
 		const phase =
-			record["phase"] === "commentary" || record["phase"] === "final_answer"
+			record["phase"] === "commentary" || record["phase"] === "partial_answer" || record["phase"] === "final_answer"
 				? `:${record["phase"]!}`
 				: "";
 		return `message:${typeof record["role"]! === "string" ? record["role"]! : "unknown"}${phase}`;

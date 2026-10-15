@@ -5,18 +5,24 @@ import { join } from "node:path";
 
 const root = process.cwd();
 const base = process.env.CHANGED_BASE || process.argv[2] || "HEAD~1";
-const aggregatePackageDirs = new Set([
-	"pi-stuff",
-	"pi-skills",
-	"pi-extensions",
-]);
-const diff = spawnSync("git", ["diff", "--name-only", `${base}...HEAD`], {
+/** Honor candidate Git metadata when checking a disposable snapshot. */
+const gitOptions = {
 	cwd: root,
 	encoding: "utf8",
 	...(process.env.CHANGED_GIT_DIR ? {
 		env: { ...process.env, GIT_DIR: process.env.CHANGED_GIT_DIR, GIT_WORK_TREE: root },
 	} : {}),
-});
+};
+// Only upstream produces releases; forks record their changes in FORK.md.
+const origin = spawnSync("git", ["remote", "get-url", "origin"], gitOptions);
+if (origin.status === 0 && !/(?:\/|:)IgorWarzocha\/howaboua-pi-stuff(?:\.git)?\/?$/i.test(origin.stdout.trim())) process.exit(0);
+
+const aggregatePackageDirs = new Set([
+	"pi-stuff",
+	"pi-skills",
+	"pi-extensions",
+]);
+const diff = spawnSync("git", ["diff", "--name-only", `${base}...HEAD`], gitOptions);
 if (diff.status !== 0) {
 	if (process.env.CHANGED_GIT_DIR) {
 		process.stderr.write(diff.stderr || "Could not compare candidate Git metadata.\n");

@@ -1,4 +1,4 @@
-Merges to main feed Changesets versioning and npm publishing.
+Fork policy: inherit package versions from the upstream release being merged. Record fork-only changes in FORK.md, not changesets. Release automation is upstream-only; do not run version-packages, release, or aggregate versioning commands in this fork. Preserve this policy when merging upstream.
 
 We use this toolkit. If tools fail or cause friction, propose concrete fixes. Apply tiny, low-risk fixes without derailing the task. Edit owning source, never installed tooling. Validate and report changes. Source edits do not update running packages.
 For this repository's disposable VM review, use `bun run sandbox:setup --name NAME` after candidate changes. See packages/pi-sandbox/README.md. Stop active review agents before replacing the guest snapshot; host edits alone never update it.
@@ -27,13 +27,12 @@ Code/Notebook nested tools sit outside provider JSON schemas. Callable tools do 
 Slash commands are for users, tools for agents. Prefer one routed entry command unless explicitly asked for several.
 
 Amend only tiny, immediate, behaviour-preserving corrections to the latest unpublished commit. Put behaviour changes, revised approaches and later fixes in new commits.
-Release related session work together: one PR or an atomically merged stack, not serial cleanup releases.
-If published behaviour or payload changes, add a changeset. Dependency-only changes, ordinary docs and tests need none.
-Changesets describe net user-facing changes since the last release. Omit implementation details, review history and intermediate fixes. Lead with one concise outcome, then capability bullets if needed. Never write "upcoming release", "unreleased" or speculative notes.
+Integrate related session work together: one PR or an atomically merged stack, not serial cleanup PRs.
+FORK.md records each fork-only outcome, rationale when needed, source files and commit or PR references. Do not duplicate those entries in changesets or modify upstream changelogs for fork-only work. Preserve incoming upstream release metadata.
 Before new work on dev, check whether its previous dev → main PR merged. If yes, align with retained repoDance, never an ad hoc reset. Preserve dirty files and unpublished commits even if alignment blocks. Never merge main into dev.
-While editing, use focused package checks. bun run check:changed selects committed branch changes, not working edits. Prefer bun changeset -- "summary". Use bun changeset:raw only for intentional non-patch bumps.
+While editing, use focused package checks. bun run check:changed selects committed branch changes, not working edits.
 After behaviour-preserving module splits, run bun refactor:compare --base <pre-refactor> --entry <old path> --probe <ESM>. Probe old and replacement modules with identical inputs, assert normalised outputs and explain every reachable old-side path. Coverage is traversal, not proof. Retain probes only for durable independent contracts.
-Never manually bump aggregate versions or add their changesets. CI runs bun run changeset:aggregates.
+Never independently bump package or aggregate versions. Retain upstream's release scripts for merges, not fork execution.
 
 This development host uses an AMD K10-class CPU without AVX. Do not use Bun to compile, transpile, test, or directly execute TypeScript. Use tsgo/tsc for compilation and Node or tsx for execution. Bun remains the package manager and may run scripts that delegate TypeScript work to those tools.
 changelog.js is generated, uncommitted, and required before Pi loads packages with changelog.ts. After checkout or bun install, generate all copies with `for f in packages/*/changelog.ts; do node scripts/build-extension-changelog.mjs ${f%/changelog.ts}; done`. Package builds generate their own copy.

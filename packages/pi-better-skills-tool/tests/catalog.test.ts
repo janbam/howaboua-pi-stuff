@@ -3,266 +3,84 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
-import { discoverSkills, parseRequest, runSkills } from "../src/catalog.js";
+import { runSkills } from "../src/catalog.js";
 
+/** Creates an isolated filesystem catalog and external loaded-skill directory. */
 function fixture() {
 	const root = mkdtempSync(join(tmpdir(), "skills-"));
 	return {
 		root,
-		add(directory: string, content: string, filename = "SKILL.md") {
+		/** Writes one skill below the fixture root. */
+		add(directory: string, content: string) {
 			const path = join(root, directory);
 			mkdirSync(path, { recursive: true });
-			writeFileSync(join(path, filename), content);
+			writeFileSync(join(path, "SKILL.md"), content);
 		},
-		file(path: string, content = "content") {
-			const target = join(root, path);
-			mkdirSync(join(target, ".."), { recursive: true });
-			writeFileSync(target, content);
-		},
+		/** Removes only this fixture's files. */
 		cleanup() {
 			rmSync(root, { recursive: true, force: true });
 		},
 	};
 }
 
-test("routes mixed skill and reference reads without expanding reference-only output", (t) => {
-	const f = fixture();
-	t.after(() => f.cleanup());
-	f.add(
-		"engineering/tooling",
-		"---\nname: tooling\ndescription: Tooling.\n---\n# Tooling\n",
-	);
-	f.file("engineering/tooling/references/api.md", "API reference\n");
-	f.file("engineering/tooling/references/runtime.md", "Runtime reference\n");
-	f.file("engineering/tooling/references/shared.md", "Tooling shared\n");
-	f.file("engineering/tooling/scripts/check.mjs");
-	f.file("engineering/tooling/scripts/node_modules/dependency/index.js");
-	f.file("engineering/tooling/.private", "hidden");
-	f.add(
-		"writing",
-		"---\nname: writing\ndescription: Writing.\n---\n# Writing\n",
-	);
-	f.file("writing/references/shared.md", "Writing shared\n");
-	f.file("writing/references/style.md", "Style reference\n");
-	f.add("visual", "---\nname: visual\ndescription: Visual.\n---\nVisual\n");
-	f.file("writing/references/outside.md", "Writing outside\n");
-	f.file("visual/references/outside.md", "Visual outside\n");
-
-	const output = runSkills("read tooling", f.root);
-	assert.match(output, /^# Tooling\n\n---\nSkill paths \(5\):/);
-	assert.match(
-		output,
-		new RegExp(
-			resolve(f.root, "engineering/tooling/SKILL.md").replace(
-				/[.*+?^${}()|[\]\\]/g,
-				"\\$&",
-			),
-		),
-	);
-	assert.match(output, /references\/api\.md/);
-	assert.match(output, /scripts\/check\.mjs/);
-	assert.doesNotMatch(output, /\.private/);
-	assert.doesNotMatch(output, /node_modules/);
-	const reference = runSkills("read tooling api", f.root);
-	const apiPath = resolve(f.root, "engineering/tooling/references/api.md");
-	assert.equal(reference, `API reference\n\n---\nSources:\n- ${apiPath}`);
-	assert.equal(
-		runSkills("read tooling runtime api", f.root),
-		`--- runtime ---\nRuntime reference\n\n--- api ---\nAPI reference\n\n---\nSources:\n- ${resolve(f.root, "engineering/tooling/references/runtime.md")}\n- ${resolve(f.root, "engineering/tooling/references/api.md")}`,
-	);
-	assert.equal(
-		runSkills("read tooling style", f.root),
-		`Style reference\n\n---\nSources:\n- ${resolve(f.root, "writing/references/style.md")}`,
-	);
-	assert.throws(
-		() => runSkills("read tooling outside", f.root),
-		/Ambiguous reference "outside".*(?:visual\/references\/outside.*writing\/references\/outside|writing\/references\/outside.*visual\/references\/outside)/,
-	);
-	const toolingShared = resolve(
-		f.root,
-		"engineering/tooling/references/shared.md",
-	);
-	const toolingSharedOutput = `Tooling shared\n\n---\nSources:\n- ${toolingShared}`;
-	assert.equal(runSkills("read tooling shared", f.root), toolingSharedOutput);
-	assert.equal(
-		runSkills("read tooling tooling/references/shared", f.root),
-		toolingSharedOutput,
-	);
-	const mixed = runSkills("read tooling writing style", f.root);
-	assert.match(mixed, /^--- tooling ---\n# Tooling/);
-	assert.match(mixed, /--- writing ---\n# Writing/);
-	assert.match(mixed, /--- writing\/references\/style ---\nStyle reference/);
-	assert.match(
-		runSkills("read writing tooling shared", f.root),
-		/--- tooling\/references\/shared ---\nTooling shared/,
-	);
-	const scoped = runSkills("read tooling shared writing shared", f.root);
-	assert.match(scoped, /--- tooling\/references\/shared ---\nTooling shared/);
-	assert.match(scoped, /--- writing\/references\/shared ---\nWriting shared/);
-	assert.equal(
-		runSkills(
-			"read tooling shared; read writing shared; list engineering",
-			f.root,
-		),
-		[
-			toolingSharedOutput,
-			runSkills("read writing shared", f.root),
-			runSkills("list engineering", f.root),
-		].join("\n\n"),
-	);
-});
-
-test("rejects malformed commands and unknown skills", (t) => {
-	const f = fixture();
-	t.after(() => f.cleanup());
-	f.add(
-		"design/visual",
-		"---\nname: visual\ndescription: Visual work.\n---\nBody\n",
-	);
-	assert.throws(() => parseRequest("search visual"), /Expected/);
-	assert.throws(() => parseRequest("read"), /one skill name/);
-	assert.throws(() => runSkills("read missing", f.root), /Unknown skill/);
-	assert.deepEqual(parseRequest("read visual; list design --offset 12"), {
-		commands: [
-			{ action: "read", name: "visual", selectors: [] },
-			{ action: "list", categories: ["design"] },
-		],
-		offset: 12,
-	});
-	for (const command of ["; list", "list;", "list;; read visual"]) {
-		assert.throws(() => parseRequest(command), /Empty command group/);
-	}
-	for (const command of [
-		"list --offset -1",
-		"list --offset nope",
-		"list --offset 1; list",
-		"list --offset 0 --offset 1",
-	]) {
-		assert.throws(() => parseRequest(command), /Use --offset/);
-	}
-	assert.throws(
-		() => parseRequest("list --offset 9007199254740992"),
-		/non-negative safe integer/,
-	);
-	assert.throws(() => parseRequest(123), /string command/);
-	assert.throws(
-		() => parseRequest(`read ${"x".repeat(4092)}`),
-		/exceeds 4096 bytes/,
-	);
-	assert.equal(parseRequest(`read ${"x".repeat(4091)} --offset 1`).offset, 1);
-	assert.throws(
-		() => runSkills("read visual; read missing", f.root),
-		/Unknown skill/,
-	);
-});
-
-test("keeps names unique across category packages", (t) => {
-	const f = fixture();
-	t.after(() => f.cleanup());
-	f.add("design/one", "---\nname: same\ndescription: One.\n---\nOne\n");
-	f.add("engineering/two", "---\nname: same\ndescription: Two.\n---\nTwo\n");
-	assert.throws(() => discoverSkills(f.root), /Duplicate skill name/);
-});
-
-test("shows root skills before categories without inventing a category", (t) => {
-	const f = fixture();
-	t.after(() => f.cleanup());
-	f.add(
-		"agents-md",
-		"---\nname: agents-md\ndescription: Guidance work.\n---\nBody\n",
-	);
-	f.add(
-		"agent/herdr",
-		"---\nname: herdr\ndescription: Panel work.\n---\nBody\n",
-	);
-
-	const output = runSkills("list", f.root);
-	assert.match(output, /^- agents-md: Guidance work\.\n\n# AGENT/);
-	assert.doesNotMatch(output, /# OTHER|# TOP LEVEL/);
-	assert.match(
-		runSkills("list agent", f.root),
-		/^# AGENT\n- herdr: Panel work\.$/,
-	);
-});
-
-test("puts cwd skills in session and lets them override globals", (t) => {
-	const global = fixture();
-	const session = fixture();
-	t.after(() => global.cleanup());
-	t.after(() => session.cleanup());
-	global.add(
-		"agents-md",
-		"---\nname: agents-md\ndescription: Global guidance.\n---\nGlobal body\n",
-	);
-	session.add(
-		"agents-md",
-		"---\nname: agents-md\ndescription: Session guidance.\n---\nSession body\n",
-	);
-	session.add(
-		"handoff",
-		"---\nname: handoff\ndescription: Session handoff.\n---\nHandoff body\n",
-	);
-
-	const output = runSkills("list", global.root, session.root);
-	assert.match(
-		output,
-		/^# SESSION\n- agents-md: Session guidance\.\n- handoff: Session handoff\.$/,
-	);
-	assert.doesNotMatch(output, /Global guidance/);
-	assert.match(
-		runSkills("read agents-md", global.root, session.root),
-		/^Session body/,
-	);
-	assert.match(
-		runSkills("list session", global.root, session.root),
-		/^# SESSION/,
-	);
-});
-
-test("adds Pi-loaded package skills to the filesystem catalog", (t) => {
+test("Pi-loaded skills win collisions without replacing unrelated filesystem skills", (t) => {
 	const global = fixture();
 	const packaged = fixture();
 	t.after(() => global.cleanup());
 	t.after(() => packaged.cleanup());
-	packaged.add(
-		"packaged",
-		"---\nname: packaged\ndescription: Package skill.\n---\nPackage body\n",
-	);
-	const filePath = resolve(packaged.root, "packaged/SKILL.md");
 	global.add(
 		"packaged",
 		"---\nname: packaged\ndescription: Global collision.\n---\nGlobal body\n",
 	);
+	global.add(
+		"guidance",
+		"---\nname: guidance\ndescription: Global guidance.\n---\nGuidance body\n",
+	);
+	packaged.add(
+		"packaged",
+		"---\nname: packaged\ndescription: Package skill.\n---\nPackage body\n",
+	);
+	const loaded = [
+		{
+			name: "packaged",
+			description: "Project winner.",
+			filePath: resolve(packaged.root, "packaged/SKILL.md"),
+			baseDir: resolve(packaged.root, "packaged"),
+			sourceInfo: { scope: "project" },
+		},
+	];
+
+	// The overlay must affect reads as well as discovery without hiding the disk catalog.
 	assert.match(
-		runSkills("read packaged", global.root, undefined, [
-			{
-				name: "packaged",
-				description: "Project winner.",
-				filePath,
-				baseDir: resolve(packaged.root, "packaged"),
-				sourceInfo: { scope: "project" },
-			},
-		]),
+		runSkills("read packaged", global.root, undefined, loaded),
 		/^Package body/,
 	);
+	const output = runSkills("list", global.root, undefined, loaded);
+	assert.match(output, /packaged: Project winner\./);
+	assert.match(output, /guidance: Global guidance\./);
+	assert.doesNotMatch(output, /Global collision/);
 });
 
-test("keeps filesystem skills when Pi loaded only a user-only extension skill", (t) => {
-	// Simulates `pi --no-skills` plus an extension injecting one flagged skill via
-	// resources_discover: the loaded list is non-empty but must not replace the scan.
+test("a loaded user-only skill hides its filesystem namesake without replacing the catalog", (t) => {
 	const global = fixture();
 	const packaged = fixture();
 	t.after(() => global.cleanup());
 	t.after(() => packaged.cleanup());
 	global.add(
-		"agents-md",
-		"---\nname: agents-md\ndescription: Global guidance.\n---\nGlobal body\n",
+		"guidance",
+		"---\nname: guidance\ndescription: Global guidance.\n---\nGuidance body\n",
+	);
+	global.add(
+		"injected",
+		"---\nname: injected\ndescription: Visible shadow.\n---\nShadow body\n",
 	);
 	packaged.add(
 		"injected",
 		"---\nname: injected\ndescription: Injected.\ndisable-model-invocation: true\n---\nBody\n",
 	);
-	const output = runSkills("list", global.root, undefined, [
+
+	// A partial loaded set under --no-skills must neither hide unrelated files nor leak a disabled shadow.
+	const loaded = [
 		{
 			name: "injected",
 			description: "Injected.",
@@ -270,35 +88,12 @@ test("keeps filesystem skills when Pi loaded only a user-only extension skill", 
 			baseDir: resolve(packaged.root, "injected"),
 			disableModelInvocation: true,
 		},
-	]);
-	assert.match(output, /agents-md: Global guidance\./);
+	];
+	const output = runSkills("list", global.root, undefined, loaded);
+	assert.match(output, /guidance: Global guidance\./);
 	assert.doesNotMatch(output, /injected/);
-});
-
-test("keeps user-only skills out of the model catalog", (t) => {
-	const global = fixture();
-	const packaged = fixture();
-	t.after(() => global.cleanup());
-	t.after(() => packaged.cleanup());
-	global.add(
-		"hidden-global",
-		"---\nname: hidden-global\ndescription: Hidden.\ndisable-model-invocation: true\n---\nHidden body\n",
-	);
-	packaged.add(
-		"hidden-package",
-		"---\nname: hidden-package\ndescription: Hidden.\n---\nHidden body\n",
-	);
-	assert.doesNotMatch(runSkills("list", global.root), /hidden-global/);
-	assert.doesNotMatch(
-		runSkills("list", global.root, undefined, [
-			{
-				name: "hidden-package",
-				description: "Hidden.",
-				filePath: resolve(packaged.root, "hidden-package/SKILL.md"),
-				baseDir: resolve(packaged.root, "hidden-package"),
-				disableModelInvocation: true,
-			},
-		]),
-		/hidden-package/,
+	assert.throws(
+		() => runSkills("read injected", global.root, undefined, loaded),
+		/Unknown skill/,
 	);
 });

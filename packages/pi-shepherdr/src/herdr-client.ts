@@ -1,9 +1,20 @@
 import { createConnection } from "node:net";
+import { hostname } from "node:os";
+import { openPeerChannel } from "./remote/shepherdr-channel.mjs";
 import { requestContext } from "./remote/shepherdr-context.mjs";
-import { sendPeerMessage } from "./remote/shepherdr-peer.mjs";
+import {
+	sendPeerCommands,
+	sendPeerExtensionReply,
+	sendPeerFocus,
+	sendPeerMessage,
+} from "./remote/shepherdr-peer.mjs";
 import type {
+	FocusRequest,
 	HerdrEvent,
+	MachineIdentity,
 	PaneInfo,
+	PeerChannel,
+	PeerCommand,
 	PeerDelivery,
 	PeerMessage,
 } from "./types.js";
@@ -56,6 +67,16 @@ export function isHerdrErrorCode(error: unknown, code: string): boolean {
 }
 
 export interface HerdrConnection {
+	replyExtension(
+		agent: PaneInfo,
+		reply: import("./types.js").ExtensionReply,
+	): Promise<string>;
+	machineIdentity(): Promise<MachineIdentity>;
+	focus(agent: PaneInfo, request: FocusRequest): Promise<unknown>;
+	openFocusChannel(
+		agent: PaneInfo,
+		request: FocusRequest,
+	): Promise<PeerChannel>;
 	requestContext(
 		path: string,
 		request: unknown,
@@ -64,6 +85,7 @@ export interface HerdrConnection {
 	contextRelayPath(): string;
 	request<T>(method: string, params?: object, timeoutMs?: number): Promise<T>;
 	sendMessage(agent: PaneInfo, message: PeerMessage): Promise<PeerDelivery>;
+	commands(agent: PaneInfo): Promise<PeerCommand[]>;
 	subscribe(
 		subscriptions: object[],
 		onEvent: (event: HerdrEvent) => void,
@@ -74,6 +96,39 @@ export interface HerdrConnection {
 
 export class HerdrClient implements HerdrConnection {
 	readonly socketPath: string;
+	replyExtension(
+		agent: PaneInfo,
+		reply: import("./types.js").ExtensionReply,
+	): Promise<string> {
+		return sendPeerExtensionReply(
+			(method, params) => this.request(method, params),
+			agent,
+			reply,
+		);
+	}
+	openFocusChannel(
+		agent: PaneInfo,
+		request: FocusRequest,
+	): Promise<PeerChannel> {
+		return openPeerChannel(
+			(method, params) => this.request(method, params),
+			agent,
+			request,
+		);
+	}
+	async machineIdentity(): Promise<MachineIdentity> {
+		return {
+			host: hostname(),
+			session: process.env["HERDR_SESSION"] || "default",
+		};
+	}
+	focus(agent: PaneInfo, request: FocusRequest): Promise<unknown> {
+		return sendPeerFocus(
+			(method, params) => this.request(method, params),
+			agent,
+			request,
+		);
+	}
 	requestContext(
 		path: string,
 		request: unknown,
@@ -99,6 +154,13 @@ export class HerdrClient implements HerdrConnection {
 			(method, params) => this.request(method, params),
 			agent,
 			message,
+		);
+	}
+
+	commands(agent: PaneInfo): Promise<PeerCommand[]> {
+		return sendPeerCommands(
+			(method, params) => this.request(method, params),
+			agent,
 		);
 	}
 
@@ -245,12 +307,11 @@ export class HerdrClient implements HerdrConnection {
 						socket.destroy();
 						return;
 					}
+					if (value["id"] === id && value["error"] !== undefined) {
+						disconnect(errorFromResponse(value["error"]));
+						return;
+					}
 					if (!acknowledged && value["id"] === id) {
-						if (value["error"] !== undefined) {
-							disconnect(errorFromResponse(value["error"]));
-							socket.destroy();
-							return;
-						}
 						const result = value["result"];
 						if (
 							typeof result !== "object" ||

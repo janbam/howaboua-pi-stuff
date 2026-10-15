@@ -183,10 +183,13 @@ function resolveProviderApis(
 			model.api !== "openai-codex-responses"
 		)
 			continue;
+		// PCC's native provider already routes context namespaces. A legacy overlay
+		// replaces that provider in Pi, losing its catalog and reasoning constraints.
+		if (model.provider === "openai-codex" && model.api === "openai-codex-responses") continue;
 		const api: ResponsesApi = model.api === "openai-responses"
 			? "openai-responses"
 			: "openai-codex-responses";
-		const plan = resolveCodexRuntimePlan({ model }, config, executionMode, adapterEnabled);
+		const plan = resolveCodexRuntimePlan({ model }, config, executionMode, false, adapterEnabled);
 		const mode = executionMode ?? config.executionMode;
 		const configuredResponsesLite =
 			model.api === "openai-responses" &&

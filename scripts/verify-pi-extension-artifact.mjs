@@ -134,7 +134,8 @@ function verifyLoaderImports(packageRoot) {
 
 function runtimeModuleFiles(packageRoot) {
 	const isJavaScript = (path) => /\.(?:c|m)?js$/.test(path);
-	const files = filesUnder(join(packageRoot, "dist"), isJavaScript);
+	const dist = join(packageRoot, "dist");
+	const files = existsSync(dist) ? filesUnder(dist, isJavaScript) : [];
 	const vendor = join(packageRoot, "vendor");
 	if (existsSync(vendor)) files.push(...filesUnder(vendor, isJavaScript));
 	return files;

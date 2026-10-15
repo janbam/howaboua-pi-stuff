@@ -44,12 +44,57 @@ function normalizePrompt(
 	};
 }
 
+const ASK_FIELDS = ["help", "handoff", "prompts", "delivery"];
+const PROMPT_FIELDS = ["title", "body", "multiple", "choices"];
+const CHOICE_FIELDS = ["label", "description"];
+const CHOICE_SHAPE = "{ label, description? }";
+
+function unknownField(
+	value: Record<string, unknown>,
+	fields: string[],
+	path: string,
+): string | undefined {
+	const field = Object.keys(value).find((key) => !fields.includes(key));
+	return field === undefined
+		? undefined
+		: `Unknown ask field ${path}${field}; allowed: ${fields.join(", ")}`;
+}
+
+/** Why a tool call would lose input to normalization, so a misnamed field fails instead of vanishing. */
+export function askInputProblem(params: unknown): string | undefined {
+	if (!isRecord(params)) return undefined;
+	const top = unknownField(params, ASK_FIELDS, "");
+	if (top) return top;
+	if (!Array.isArray(params["prompts"])) return undefined;
+	for (const [index, prompt] of params["prompts"].entries()) {
+		if (!isRecord(prompt)) continue;
+		const path = `prompts[${index}]`;
+		const field = unknownField(prompt, PROMPT_FIELDS, `${path}.`);
+		if (field) return `${field}; choices: [${CHOICE_SHAPE}]`;
+		if (!Array.isArray(prompt["choices"])) continue;
+		for (const [choiceIndex, choice] of prompt["choices"].entries()) {
+			const choicePath = `${path}.choices[${choiceIndex}]`;
+			if (!isRecord(choice)) return `${choicePath} must be ${CHOICE_SHAPE}`;
+			const choiceField = unknownField(choice, CHOICE_FIELDS, `${choicePath}.`);
+			if (choiceField) return choiceField;
+		}
+	}
+	return undefined;
+}
+
 export function isSteeringAskInput(input: unknown): boolean {
 	return (
 		isRecord(input) &&
 		input["delivery"] === "steer" &&
 		input["handoff"] !== true
 	);
+}
+
+export function isAskHelpInput(input: unknown): boolean {
+	if (input === undefined) return true;
+	if (!isRecord(input) || Array.isArray(input)) return false;
+	const keys = Object.keys(input);
+	return keys.length === 0 || (keys.length === 1 && input["help"] === true);
 }
 
 export function normalizeAskInput(params: unknown): {

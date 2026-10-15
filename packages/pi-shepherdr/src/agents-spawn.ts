@@ -30,15 +30,6 @@ import {
 } from "./profiles.js";
 import type { SharedAgentContext } from "./shared-context.js";
 
-function agentLabel(value: string | undefined): string {
-	const label = required(value, "label");
-	const words = label.split(/\s+/u);
-	if (words.length < 2 || words.length > 3) {
-		throw new Error("label must contain 2 or 3 words");
-	}
-	return label;
-}
-
 export async function spawnAgent(
 	fleet: AgentFleet,
 	runtime: ConnectedMachine,
@@ -49,6 +40,22 @@ export async function spawnAgent(
 	ctx: ExtensionContext,
 	board: AgentBoard,
 ) {
+	const boardThreadId =
+		params.board_thread_id === undefined
+			? undefined
+			: required(params.board_thread_id, "board_thread_id");
+	if (boardThreadId !== undefined) {
+		await board.execute(
+			ctx,
+			{
+				action: "read_thread",
+				thread_id: boardThreadId,
+				limit: 1,
+				max_chars_per_post: 1,
+			},
+			crypto.randomUUID(),
+		);
+	}
 	const profiles = await loadAgentProfiles();
 	const profileName = required(params.agent_type, "agent_type");
 	const profile = profiles.get(profileName);
@@ -57,7 +64,7 @@ export async function spawnAgent(
 			`unknown agent_type ${JSON.stringify(profileName)}; available: ${[...profiles.keys()].join(", ")}`,
 		);
 	}
-	const label = agentLabel(params.label);
+	const label = required(params.label, "label");
 	const name = params.name?.trim() || (await allocateAgentName(runtime, label));
 	const placement =
 		params.placement ??
@@ -102,6 +109,13 @@ export async function spawnAgent(
 		attributedMessage.context = [attributedMessage.context, message]
 			.filter(Boolean)
 			.join("\n\n");
+	if (boardThreadId !== undefined)
+		attributedMessage.context = [
+			attributedMessage.context,
+			`Read shared board thread with board({action:"read_thread",thread_id:${JSON.stringify(boardThreadId)}}) for task context`,
+		]
+			.filter(Boolean)
+			.join("\n\n");
 	reportProgress(onUpdate, `Spawning ${label}`, {
 		machine: runtime.machine,
 		name,
@@ -109,6 +123,11 @@ export async function spawnAgent(
 		status: "starting",
 	});
 	const agentArgs = profileAgentArgs(profile, { targetLocal: runtime.local });
+	const relationship = sharedContext.prepareRelationship(
+		ctx,
+		runtime,
+		agentArgs,
+	);
 	const sharing =
 		profile.shareContext === false
 			? undefined
@@ -126,8 +145,10 @@ export async function spawnAgent(
 	let dispatch;
 	let shared: { agentName?: string; warning?: string } | undefined;
 	let boardAgent: string | undefined;
+	let relationshipWarning: string | undefined;
 	const blocking = shouldBlockAgentSpawn(profile.blocking, params.blocking);
 	try {
+		relationshipWarning = (await relationship?.accept(started.agent))?.warning;
 		boardAgent = await boardBinding?.accept(started.agent);
 		shared = await sharing?.accept(started.agent);
 		dispatch = await dispatchAgentWork(
@@ -183,6 +204,8 @@ export async function spawnAgent(
 							next: "Converse, do other work or reply now; completion/blockage arrives even after you reply. No polling or sleep waits",
 						}),
 		},
-		[dispatch.warning, shared?.warning].filter(Boolean).join("\n") || undefined,
+		[dispatch.warning, shared?.warning, relationshipWarning]
+			.filter(Boolean)
+			.join("\n") || undefined,
 	);
 }

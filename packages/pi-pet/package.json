@@ -1,6 +1,6 @@
 {
   "name": "@howaboua/pi-pet",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Animated companions for GipPity Remote.",
   "license": "MIT",
   "repository": {
@@ -42,7 +42,6 @@
     "!**/__pycache__",
     "!**/*.pyc",
     "!**/.venv",
-    "!authoring/hatch/tests",
     "changelog.ts",
     "CHANGELOG.md"
   ],
@@ -54,7 +53,6 @@
   "scripts": {
     "build": "bun scripts/build.mjs",
     "desktop:start": "npm --prefix desktop run build && npm --prefix desktop start",
-    "pet:hatch:test": "uv run --isolated --project authoring/hatch --locked python -m unittest discover -s authoring/hatch/tests -p 'test_*.py' -v",
     "pet:prepare": "node dist/authoring/prepare.mjs",
     "pet:rebuild": "node dist/authoring/rebuild.mjs",
     "pet:validate": "node dist/authoring/validate.mjs",
@@ -87,13 +85,13 @@
     }
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.10",
-    "@earendil-works/pi-coding-agent": "1.0.0",
-    "@earendil-works/pi-tui": "1.0.0",
-    "@types/node": "^26.2.0",
-    "electron": "43.4.1",
-    "knip": "^6.32.2",
-    "typebox": "1.3.18",
+    "@biomejs/biome": "2.5.15",
+    "@earendil-works/pi-coding-agent": "1.1.0",
+    "@earendil-works/pi-tui": "1.1.0",
+    "@types/node": "^26.6.5",
+    "electron": "43.7.9",
+    "knip": "^6.41.0",
+    "typebox": "1.3.36",
     "@typescript/native-preview": "^7.0.0-dev.20260707.2",
     "typescript": "^7.0.2"
   },

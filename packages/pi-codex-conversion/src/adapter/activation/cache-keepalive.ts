@@ -1,4 +1,5 @@
 import type { CodexConversionConfig } from "./config.ts";
+import { resolveCodexModelFamily } from "./fast-mode.ts";
 
 export type CodexCacheKeepaliveStrategy = "generated-current";
 
@@ -6,27 +7,27 @@ export interface CodexCacheKeepalivePlan {
 	strategy: CodexCacheKeepaliveStrategy;
 	intervalMs: number;
 	maxOperations?: number | undefined;
+	maxDurationMs?: number | undefined;
 }
-
-export const LUNA_CACHE_KEEPALIVE_INTERVAL_MS = 2.5 * 60 * 1_000;
-export const SOL_TERRA_CACHE_KEEPALIVE_INTERVAL_MS = 25 * 60 * 1_000;
 
 export function resolveCodexCacheKeepalivePlan(
 	modelId: string | undefined,
-	config: Pick<CodexConversionConfig["openai"], "cacheKeepalive" | "lunaCacheKeepaliveMinutes">,
+	config: Pick<CodexConversionConfig["openai"], "cacheKeepalive" | "lunaCacheKeepaliveMinutes" | "lunaCacheKeepaliveIntervalMinutes" | "cacheKeepaliveIntervalMinutes">,
 ): CodexCacheKeepalivePlan | undefined {
-	if (modelId === "gpt-5.6-luna") {
+	const family = resolveCodexModelFamily(modelId);
+	if (family === "luna") {
 		if (config.lunaCacheKeepaliveMinutes === 0) return undefined;
 		return {
 			strategy: "generated-current",
-			intervalMs: LUNA_CACHE_KEEPALIVE_INTERVAL_MS,
-			maxOperations: config.lunaCacheKeepaliveMinutes / 2.5,
+			intervalMs: config.lunaCacheKeepaliveIntervalMinutes * 60_000,
+			maxOperations: Math.floor(config.lunaCacheKeepaliveMinutes / config.lunaCacheKeepaliveIntervalMinutes),
+			maxDurationMs: config.lunaCacheKeepaliveMinutes * 60_000,
 		};
 	}
-	if ((modelId === "gpt-5.6-sol" || modelId === "gpt-5.6-terra") && config.cacheKeepalive) {
+	if ((family === "astra" || family === "sol" || family === "terra") && config.cacheKeepalive) {
 		return {
 			strategy: "generated-current",
-			intervalMs: SOL_TERRA_CACHE_KEEPALIVE_INTERVAL_MS,
+			intervalMs: config.cacheKeepaliveIntervalMinutes * 60_000,
 		};
 	}
 	return undefined;
@@ -41,5 +42,6 @@ export function hasCodexCacheKeepalivePlanChanged(
 	const nextPlan = resolveCodexCacheKeepalivePlan(modelId, next);
 	return previousPlan?.strategy !== nextPlan?.strategy
 		|| previousPlan?.intervalMs !== nextPlan?.intervalMs
-		|| previousPlan?.maxOperations !== nextPlan?.maxOperations;
+		|| previousPlan?.maxOperations !== nextPlan?.maxOperations
+		|| previousPlan?.maxDurationMs !== nextPlan?.maxDurationMs;
 }

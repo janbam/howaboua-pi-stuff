@@ -1,6 +1,7 @@
 import { mkdir, open } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { CodexDiagnosticsEvent } from "../providers/openai-codex/types.ts";
+import { CODEX_BACKEND_TIMING_KEYS } from "../providers/openai-codex/diagnostic-timing.ts";
 
 const LOG_DIRECTORY_BASENAME = "pi-codex-logs";
 
@@ -47,12 +48,22 @@ function safeText(value: string): string {
 		.slice(0, 500);
 }
 
-function field(key: string, value: string | number | boolean | undefined): string | undefined {
+function field(key: string, value: string | number | boolean | null | undefined): string | undefined {
 	if (value === undefined) return undefined;
 	return `${key}=${typeof value === "string" ? JSON.stringify(safeText(value)) : String(value)}`;
 }
 
 function eventFields(event: CodexDiagnosticsEvent): Array<string | undefined> {
+	if (event.type === "timing") return [
+		field("event", event.type), field("lane", event.lane), field("transport", event.transport),
+		field("attempt", event.attempt), field("outcome", event.outcome),
+		field("request_elapsed_ms", event.requestElapsedMs), field("attempt_elapsed_ms", event.attemptElapsedMs),
+		field("send_ms", event.sendMs), field("first_event_ms", event.firstEventMs),
+		field("first_visible_text_ms", event.firstVisibleTextMs), field("completion_ms", event.completionMs),
+		field("output_tokens", event.outputTokens), field("reasoning_tokens", event.reasoningTokens),
+		field("output_tokens_per_second", event.outputTokensPerSecond),
+		...CODEX_BACKEND_TIMING_KEYS.map(key => field(key, event.backend[key] === undefined ? "missing" : event.backend[key])),
+	];
 	if (event.type === "request") return [
 		field("event", event.type),
 		field("lane", event.lane),
@@ -68,10 +79,19 @@ function eventFields(event: CodexDiagnosticsEvent): Array<string | undefined> {
 		field("prewarm_kind", event.prewarm?.kind),
 		field("keepalive_strategy", event.prewarm?.keepaliveStrategy),
 		field("request_source", event.prewarm?.requestSource),
-		field("previous_response_id", event.previousResponseId),
+		field("previous_response_present", event.previousResponseId),
 		field("full_input_items", event.fullInputItems),
 		field("sent_input_items", event.sentInputItems),
 		field("model", event.model),
+		field("reasoning_effort", event.requestMetadata?.reasoningEffort),
+		field("service_tier", event.requestMetadata?.serviceTier),
+		field("access_program", event.requestMetadata?.accessProgram),
+		field("responses_lite", event.requestMetadata?.responsesLite),
+		field("routing_hint", event.requestMetadata?.routingHint),
+		field("request_headers_sent", event.requestMetadata?.headersSent),
+		field("guardian_reviewer", event.requestMetadata?.guardianReviewer),
+		field("parent_thread_linked", event.requestMetadata?.parentThreadLinked),
+		field("subagent_kind", event.requestMetadata?.subagentKind),
 		field("compaction_source", event.compaction?.inputSource),
 		field("compaction_replay", event.compaction?.canonicalReplay),
 		field("checkpoint_reused", event.compaction?.checkpointReused),
@@ -135,7 +155,7 @@ function eventFields(event: CodexDiagnosticsEvent): Array<string | undefined> {
 }
 
 function formatEvent(event: CodexDiagnosticsEvent): string {
-	return `${new Date().toISOString()} ${eventFields(event).filter((value): value is string => value !== undefined).join(" ")}\n`;
+	return `${new Date().toISOString()} ${[field("local_request_id", event.requestId), ...eventFields(event)].filter((value): value is string => value !== undefined).join(" ")}\n`;
 }
 
 export async function createCodexDiagnosticsLog(options: {
@@ -159,7 +179,7 @@ export async function createCodexDiagnosticsLog(options: {
 	});
 	await mkdir(join(agentDir, LOG_DIRECTORY_BASENAME), { recursive: true, mode: 0o700 });
 	const header = [
-		"# Pi Codex cache diagnostics",
+		"# Pi Codex diagnostics",
 		"# Metadata only: prompts, messages, tool arguments, images, credentials, and response IDs are omitted.",
 		`# opened=${new Date().toISOString()}`,
 		`# session_id=${JSON.stringify(options.sessionId)}`,
@@ -179,14 +199,15 @@ export async function createCodexDiagnosticsLog(options: {
 	}
 
 	let failed = false;
-	let closed = false;
+	let closing: Promise<void> | undefined;
 	let pending = Promise.resolve();
 	return {
 		path,
 		record(event) {
-			if (failed) return;
+			if (failed || closing) return;
+			const line = formatEvent(event);
 			pending = pending
-				.then(() => handle.appendFile(formatEvent(event), "utf8"))
+				.then(() => failed ? undefined : handle.appendFile(line, "utf8"))
 				.catch((error: unknown) => {
 					failed = true;
 					try {
@@ -196,14 +217,9 @@ export async function createCodexDiagnosticsLog(options: {
 					}
 				});
 		},
-		async close() {
-			if (closed) return;
-			closed = true;
-			try {
-				await pending;
-			} finally {
-				await handle.close();
-			}
+		close() {
+			closing ??= pending.finally(() => handle.close());
+			return closing;
 		},
 	};
 }

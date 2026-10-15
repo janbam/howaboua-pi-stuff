@@ -9,6 +9,8 @@ import {
 	DEFAULT_VOICE_CONTEXT_REASONING,
 	type DictationShortcutMode,
 	type HistoryStorage,
+	IDLE_NOTES_MINUTES_OPTIONS,
+	type IdleNotesMinutes,
 	LUNA_CACHE_KEEPALIVE_MINUTES_OPTIONS,
 	type LunaCacheKeepaliveMinutes,
 	REALTIME_V3_VOICES,
@@ -20,6 +22,11 @@ import {
 import { normalizeOptionalString } from "./config-values.ts";
 
 export { isObject } from "./config-values.ts";
+
+export function normalizeIdleNotesMinutes(value: unknown): IdleNotesMinutes {
+	if (value === true) return 25;
+	return IDLE_NOTES_MINUTES_OPTIONS.find(minutes => minutes === value) ?? 0;
+}
 
 export function normalizeAllProvidersMode(
 	value: unknown,

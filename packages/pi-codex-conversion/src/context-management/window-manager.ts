@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { NotesOwner } from "./external-notes-protocol.ts";
 import { contextAgentIdentity } from "./agent-identity.ts";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { getCurrentSystemMessage, type ProviderHeaders } from "@earendil-works/pi-ai";
@@ -10,10 +11,11 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 	ExtensionEvent,
+	InputEvent,
 	SessionBeforeCompactEvent,
 	SessionEntry,
 } from "@earendil-works/pi-coding-agent";
-import type { ContextManagementMode } from "../adapter/activation/config.ts";
+import type { ContextManagementMode, IdleNotesMinutes } from "../adapter/activation/config.ts";
 import { tryStartCodexPreparedIdleKickoff } from "../developer-messages.ts";
 import { loadHistoryNotesThreadHint } from "./history-notes.ts";
 import { hasFreshContextNotes } from "./saved-notes.ts";
@@ -68,9 +70,12 @@ export class CodexContextWindowManager {
 		reminderId: string;
 		mode: ContextManagementMode;
 		phase: "awaiting" | "running";
+		prompt: string;
+		admitted: boolean;
 	} | undefined;
 	private trimPendingWindowId: string | undefined;
 	private readonly loadThreadHint: ThreadHintLoader;
+	private externalOwner: (() => NotesOwner | undefined) | undefined;
 	private readonly beforeWindowStart: ((ctx: ExtensionContext, options: Pick<StartContextWindowOptions, "sourceLeafId" | "signal">) => Promise<void>) | undefined;
 
 	constructor(
@@ -95,34 +100,38 @@ export class CodexContextWindowManager {
 		return this.identity ? { ...this.identity } : undefined;
 	}
 
-	recordSettledCheckpoint(pi: ExtensionAPI, ctx: ExtensionContext, mode: ContextManagementMode, now = Date.now()): void {
+	setExternalOwner(owner: () => NotesOwner | undefined): void {
+		this.externalOwner = owner;
+	}
+
+	recordSettlement(pi: ExtensionAPI, ctx: ExtensionContext, aborted: boolean, now = Date.now()): void {
 		if (!ctx.isIdle() || !this.identity) return;
 		const branch = ctx.sessionManager.getBranch();
-		if (!hasFreshContextNotes(branch, this.identity.currentWindowId, mode, true)) return;
 		const completed = branch.findLast((entry) => entry.type === "message" && entry.message.role !== "system");
 		if (!completed) return;
 		pi.appendEntry(IDLE_CHECKPOINT_ENTRY_TYPE, {
-			protocol: 1, windowId: this.identity.currentWindowId, completedEntryId: completed.id, settledAt: now,
+			protocol: 1, windowId: this.identity.currentWindowId, completedEntryId: completed.id, settledAt: now, aborted,
 		});
 	}
 
-	hasIdleNotesCheckpoint(ctx: ExtensionContext, mode: ContextManagementMode, now = Date.now()): boolean {
-		if (!ctx.isIdle() || !this.identity || this.rolloverPending || this.rolloverCompaction) return false;
+	isIdleRolloverDue(ctx: ExtensionContext, minutes: IdleNotesMinutes, now = Date.now()): boolean {
+		if (!minutes || !ctx.isIdle() || !this.identity || this.rolloverPending || this.rolloverCompaction) return false;
 		const branch = ctx.sessionManager.getBranch();
-		if (!hasFreshContextNotes(branch, this.identity.currentWindowId, mode, true)) return false;
 		// The final reply can precede retries and settled hooks. Only a persisted
 		// settlement on this selected run establishes idle age across resume.
 		const completed = branch.findLast((entry) => entry.type === "message" && entry.message.role !== "system");
-		if (completed?.type !== "message" || completed.message.role !== "assistant" || completed.message.stopReason !== "stop") return false;
+		if (!completed) return false;
 		// A tree return may select the final reply before its metadata child. The
 		// settlement still proves this exact selected run, never a sibling's run.
 		const checkpoint = ctx.sessionManager.getEntries().findLast((entry) => entry.type === "custom" && entry.customType === IDLE_CHECKPOINT_ENTRY_TYPE &&
 			entry.data && typeof entry.data === "object" && "completedEntryId" in entry.data && entry.data.completedEntryId === completed.id);
 		if (checkpoint?.type !== "custom" || !checkpoint.data || typeof checkpoint.data !== "object") return false;
 		const data = checkpoint.data;
+		// Escape can arrive after a successful final reply, during before-settle hooks.
+		if ("aborted" in data && data.aborted === true) return false;
 		return "protocol" in data && data.protocol === 1 && "windowId" in data && data.windowId === this.identity.currentWindowId &&
 			"completedEntryId" in data && data.completedEntryId === completed.id && "settledAt" in data &&
-			typeof data.settledAt === "number" && Number.isFinite(data.settledAt) && now - data.settledAt >= 25 * 60_000;
+			typeof data.settledAt === "number" && Number.isFinite(data.settledAt) && now - data.settledAt >= minutes * 60_000;
 	}
 
 	restore(entries: readonly SessionEntry[]): void {
@@ -154,6 +163,7 @@ export class CodexContextWindowManager {
 		pi: ExtensionAPI,
 		ctx: ExtensionContext,
 		active: boolean,
+		{ createIfMissing = true }: { createIfMissing?: boolean } = {},
 	): void {
 		if (!active) return;
 		const pending = this.promptedManualCheckpoint;
@@ -175,6 +185,7 @@ export class CodexContextWindowManager {
 			}
 			return;
 		}
+		if (!createIfMissing) return;
 		const windowId = randomUUID();
 		this.sendWindowMessage(
 			pi,
@@ -256,14 +267,6 @@ export class CodexContextWindowManager {
 		return true;
 	}
 
-	async completeRolloverCompaction(pi: ExtensionAPI, ctx: ExtensionContext, mode: ContextManagementMode): Promise<void> {
-		if (this.isRolloverCompactionRunning()) return;
-		this.cancelScheduledCompaction();
-		await this.startNewWindow(pi, ctx, {
-			mode, trimPreviousWindow: false,
-		});
-	}
-
 	isRolloverCompactionRunning(): boolean {
 		return this.rolloverCompaction?.phase === "running";
 	}
@@ -315,10 +318,12 @@ export class CodexContextWindowManager {
 		ctx: ExtensionContext,
 		mode: ContextManagementMode,
 		contextTokens?: number,
+		taskBoundaryReminder = 0,
 	): CustomMessageEntryDraft | undefined {
 		if (mode === "off" || !this.identity || this.rolloverPending) return;
-		if (hasFreshContextNotes(ctx.sessionManager.getBranch(), this.identity.currentWindowId, mode, false)) return;
-		const reminder = this.budget.record(ctx, this.identity, contextTokens);
+		const reminder = (!hasFreshContextNotes(ctx.sessionManager.getBranch(), this.identity.currentWindowId, mode, false)
+			? this.budget.record(ctx, this.identity, contextTokens) : undefined)
+			?? (taskBoundaryReminder ? this.budget.recordTaskBoundary(ctx, this.identity, contextTokens, taskBoundaryReminder) : undefined);
 		if (reminder) return createContextWindowMessage(reminder.content, reminder.kind, this.identity);
 	}
 
@@ -334,7 +339,7 @@ export class CodexContextWindowManager {
 		| { cancel: true }
 		| { compaction: CompactionResult<ContextWindowCompactionDetails> }
 		| undefined {
-		if (compactOnRollover) return event.reason === "threshold" ? { cancel: true } : undefined;
+		if (compactOnRollover) return undefined;
 		if (event.reason === "overflow") return undefined;
 		if (event.reason === "manual") {
 			this.promptedManualCheckpoint = undefined;
@@ -372,24 +377,46 @@ export class CodexContextWindowManager {
 		if (idle && !pending.customInstructions?.trim() && hasFreshContextNotes(
 			ctx.sessionManager.getBranch(), pending.identity.currentWindowId, pending.mode, true,
 		)) return true;
-		const reminder = createContextWindowMessage(renderManualContextCheckpoint(pending.customInstructions),
-			"reminder", pending.identity);
+		this.promptNotesCheckpoint(pi, ctx, pending.mode, pending.customInstructions);
+		return false;
+	}
+
+	promptNotesCheckpoint(
+		pi: ExtensionAPI,
+		ctx: Pick<ExtensionContext, "isIdle" | "ui" | "sessionManager">,
+		mode: ContextManagementMode,
+		customInstructions?: string,
+		prompt?: string,
+	): void {
+		if (!this.identity || this.promptedManualCheckpoint) throw new Error("A context checkpoint cannot start yet");
+		const idle = ctx.isIdle();
+		const reminder = createContextWindowMessage(renderManualContextCheckpoint(customInstructions),
+			"reminder", this.identity);
 		const checkpoint = this.promptedManualCheckpoint = {
 			sessionId: ctx.sessionManager.getSessionId(),
-			windowId: pending.identity.currentWindowId,
+			windowId: this.identity.currentWindowId,
 			reminderId: reminder.details.id,
-			mode: pending.mode,
+			mode,
 			phase: idle ? "awaiting" : "running",
+			prompt: prompt ?? "Continue.",
+			admitted: false,
 		};
 		try {
 			pi.sendMessage(reminder, idle ? { triggerTurn: false } : { deliverAs: "steer", triggerTurn: true });
-			if (idle && !tryStartCodexPreparedIdleKickoff(pi, ctx))
-				pi.sendUserMessage("Continue.", { deliverAs: "steer" });
+			if (idle && !tryStartCodexPreparedIdleKickoff(pi, ctx, checkpoint.prompt))
+				pi.sendUserMessage(checkpoint.prompt, { deliverAs: "steer" });
 		} catch (error) {
 			if (this.promptedManualCheckpoint === checkpoint) this.promptedManualCheckpoint = undefined;
 			throw error;
 		}
-		return false;
+	}
+
+	admitPromptedCheckpointInput(event: InputEvent): boolean {
+		const pending = this.promptedManualCheckpoint;
+		if (!pending || pending.phase !== "awaiting" || pending.admitted ||
+			event.source !== "extension" || event.text !== pending.prompt) return false;
+		pending.admitted = true;
+		return true;
 	}
 
 	beginPromptedManualCheckpointRun(): void {
@@ -409,7 +436,7 @@ export class CodexContextWindowManager {
 
 	recordCompaction(details: unknown): void {
 		if (!isContextWindowCompactionDetails(details)) {
-			this.budget.reset();
+			this.budget.resetThresholds();
 			// A real checkpoint supersedes any pending notes-only trim.
 			this.trimPendingWindowId = undefined;
 		} else if (details.windowId === this.trimPendingWindowId)
@@ -436,11 +463,13 @@ export class CodexContextWindowManager {
 	}
 
 	rewritePayload(payload: unknown, ctx: ExtensionContext): unknown {
-		return rewriteWindowPayload(payload, ctx, this.identity);
+		const owner = this.externalOwner?.();
+		return rewriteWindowPayload(payload, ctx, owner ? owner.identity(ctx) : this.identity, !owner);
 	}
 
 	rewriteHeaders(headers: ProviderHeaders, ctx: ExtensionContext): void {
-		rewriteWindowHeaders(headers, ctx, this.identity);
+		const owner = this.externalOwner?.();
+		rewriteWindowHeaders(headers, ctx, owner ? owner.identity(ctx) : this.identity, !owner);
 	}
 
 	private sendWindowMessage(

@@ -1,8 +1,9 @@
-- GipPity owns network, session, prompt, voice, and browser transport; Pi Pet registers one static miniapp and reaction snapshot only.
-- Pet manifests and assets are untrusted data: validate at build boundaries, bound sizes, and never execute pet-provided code.
-- Keep pet/catalog and reaction contracts in `src/protocol/`; renderer and extension must not duplicate them.
-- `bun run ai:check:strict` MUST pass before packaging or launching Electron.
-- Generated `dist/` is distributable output, never source. Build it before packaging; keep it untracked.
-- Installed `pets/` are immutable templates. User pets, runs, and generated web roots live under `<pi-agent-directory>/pi-pet/`; never put authored data back into npm package files.
-- Attached desktop builds live at `<pi-agent-directory>/pi-pet` on each device. Rebuild only when the loaded package version or source digest changes; Pi owns the local child or SSH process. Never add Git fetching, app installation, autostart, or background-service state.
-- Keep authoring lazy: `/pet <request>` resolves the installed `authoring/PET-GUIDE.md`; never register bundled authoring as Pi skills or inline the guide into the command prompt.
+- GipPity owns network, session, prompt, voice and browser transport. Pet registers a static miniapp and reaction snapshot.
+- Manifests/assets are untrusted. Validate and bound them at build boundaries. Never execute pet-provided code.
+- Check realpath containment, not lexical paths alone. Check frame bounds against decoded dimensions.
+- Own pet/catalog and reaction contracts in src/protocol/. Never duplicate them in renderer/extension.
+- Before packaging or launching Electron, pass bun run ai:check:strict.
+- dist/ is distributable output, not source. Build before packaging, keep untracked.
+- Installed pets/ are immutable templates. Store user pets, runs and generated web roots under <pi-agent-directory>/pi-pet/, never npm files.
+- Attached desktops live at <pi-agent-directory>/pi-pet per device. Rebuild only on version/digest change. Pi owns the local/SSH process. Never add Git fetching, app installation, autostart or background-service state.
+- Keep authoring lazy. /pet <request> resolves installed authoring/PET-GUIDE.md. Never register it as a skill or inline it in prompts.

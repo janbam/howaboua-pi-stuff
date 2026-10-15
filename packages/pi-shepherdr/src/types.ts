@@ -7,7 +7,37 @@ export interface PeerMessage {
 }
 
 export interface PeerDelivery {
+	result?: string;
 	command: boolean;
+	commands?: PeerCommand[];
+}
+
+export interface PeerCommand {
+	name: string;
+	description: string;
+}
+
+export interface MachineIdentity {
+	host: string;
+	session: string;
+}
+
+export interface FocusRequest {
+	source: MachineIdentity & {
+		pane: string;
+		terminal: string;
+		sessionFile: string;
+	};
+	handoff?: string;
+	voice?: boolean;
+	voiceAudioTransport?: "webrtc" | "pcm24";
+}
+
+export interface PeerChannel {
+	send(message: unknown): void;
+	onMessage(listener: (message: unknown) => void): () => void;
+	onClose(listener: (error: Error) => void): () => void;
+	close(): void;
 }
 
 export type SettledAgentStatus = Exclude<AgentStatus, "working">;
@@ -74,10 +104,12 @@ export interface SessionSnapshot {
 }
 
 export interface MonitoredAgent {
+	readonly instructions?: string;
 	readonly scope: "task" | "persistent";
 	readonly activity: AgentActivity;
 	readonly cwd?: string;
 	readonly lastAssistantId?: string;
+	readonly notifiedExtensionMessages?: string[];
 	readonly name?: string;
 	readonly paneId: string;
 	readonly tabId: string;
@@ -99,6 +131,8 @@ export interface MachineStatus {
 	target?: string;
 	session?: string;
 	monitoringIssue?: MonitoringIssue;
+	contextRelayError?: string;
+	attempting?: boolean;
 	reason?: string;
 	status: MachineConnectionStatus;
 }
@@ -116,25 +150,22 @@ export interface LatestInput {
 	text: string;
 }
 
-export interface PendingAsk {
-	handoff: boolean;
-	prompts: Array<{
-		body?: string;
-		choices: Array<{ description?: string; label: string }>;
-		multiple: boolean;
-		title: string;
-	}>;
-	toolCallId: string;
+export interface ExtensionMessage {
+	extension: string;
+	id: string;
+	message: string;
+	reply?: string;
+	blocking: boolean;
 }
 
-export interface AskResult {
-	responses?: Array<{ comment?: string; id: string; selections: string[] }>;
-	status: "accepted" | "rejected" | "unknown";
+export interface ExtensionReply {
+	extension: string;
+	id: string;
+	message: string;
 }
 
 export interface SessionView {
-	ask?: PendingAsk;
-	askResults?: Record<string, AskResult>;
+	extensionMessages?: ExtensionMessage[];
 	assistant?: LatestAssistant;
 	assistantAfterInput?: boolean;
 	input?: LatestInput;

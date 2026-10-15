@@ -1,5 +1,9 @@
 # @howaboua/pi-pet
 
+## 0.1.5
+
+- Pi Pet desktop now requires Node 22.12 or newer.
+
 ## 0.1.4
 
 - Remove obsolete test-only helper exports without changing tool behavior.

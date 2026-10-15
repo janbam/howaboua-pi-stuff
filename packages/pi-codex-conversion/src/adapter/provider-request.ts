@@ -7,7 +7,8 @@ import { isAdapterRuntime, resolveCodexRuntimePlanForState } from "./activation/
 import { injectPendingNativeWindowIntoPiCompactionRequest, rewriteCodexCompactedProviderRequest } from "./compaction/compaction.ts";
 import { applyResponsesLiteRequest, RESPONSES_LITE_HEADER, type ResponsesLiteCompatibleBody } from "../providers/openai-codex/responses-lite.ts";
 import { usesRemoteHistoryNotes } from "../context-management/history-notes.ts";
-import { rewriteContextNamespaceTools } from "../context-management/namespace-tools.ts";
+import { rewriteRemoteContextNamespaceTools } from "../context-management/namespace-tools.ts";
+import { rewriteRelationshipHeaders, rewriteRelationshipPayload } from "../context-management/agent-relationship.ts";
 
 function prepareCodexProviderRequest(payload: unknown, ctx: ExtensionContext, state: AdapterState) {
 	if (!state.adapterEnabled || state.config.voiceFeaturesOnly) return undefined;
@@ -18,6 +19,7 @@ function prepareCodexProviderRequest(payload: unknown, ctx: ExtensionContext, st
 	return {
 		plan,
 		configuredPayload: applyCodexRequestOptions(payload, state.config, {
+			modelId: ctx.model?.id,
 			serviceTier: plan.effectiveOpenAICodex,
 			verbosity: true,
 		}),
@@ -50,10 +52,11 @@ export function rewriteCodexProviderHeaders(
 		headers[RESPONSES_LITE_HEADER] = "true";
 	}
 	if (
-		plan.contextManagementRemote &&
-		usesRemoteHistoryNotes(ctx, plan.contextManagementMode)
+		state.externalNotes || (plan.contextManagementRemote &&
+		usesRemoteHistoryNotes(ctx, plan.contextManagementMode))
 	)
 		state.contextWindows.rewriteHeaders(headers, ctx);
+	if (isAdapterRuntime(plan) && plan.effectiveOpenAICodex) rewriteRelationshipHeaders(headers, ctx);
 }
 
 export async function rewriteCodexProviderRequest(payload: unknown, ctx: ExtensionContext, state: AdapterState, blockImages = false): Promise<unknown | undefined> {
@@ -61,18 +64,10 @@ export async function rewriteCodexProviderRequest(payload: unknown, ctx: Extensi
 	if (!prepared) return undefined;
 	const { plan, configuredPayload } = prepared;
 	let rewrittenPayload = state.developerMessages.rewritePayload(configuredPayload, ctx.model, blockImages);
-	if (plan.contextManagement) {
-		const remoteHistoryNotes = usesRemoteHistoryNotes(
-			ctx,
-			plan.contextManagementMode,
-		);
-		rewrittenPayload = rewriteContextTools(
-			rewrittenPayload,
-			ctx,
-			plan.contextManagementRemote && remoteHistoryNotes,
-		);
-		if (plan.contextManagementRemote && remoteHistoryNotes)
-			rewrittenPayload = state.contextWindows.rewritePayload(rewrittenPayload, ctx);
+	if (state.externalNotes) rewrittenPayload = state.contextWindows.rewritePayload(rewrittenPayload, ctx);
+	if (plan.contextManagementRemote && usesRemoteHistoryNotes(ctx, plan.contextManagementMode)) {
+		rewrittenPayload = rewriteRemoteContextNamespaceTools(rewrittenPayload);
+		rewrittenPayload = state.contextWindows.rewritePayload(rewrittenPayload, ctx);
 	}
 	if (plan.nativeReplay || state.pendingPiCompactionNativeWindow) {
 		const piCompactionPayload = await injectPendingNativeWindowIntoPiCompactionRequest(rewrittenPayload, ctx, state);
@@ -82,23 +77,11 @@ export async function rewriteCodexProviderRequest(payload: unknown, ctx: Extensi
 		rewrittenPayload,
 		plan.transport === "responses-lite",
 	);
-	return finalPayload;
+	return plan.effectiveOpenAICodex ? rewriteRelationshipPayload(finalPayload, ctx) : finalPayload;
 }
 
 function isCodeModeCompatibleBody(value: unknown): value is ResponsesLiteCompatibleBody {
 	return typeof value === "object" && value !== null
 		&& typeof (value as { model?: unknown }).model === "string"
 		&& Array.isArray((value as { input?: unknown }).input);
-}
-
-function rewriteContextTools(
-	payload: unknown,
-	ctx: Pick<ExtensionContext, "model">,
-	remote: boolean,
-): unknown {
-	const codexTransport = (ctx.model?.api ?? "").trim().toLowerCase() ===
-		"openai-codex-responses";
-	return !codexTransport || remote
-		? rewriteContextNamespaceTools(payload, { encrypted: remote })
-		: payload;
 }

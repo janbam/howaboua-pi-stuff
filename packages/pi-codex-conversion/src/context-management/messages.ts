@@ -15,6 +15,7 @@ export const CONTEXT_WINDOW_URGENT_PERCENT = 90;
 export type ContextManagementMessageKind =
 	| "window"
 	| "identity"
+	| "task-boundary"
 	| "reminder"
 	| "urgent"
 	| "fallback";
@@ -47,24 +48,15 @@ export interface ContextWindowCompactionDetails {
 	windowId?: string | undefined;
 }
 
-const CONTEXT_WINDOW_BACKLOG_GUIDANCE = "Include useful deferred ideas and tasks, even unrelated ones, when checkpointing. Recording is not permission to implement";
-const CONTEXT_WINDOW_TASK_GUIDANCE = "After substantial work, save useful new findings, decisions, progress or resumable state in notes as your last tool calls before replying. Skip completion notes for brief clarifications, routine lookups, acknowledgements and unchanged state. Explicit checkpoints and context reminders still apply. Include note paths in agent handoffs";
-
 const CONTEXT_WINDOW_GUIDANCE = `<context_window_guidance>
-Checkpoint the active request, known history IDs, decisions, progress, learnings and next steps in notes before new_context. After rollover, read hinted notes. Use history only for a missing detail.
-${CONTEXT_WINDOW_TASK_GUIDANCE}
-${CONTEXT_WINDOW_BACKLOG_GUIDANCE}
+Keep one checkpoint per task at a stable path: request, constraints, decisions, progress, next steps, history IDs. Replace stale state; mark completion in place. Keep reusable findings and deferred ideas in separate topic notes; link, don't copy. Recording isn't permission to implement.
+
+Save changed state after substantial work, before replying, and before new_context or handoff. Skip routine or unchanged state. Include checkpoint paths in handoffs. After rollover, read the checkpoint, then linked notes as needed; history only for missing details.
 </context_window_guidance>`;
 
-const CONTEXT_WINDOW_EXPLICIT_GUIDANCE = `<context_window_guidance>
-Notes persist across windows; history retrieves earlier conversation. Update existing notes with task state, decisions and next steps before new_context. After rollover, read hinted notes and resume; consult history only for missing details. Save enough in notes to resume the task without rereading the conversation.
-${CONTEXT_WINDOW_TASK_GUIDANCE}
-${CONTEXT_WINDOW_BACKLOG_GUIDANCE}
-</context_window_guidance>`;
-
-export function rewriteContextWindowGuidance(content: string, concise: boolean): string {
+export function rewriteContextWindowGuidance(content: string): string {
 	return content.replace(/^<context_window_guidance>[\s\S]*?<\/context_window_guidance>/,
-		concise ? CONTEXT_WINDOW_GUIDANCE : CONTEXT_WINDOW_EXPLICIT_GUIDANCE);
+		CONTEXT_WINDOW_GUIDANCE);
 }
 
 export function renderContextWindowMessage(
@@ -80,7 +72,7 @@ export function renderContextWindowMessage(
 	];
 	if (identity.previousWindowId)
 		lines.push(`Previous context window id: ${identity.previousWindowId}`);
-	if (threadHint) lines.push(threadHint);
+	if (threadHint) lines.push(threadHint, "More notes may be available; list or search notes");
 	lines.push("</context_window>");
 	return `${CONTEXT_WINDOW_GUIDANCE}\n\n${lines.join("\n")}`;
 }
@@ -93,7 +85,7 @@ ${urgent ? "Urgent: " : ""}${remainingPercent}% remaining. Checkpoint the active
 
 export function renderManualContextCheckpoint(customInstructions?: string): string {
 	return `<context_window_reminder>
-Manual context rollover requested. Save the current state with notes, then finish your response. The new window opens after this run settles. Do not call new_context. If saving fails, report the failure without rolling over.
+Context checkpoint requested. Save the current state with notes, then finish your response. The new window opens after this run settles. Do not call new_context. If saving fails, report the failure without rolling over.
 </context_window_reminder>${customInstructions?.trim() ? `\n\nCheckpoint guidance from /compact:\n${customInstructions}` : ""}`;
 }
 
@@ -115,6 +107,7 @@ export function isCodexContextManagementMessageDetails(
 		record["protocol"] === 1 &&
 		(record["kind"] === "window" ||
 			record["kind"] === "identity" ||
+			record["kind"] === "task-boundary" ||
 			record["kind"] === "reminder" ||
 			record["kind"] === "urgent" ||
 			record["kind"] === "fallback") &&

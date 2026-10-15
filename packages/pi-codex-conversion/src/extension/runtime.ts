@@ -3,18 +3,20 @@ import { getCurrentSystemMessage, type Api, type Context, type Model, type Trans
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { dirname } from "node:path";
 import type { CodexConversionConfig } from "../adapter/activation/config.ts";
+import { resolveFastModeServiceTier } from "../adapter/activation/fast-mode.ts";
+import { resolveDaybreakAccess } from "../providers/openai-codex/daybreak.ts";
 import { readCodexCacheEnvironment } from "../adapter/activation/cache-environment.ts";
 import { resolveCodexCacheKeepalivePlan, type CodexCacheKeepalivePlan, type CodexCacheKeepaliveStrategy } from "../adapter/activation/cache-keepalive.ts";
 import { getCodexConversionConfigPath, readEffectiveCodexConversionConfig } from "../adapter/activation/config-store.ts";
 import { isAdapterRuntime, isCodeModeRuntime, resolveCodexRuntimePlanForState } from "../adapter/activation/runtime-plan.ts";
 import { CODE_MODE_TOOL_NAMES, NOTEBOOK_MODE_TOOL_NAMES } from "../adapter/activation/tool-set.ts";
 import type { AdapterState } from "../adapter/activation/state.ts";
-import { rewriteCodexProviderRequest, supportsCodexDeveloperMessages } from "../adapter/provider-request.ts";
+import { rewriteCodexProviderHeaders, rewriteCodexProviderRequest, supportsCodexDeveloperMessages } from "../adapter/provider-request.ts";
 import { isProviderContextExcludedMessage } from "../adapter/prompt/context-filter.ts";
 import { closeOpenAICodexKeepaliveWebSocketSession, closeOpenAICodexWebSocketSessions, prewarmOpenAICodexWebSocket, prewarmPreparedOpenAICodexWebSocket } from "../providers/openai-codex-custom-provider.ts";
 import { resetOpenAICodexWebSocketSessions } from "../providers/openai-codex/websocket.ts";
 import { createCodexTurnState } from "../providers/openai-codex/turn-state.ts";
-import { extractAccountId } from "../providers/openai-codex/headers.ts";
+import { extractAccountId, PI_CODEX_CONVERSION_ORIGINATOR } from "../providers/openai-codex/headers.ts";
 import type { CodexPrewarmUsage, CodexUsageRecorder, OpenAICodexStreamOptions, ResponsesBody } from "../providers/openai-codex/types.ts";
 import { createExecCommandTracker } from "../tools/exec/command-state.ts";
 import { createExecSessionManager } from "../tools/exec/session-manager.ts";
@@ -118,6 +120,7 @@ export function createCodexExtensionRuntime(pi: ExtensionAPI, recordUsage?: Code
 		contextTree: new CodexContextTreeCoordinator(contextWindows, contextKickoff),
 	};
 	const tracker = createExecCommandTracker();
+	contextWindows.setExternalOwner(() => state.externalNotes?.owner);
 	const sessions = createExecSessionManager({
 		env: { ...process.env },
 		bridgeBinaryPath: () => getBundledToolBinaryPath("exec_bridge", {}, state.config.tools.customRustBinariesDir),
@@ -233,8 +236,12 @@ export function createCodexExtensionRuntime(pi: ExtensionAPI, recordUsage?: Code
 					signal: controller.signal,
 					...reasoning,
 					textVerbosity: config.openai.verbosity,
-					...(config.openai.fast ? { serviceTier: "priority" as const } : {}),
+					serviceTier: resolveFastModeServiceTier(config.openai.fast, model.id),
 				};
+				rewriteCodexProviderHeaders(options.headers!, ctx, { ...state, config, executionMode });
+				const originator = config.openai.harnessIdentifierHeader === "codex" ? "codex_cli_rs"
+					: config.openai.harnessIdentifierHeader ? PI_CODEX_CONVERSION_ORIGINATOR : "pi";
+				options.accessPrograms = await resolveDaybreakAccess(requestModel, options, config.openai.daybreak, preparedRequest?.body.model ?? model.id, originator);
 				const deps = {
 					validateRequest: (body: ResponsesBody, responsesLite: boolean) =>
 						validateRemoteRequest(ctx, requestModel, { messages }, body, options, responsesLite),
@@ -251,8 +258,16 @@ export function createCodexExtensionRuntime(pi: ExtensionAPI, recordUsage?: Code
 					},
 					...(generate ? { generate: true } : {}),
 				};
-				const transportSettlement = preparedRequest
-					? prewarmPreparedOpenAICodexWebSocket(requestModel, structuredClone(preparedRequest.body), options, preparedRequest.responsesLite, deps)
+				const preparedBody = preparedRequest ? structuredClone(preparedRequest.body) : undefined;
+				if (preparedBody) {
+					delete preparedBody.service_tier;
+					delete preparedBody.access_programs;
+					if (options.serviceTier) preparedBody.service_tier = options.serviceTier;
+					if (options.accessPrograms) preparedBody.access_programs = options.accessPrograms;
+					preparedBody.text = { ...preparedBody.text, verbosity: config.openai.verbosity };
+				}
+				const transportSettlement = preparedRequest && preparedBody
+					? prewarmPreparedOpenAICodexWebSocket(requestModel, preparedBody, options, preparedRequest.responsesLite, deps)
 					: prewarmOpenAICodexWebSocket(requestModel, { messages }, {
 						...options,
 						onPayload: (body) => rewriteCodexProviderRequest(body, ctx, { ...state, config, executionMode }, pi.getSettings().images?.blockImages),
@@ -292,6 +307,12 @@ export function createCodexExtensionRuntime(pi: ExtensionAPI, recordUsage?: Code
 	};
 
 	const projectContextMessages = (ctx: CodexContext, messages?: readonly AgentMessage[]) => {
+		if (state.externalNotes) {
+			// Message projection preserves the committed prompt before retiring conversation.
+			const branch = ctx.sessionManager.getBranch();
+			return state.externalNotes.owner.projectMessages(projectCodexDeveloperHistory(branch, messages))
+				.filter(message => !isProviderContextExcludedMessage(message));
+		}
 		const plan = resolveCodexRuntimePlanForState(ctx, state);
 		const branch = ctx.sessionManager.getBranch();
 		const archived = hasTreeArchives(branch);
@@ -353,8 +374,10 @@ export function createCodexExtensionRuntime(pi: ExtensionAPI, recordUsage?: Code
 		epoch: number,
 		plan: CodexCacheKeepalivePlan,
 		completedOperations: number,
+		deadline: number | undefined,
 	) => {
 		if (plan.maxOperations !== undefined && completedOperations >= plan.maxOperations) return;
+		if (deadline !== undefined && Date.now() + plan.intervalMs > deadline) return;
 		if (cacheKeepaliveTimer) clearTimeout(cacheKeepaliveTimer);
 		diagnostics.sink()?.({
 			type: "keepalive",
@@ -364,7 +387,7 @@ export function createCodexExtensionRuntime(pi: ExtensionAPI, recordUsage?: Code
 		});
 		cacheKeepaliveTimer = setTimeout(() => {
 			cacheKeepaliveTimer = undefined;
-			if (epoch !== cacheKeepaliveEpoch || !ctx.isIdle()) return;
+			if (epoch !== cacheKeepaliveEpoch || !ctx.isIdle() || (deadline !== undefined && Date.now() > deadline)) return;
 			const nextCompletedOperations = completedOperations + 1;
 			const requestSource = "captured";
 			diagnostics.sink()?.({ type: "keepalive", phase: "started", strategy: plan.strategy, requestSource });
@@ -377,12 +400,12 @@ export function createCodexExtensionRuntime(pi: ExtensionAPI, recordUsage?: Code
 				if (epoch !== cacheKeepaliveEpoch || result.status === "aborted" || result.status === "skipped") return;
 				if (result.status === "failed") {
 					ctx.ui.notify(`Codex cache keepalive failed: ${result.error.message}`, "warning");
-					scheduleCacheKeepalive(ctx, epoch, plan, nextCompletedOperations);
+					scheduleCacheKeepalive(ctx, epoch, plan, nextCompletedOperations, deadline);
 					return;
 				}
 				const action = "generated-refresh";
 				diagnostics.sink()?.({ type: "keepalive", phase: "applied", strategy: plan.strategy, requestSource, action });
-				scheduleCacheKeepalive(ctx, epoch, plan, nextCompletedOperations);
+				scheduleCacheKeepalive(ctx, epoch, plan, nextCompletedOperations, deadline);
 			});
 		}, plan.intervalMs);
 		cacheKeepaliveTimer.unref?.();
@@ -391,7 +414,8 @@ export function createCodexExtensionRuntime(pi: ExtensionAPI, recordUsage?: Code
 	const armCacheKeepalive = (ctx: CodexContext) => {
 		cancelCacheKeepalive();
 		const plan = resolveCodexCacheKeepalivePlan(ctx.model?.id, state.config.openai);
-		if (plan) scheduleCacheKeepalive(ctx, cacheKeepaliveEpoch, plan, 0);
+		if (plan) scheduleCacheKeepalive(ctx, cacheKeepaliveEpoch, plan, 0,
+			plan.maxDurationMs === undefined ? undefined : Date.now() + plan.maxDurationMs);
 	};
 
 	const runtime: CodexExtensionRuntime = {
@@ -532,7 +556,7 @@ export function createCodexExtensionRuntime(pi: ExtensionAPI, recordUsage?: Code
 			}
 			return diagnostics.configure({
 				mode: state.config.openai.cacheDiagnostics,
-				active: state.adapterEnabled && !state.config.voiceFeaturesOnly && ctx.model?.provider === "openai-codex",
+				active: state.adapterEnabled && !state.config.voiceFeaturesOnly && ctx.model?.api === "openai-codex-responses",
 				ctx,
 				agentDir: dirname(getCodexConversionConfigPath()),
 				logName: cacheEnvironment.logName,

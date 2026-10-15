@@ -1,22 +1,45 @@
 import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { ContextAgentBinding, ContextAgentIdentity } from "./context-management/agent-identity.js";
+import type { NoteSnapshotData } from "./context-management/local-notes.js";
+import type { SerializedNotesResponse } from "./context-management/external-notes-protocol.js";
+export type { NoteSnapshotData } from "./context-management/local-notes.js";
 
 export type { ContextAgentBinding, ContextAgentIdentity } from "./context-management/agent-identity.js";
+export type { CodexAgentRelationship } from "./context-management/agent-relationship.js";
 
 export interface SharedContextRequest {
 	sessionId: string;
 	agentName: string;
 	namespace: "history" | "notes";
 	params: Record<string, unknown>;
+	/** Direct Remote sensitive fields remain encrypted in peer transit. */
+	encryptedArguments?: boolean;
 }
 
-export type SharedContextResult = AgentToolResult<{ codexHistoryNotes: Record<string, unknown> }>;
+export type SharedContextResult = AgentToolResult<{
+	codexHistoryNotes: Record<string, unknown>;
+	externalNotesResponses?: SerializedNotesResponse[];
+}>;
 
-export type ContextRouter = (ctx: ExtensionContext, request: SharedContextRequest, signal?: AbortSignal) => Promise<SharedContextResult>;
+export type ContextRouter = ((ctx: ExtensionContext, request: SharedContextRequest, signal?: AbortSignal) => Promise<SharedContextResult | undefined>) & {
+	requiresRemoteScope?(ctx: ExtensionContext): boolean;
+};
+
+/** Remote checkpoints retain an authenticated address, never decrypted note contents. */
+export interface RemoteNoteReference {
+	protocol: 1;
+	storage: "remote";
+	timestamp: number;
+	identity: ContextAgentIdentity;
+	baseUrl: string;
+}
+export type AttachmentNotesData = NoteSnapshotData | RemoteNoteReference;
 
 export interface ContextSharingService {
 	protocol: 1;
 	canCreateChild(ctx: ExtensionContext): boolean;
+	/** Bind a fresh worker before its first task, even with context sharing disabled. */
+	bindRelationship?(ctx: ExtensionContext, relationship: unknown): import("./context-management/agent-relationship.js").CodexAgentRelationship;
 	describe(ctx: ExtensionContext): ContextAgentIdentity | undefined;
 	verify(ctx: ExtensionContext): Promise<void>;
 	createChild(ctx: ExtensionContext, options: { name: string; routing?: unknown }): Promise<{
@@ -24,6 +47,17 @@ export interface ContextSharingService {
 		adopt(): Promise<void>;
 	}>;
 	bind(ctx: ExtensionContext, binding: unknown): Promise<ContextAgentIdentity>;
+	/** Inspect an idle standalone owner for alias attachment without rebinding its identity. */
+	inspectAttachment?(ctx: ExtensionContext, standalone?: boolean): Promise<ContextAgentIdentity> | ContextAgentIdentity;
+	/** Keep native IDs while pinning storage and Remote account/backend for live aliases. */
+	retainAttachmentIdentity?(ctx: ExtensionContext): ContextAgentIdentity;
+	exportAttachmentNotes?(ctx: ExtensionContext): Promise<AttachmentNotesData> | AttachmentNotesData;
+	validateAttachmentNotes?(snapshot: unknown, identity: ContextAgentIdentity): void;
+	verifyAttachmentAccess?(ctx: ExtensionContext, snapshot: unknown): Promise<void>;
+	executeRemoteAttachment?(ctx: ExtensionContext, reference: unknown, request: SharedContextRequest, signal?: AbortSignal): Promise<SharedContextResult>;
+	/** Parse only the verified owner's persisted active note branch. */
+	parseAttachmentNotes?(entries: unknown, identity: ContextAgentIdentity): NoteSnapshotData;
+	readAttachmentNotes?(snapshot: unknown, params: Record<string, unknown>): SharedContextResult;
 	execute(ctx: ExtensionContext, request: SharedContextRequest, signal?: AbortSignal): Promise<SharedContextResult>;
 	registerRouter(router: ContextRouter): () => void;
 }

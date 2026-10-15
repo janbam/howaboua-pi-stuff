@@ -104,18 +104,31 @@ export function parseMonitoredAgent(
 	}
 	const cwd = optionalString(record, "cwd");
 	const lastAssistantId = optionalString(record, "lastAssistantId");
+	const notifiedExtensionMessages =
+		record["notifiedExtensionMessages"] === undefined
+			? undefined
+			: Array.isArray(record["notifiedExtensionMessages"]) &&
+					record["notifiedExtensionMessages"].every(
+						(value) => typeof value === "string",
+					)
+				? (record["notifiedExtensionMessages"] as string[])
+				: false;
 	const name = optionalString(record, "name");
+	const instructions = optionalString(record, "instructions");
 	const activity = parsedActivity(record["activity"]);
 	if (
 		cwd === false ||
 		lastAssistantId === false ||
+		notifiedExtensionMessages === false ||
 		name === false ||
+		instructions === false ||
 		!activity
 	) {
 		return undefined;
 	}
 	return {
 		scope: record["scope"],
+		...(instructions ? { instructions } : {}),
 		activity,
 		paneId: record["paneId"],
 		terminalId: record["terminalId"],
@@ -123,6 +136,7 @@ export function parseMonitoredAgent(
 		tabId: record["tabId"],
 		...(cwd ? { cwd } : {}),
 		...(lastAssistantId ? { lastAssistantId } : {}),
+		...(notifiedExtensionMessages ? { notifiedExtensionMessages } : {}),
 		...(name ? { name } : {}),
 	};
 }
@@ -132,6 +146,7 @@ export function recordForPanel(
 	activity: AgentActivity,
 	scope: MonitoredAgent["scope"],
 	lastAssistantId?: string,
+	notifiedExtensionMessages?: string[],
 ): MonitoredAgent {
 	const cwd = panel.foreground_cwd ?? panel.cwd;
 	return {
@@ -144,6 +159,7 @@ export function recordForPanel(
 		...(panel.name ? { name: panel.name } : {}),
 		...(cwd ? { cwd } : {}),
 		...(lastAssistantId ? { lastAssistantId } : {}),
+		...(notifiedExtensionMessages ? { notifiedExtensionMessages } : {}),
 	};
 }
 
@@ -153,6 +169,7 @@ export function sameMonitorRecord(
 ): boolean {
 	return (
 		left.scope === right.scope &&
+		left.instructions === right.instructions &&
 		left.paneId === right.paneId &&
 		left.terminalId === right.terminalId &&
 		left.workspaceId === right.workspaceId &&
@@ -160,6 +177,8 @@ export function sameMonitorRecord(
 		left.cwd === right.cwd &&
 		left.name === right.name &&
 		left.lastAssistantId === right.lastAssistantId &&
+		JSON.stringify(left.notifiedExtensionMessages) ===
+			JSON.stringify(right.notifiedExtensionMessages) &&
 		sameAgentActivity(left.activity, right.activity)
 	);
 }

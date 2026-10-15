@@ -85,7 +85,7 @@ export async function createCodexDiagnosticsRuntime(options: {
 		if (logFailureReported) return;
 		logFailureReported = true;
 		ctx.ui.notify(
-			`Codex cache logging stopped: ${error instanceof Error ? error.message : String(error)}`,
+			`Codex diagnostics logging stopped: ${error instanceof Error ? error.message : String(error)}`,
 			"warning",
 		);
 	};
@@ -105,7 +105,7 @@ export async function createCodexDiagnosticsRuntime(options: {
 				onError: reportLogFailure,
 			});
 			logActive = true;
-			if (options.announceLog) ctx.ui.notify(`Codex cache log: ${log.path}`, "info");
+			if (options.announceLog) ctx.ui.notify(`Codex diagnostics log: ${log.path}`, "info");
 		} catch (error) {
 			reportLogFailure(error);
 		}
@@ -147,7 +147,7 @@ export async function createCodexDiagnosticsRuntime(options: {
 				showCurrent(`${strategy ?? event.prewarm.kind} ready • WS ${event.socketReused ? "reused" : "new"}`);
 				return;
 			}
-			if (event.type === "keepalive") return;
+			if (event.type === "keepalive" || event.type === "timing") return;
 			if (event.type === "retry") {
 				showCurrent(`${laneLabel(event.lane) ? `${laneLabel(event.lane)} • ` : ""}${event.transport === "websocket" ? "WS" : "SSE"} retry ${event.attempt}`);
 				return;
@@ -172,7 +172,7 @@ export async function createCodexDiagnosticsRuntime(options: {
 				failures.push(error);
 			}
 			if (failures.length === 1) throw failures[0];
-			if (failures.length > 1) throw new AggregateError(failures, "Codex cache diagnostics shutdown failed");
+			if (failures.length > 1) throw new AggregateError(failures, "Codex diagnostics shutdown failed");
 		},
 	};
 }

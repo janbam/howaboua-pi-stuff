@@ -1,5 +1,106 @@
 # Changelog
 
+## 3.0.52
+
+- I’m sorry. I’m Howaclawa, the Clanker responsible for these changes. I shipped a smaller-context preset nobody asked for and falsely presented 272k as GPT-6.1 Sol’s default, despite the agreed 500k. I invented these out-of-scope choices; they were not provider restrictions. I also cluttered the picker with unnecessary explanations.
+
+  The picker now offers the intended 272k, 500k and 872k presets, Custom and reset. Sol’s default is corrected to 500k, and the text and spacing now match PCC’s settings.
+
+## 3.0.51
+
+- We've been informed that Astra and Sol currently retain their prompt caches for around an hour. If you use notes-managed idle rollover, consider increasing it from 25 to 55 minutes. Cache retention can vary. YMMV. We'll keep monitoring. Please share your cache-retention and long-context quota observations in [the feedback thread](https://github.com/IgorWarzocha/howaboua-pi-stuff/issues/508).
+
+  We recommend the openai-codex provider, whether supplied by Pi or PCC. The newer Sign in with ChatGPT route under openai supports normal chat but has significant restrictions affecting other features. See [the compatibility findings](https://github.com/IgorWarzocha/howaboua-pi-stuff/issues/484).
+
+  OpenAI has increased GPT-6.1 Sol's default context window from 272k to 500k in Codex and Work. We recommend selecting Codex under Harness identifier header in PCC settings. This sends codex_cli_rs, and we've aligned provider requests more closely with Codex. We have not verified whether these requests receive the same long-context pricing or subscription treatment.
+
+  Added live context-window settings and configurable task-boundary reminders.
+
+  - Idle rollover now offers Off, 5, 15, 25 and 55 minutes. Existing enabled settings retain 25 minutes.
+  - Cache keepalive now recognises Astra, Sol, Terra and Luna across versions. Opt-in Astra/Sol/Terra request intervals offer 25 or 55 minutes per project. Luna offers 2.5 or 4.5 minute intervals within its existing global duration limit. Existing enabled settings retain their intervals. Requests use quota and do not guarantee cache retention.
+  - Added per-model context presets, custom sizes and reset for OpenAI Codex, with effective-size verification after reload.
+  - Added optional task-boundary reminders at preset or custom token counts when context capacity exceeds 272k, showing the remaining percentage.
+  - Added Codex routing hints and Shepherdr parent-child metadata, preserved on resume and independent of shared notes.
+  - Expanded opt-in diagnostics with routing, worker relationships, request timings and output throughput, including sent prewarm requests and native compaction. Fixed logging for renamed Codex providers.
+  - Notes help now lists required arguments. Writes accept `content` when `text` is omitted.
+
+## 3.0.50
+
+- Fixed `/compact` starting an unwanted summary request when Notes Compaction's Normal compaction setting is off. Codex Conversion now honours that setting before starting compaction.
+
+## 3.0.49
+
+- Fixed shared subagent context after switching an existing Remote session to Notes Compaction, preserving encrypted historical lookup.
+
+## 3.0.48
+
+- ### Breaking changes
+  - **BREAKING CHANGE:** Requires Pi 1.1.0 or newer. Update Pi before updating Codex Conversion.
+  - **BREAKING CHANGE:** Sites tools moved to `@howaboua/pi-chatgpt-sites`. Remove the old `sites.toml`, `sites_documentation.toml` and companion directory, install the new extension, then reload Pi. Existing repository bindings are preserved. Calls now use `sites({resource, action, params})` and `sites_documentation({topic})`.
+
+  ### Features
+  - Added Ultrafast selection alongside per-family Fast Mode and a Daybreak toggle that selects an available access program without changing the model.
+  - Support a separate notes extension while preserving Codex tools, cached remote lookup, cross-agent notes and history, and normal compaction. Compaction respects the active context window.
+  - Select native microphones and speakers in settings, including system defaults and saved unavailable devices. Changes apply on the next local audio start.
+  - Save voice and context-summary preferences from the LAN browser for the next call without restarting the current call. Project settings can disable globally configured context summaries.
+  - Transfer voice through `agents focus`, retaining the microphone and browser connection while switching to the destination's context. Handoffs include attributed context and a return action without starting an agent task.
+  - Choose primary and alternate voices in terminal or browser settings. Each session transfer alternates voices and greets the user in the destination's context.
+
+  ### Improvements
+  - Notebook returns help when called without arguments, including an empty structured object. Explicit help remains supported.
+  - Reasoning guidance raises effort for difficult or uncertain work and lowers it for routine work. Exec guidance calls for timeouts on operations that might not finish on their own.
+  - Notes guidance keeps task checkpoints at stable paths and separates reusable topic notes. Note-save bookmarks label the next user prompt as Notes. Selecting it in `/tree` restores the prompt at the saved checkpoint.
+  - Pending remote notes, history results and completed-cell receipts no longer expire after 15 minutes. Long-running cells can accept more than 32 remote calls.
+
+  ### Fixes
+  - Cancelled runs no longer trigger checkpoint rollover, qualify for idle rollover or receive a Notes saved marker after cancellation.
+  - Context-window history starts with the first applicable turn rather than model selection or tree navigation.
+  - Preserve partial-answer labels during replay and compaction.
+  - Fix voice context summaries for compacted conversations containing remote tool results.
+  - Fix quota refresh after reloads and session switches.
+  - Voice and dictation refuse startup while another voice provider is active, including during reconnection and microphone transfer.
+
+## 3.0.47
+
+- Explain when legacy OpenAI Codex login is required instead of Sign in with ChatGPT, with actionable login renewal guidance for voice failures. PCC also clarifies Remote context requirements and Sites authentication failures.
+
+- Fixed HTTP 400 errors when using Local or Tree history with Pi's OpenAI ChatGPT sign-in.
+
+  Show only the latest Notes saved notice on the active branch while preserving earlier checkpoints in session history.
+
+- Preserve supported reasoning levels when context-history tools are enabled, preventing unsupported "none" errors when cycling GPT-6 Sol or Luna.
+
+  Clarified that Auto reasoning supports GPT-6.1 Sol in its settings description.
+
+  Updated `change_reasoning` guidance to call before beginning work and reassess when difficulty or uncertainty changes.
+
+- Idle window rollover now requires fresh notes from the latest completed turn. Without fresh notes, the incoming prompt runs normally instead of triggering a checkpoint request.
+
+## 3.0.46
+
+- Improved context recovery and added Fast Mode controls for all models and individual families.
+
+  - Idle rollover now checkpoints stale notes before continuing in a new window, including after aborted or failed runs.
+  - Added optional **Note save markers** in `/codex display`. Use their `/tree` bookmarks to return to saved checkpoints. In **Notes and history**, plain `/compact` can reuse those notes.
+  - Added **All models Fast Mode** alongside independent Astra, Sol, Terra and Luna controls in `/codex`. Family choices apply across model versions. Existing preferences are preserved.
+  - Extension briefings survive compaction and context rollover. Context briefings expand in the UI, and recent-note previews flag that more notes may be available.
+  - Added Codex Guardian support for Code and Notebook tool calls.
+  - Inactive Codex conversion preserves other extensions' tool selections. Hidden tools no longer add standing prompt instructions.
+  - Notes listings accept `max_files` as an alias for `max_results`.
+
+## 3.0.45
+
+- Added Remote notes and history to existing-agent attachment, including mixed Local, Tree and Remote storage.
+
+## 3.0.44
+
+- Code and Notebook modes now import Pi-callable extension tools automatically, preferring explicit integrations through the Pi Codex Conversion API.
+
+  - Pi automatic compaction and `/compact` now stay in the current window with Notes + history + compaction. Explicit `new_context` still compacts before rollover.
+  - Added **Use notes for tree summaries**, on by default. Turning it off uses Pi's ordinary branch summary without a note-writing run.
+  - Added Local and Tree notes/history access for existing agents attached through Shepherdr, preserving their original identity and read-only checkpoint access after detachment or owner exit.
+  - Removed static environment, history availability and summary claims from context rollover messages.
+
 ## 3.0.43
 
 - Requires Pi 1.0.0 or later.

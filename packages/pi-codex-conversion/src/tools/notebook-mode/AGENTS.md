@@ -1,13 +1,16 @@
-- Keep this optional runtime cold: import it only after Notebook Code Mode is selected; download Deno only on first execution/prepare.
-- Keep host persistence/validation separate from injected kernel source; session checkpoint payloads are deltas against project generations
-- Saved runtime versions are provenance, not restore or write gates; let deserialization report actual incompatibility
-- `journal.ts` appends cell events and rotates at the heap-derived persistence budget, retaining one previous `.ipynb`; `journal-document.ts` materializes standard notebooks
-- Running sessions are private forks; new `globalThis` properties and explicitly pinned bindings merge into project state, never another live kernel
-- Pin promotion and metadata commit under one project lock; failed commits restore kernel tracking. Release/prune preserve pins, and prune requires a caller-selected glob
-- Tool hooks dispatch inside the kernel after bridge settlement, never through a second Jupyter execute while a cell awaits that bridge. Suppress recursion per async hook context, not with a global flag that drops concurrent events
-- Startup lists exact-version npm imports previously used by successful project cells; guidance requires user approval before any unlisted package
-- `notebook-diagnostics.ts` maps journals to one-shot Deno diagnostics; `lsp-process.ts` owns bounded JSON-RPC process transport and never stays resident
-- Profiles load by value and never replay cells
-- `directory-lock.ts` owns cross-process leases; release only the observed owner file and never recursively delete a lock path.
-- Existing V8 Code Mode remains under `tools/code-mode/`; share its public tool, rendering, nested-tool, and output contracts without changing the vendored host.
-- Notebook Deno targets Linux, macOS, and Windows on x64/arm64; every archive and extracted executable stays version-, size-, and checksum-pinned.
+- Load Notebook only when selected. Download Deno on first execution/prepare.
+- Separate host persistence/validation from injected kernel source. Checkpoints are deltas against project generations.
+- Merge against each session's observed baseline. Conflicts keep project bytes and save the candidate separately. Stale restores exclude current names and names deleted since their baseline.
+- Validate persisted identifiers/basenames before source injection or deletion. Manifest paths cannot escape their state directory.
+- Jupyter authenticates four JSON frames, not routing envelopes. Preserve empty/multipart and 64-bit ZMTP frames across TCP chunks. Bound lengths before allocation.
+- Saved runtime versions are provenance, not restore/write gates. Let deserialization report incompatibility.
+- journal.ts appends events and rotates at the heap-derived budget, retaining one previous .ipynb. journal-document.ts materialises standard notebooks.
+- Sessions are private forks. New globalThis properties and pinned bindings merge into project state, never another live kernel.
+- Promote pins and commit metadata under one project lock. Failed commits restore kernel tracking. Release/prune preserve pins. Prune needs a caller-selected glob.
+- Dispatch tool hooks inside the kernel after bridge settlement. Never start another Jupyter execute while a cell awaits that bridge. Suppress recursion per async hook, not globally.
+- Startup lists exact-version npm imports used by successful project cells. Unlisted packages require user approval.
+- notebook-diagnostics.ts provides one-shot Deno diagnostics from journals. lsp-process.ts owns bounded JSON-RPC transport, never a resident process.
+- Profiles load by value, never replay cells.
+- directory-lock.ts owns cross-process leases. Release only the observed owner file, never recursively delete lock paths.
+- V8 stays under tools/code-mode/. Share public tool, rendering, nested-tool and output contracts without changing the vendored host.
+- Support Linux/macOS/Windows x64/arm64. Pin versions, sizes and checksums for archives and extracted executables.

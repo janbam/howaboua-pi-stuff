@@ -66,6 +66,7 @@ export class CodexContextWindowKickoff {
 		if (pending.preparation) return admission;
 		pending.preparation = Promise.resolve().then(async () => {
 			try {
+				if (this.idleInput !== pending) return;
 				if (pending.sessionId !== sessionId || !ctx.isIdle())
 					throw new Error("The original session must be idle before retrying rollover");
 				if (!await rollover()) throw new Error("A new context window could not be started");
@@ -76,7 +77,7 @@ export class CodexContextWindowKickoff {
 			} catch (error) {
 				delete pending.preparation;
 				if (this.idleInput !== pending) return;
-				ctx.ui.notify(`Idle context rollover failed: ${error instanceof Error ? error.message : String(error)}. Input and attachments are still pending. Submit another prompt to retry.`, "error");
+				ctx.ui.notify(`Idle context rollover failed: ${error instanceof Error ? error.message : String(error)}. Input and attachments are still pending. Submit another prompt to retry, or reload the session to cancel pending input.`, "error");
 			}
 		});
 		return admission;

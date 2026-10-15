@@ -46,7 +46,7 @@ const SUPPLEMENTAL_MODELS: Model<"openai-codex-responses">[] = [
 			input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5,
 			tiers: [{ inputTokensAbove: 272_000, input: 4, output: 15, cacheRead: 0.2, cacheWrite: 5 }],
 		},
-		contextWindow: 272_000,
+		contextWindow: 500_000,
 		maxTokens: 128_000,
 		thinkingLevelMap: { off: null, minimal: null, xhigh: "xhigh", max: "max" },
 		compat: { supportsOpenAIGrammarTools: true, supportsMidConvoSystemMessages: true, supportsAdditionalTools: true, supportsToolSearch: true },
@@ -113,7 +113,7 @@ export function openAICodexProviderModels(): Model<"openai-codex-responses">[] {
 	const existing = new Set(models.map(({ id }) => id));
 	return [...models, ...SUPPLEMENTAL_MODELS.filter(({ id }) => !existing.has(id))].map((model) => {
 		if (model.id === "gpt-6.1-sol") {
-			return { ...model, thinkingLevelMap: { ...model.thinkingLevelMap, off: null, minimal: null } };
+			return { ...model, contextWindow: 500_000, thinkingLevelMap: { ...model.thinkingLevelMap, off: null, minimal: null } };
 		}
 		// Pi's built-ins can advertise "none", but the Codex catalog has no off effort here.
 		if (/^gpt-6-(?:sol|luna)$/.test(model.id)) {

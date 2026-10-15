@@ -14,7 +14,7 @@ With Pi Codex's compatible custom developer-message API active, asynchronous wor
 pi install npm:@howaboua/pi-shepherdr
 ```
 
-Requires Pi 1.0.0 or newer, Herdr 0.9 or newer and the Herdr Pi integration:
+Requires Pi 1.1.0 or newer, Node.js 22.18 or newer, Herdr 0.9 or newer and the Herdr Pi integration:
 
 ```bash
 herdr integration install pi
@@ -24,17 +24,21 @@ Do not load Pi Codex's example `agents.toml` custom tool alongside Shepherdr; th
 
 Pi Codex is optional. Without it, Shepherdr remains a normal Pi extension.
 
-## Enable orchestration
+## Control panel
 
-The agent tool is always available in Pi, Code Mode and Notebook Mode. Run Pi inside Herdr to connect the fleet and start monitoring automatically. To prioritize orchestration over direct work for the current session:
+The agent tool is always available in Pi, Code Mode and Notebook Mode. Run Pi inside Herdr to connect the fleet and start monitoring automatically. Open the control panel with:
 
 ```text
 /herdr
 ```
 
-The command only records one visible guidance message without triggering a turn. Run `/herdr` again to return to normal guidance. Resumed sessions restore their last mode; new sessions start with normal guidance. Tool availability and monitoring do not depend on this mode.
+**Settings** contains orchestration preferences, agent command guidance and the global config path. **Status** shows machine connections and reconnect actions. **Connections** adds SSH machines through Herdr's setup flow. Agents handle discovery, attachment and detachment through the `agents` tool, not this panel.
 
-Shepherdr reads Herdr's existing machine profiles and connects enabled profiles at session startup. Manage profiles in Herdr. `/herdr connect [profile-id]` refreshes the catalog and retries failed connections or incomplete monitoring without dropping working connections. A catalog refresh stops watches for disabled or removed profiles without stopping remote agents.
+`/herdr` is Shepherdr's only entry point. Outside the TUI, it reports status without changing it. An orchestration change records one visible guidance message without triggering a turn. Resumed sessions restore their last mode; new sessions start with normal guidance. The current guidance returns when a new model context no longer contains it, including turns started by worker messages. Tool availability and monitoring do not depend on this mode.
+
+To add a machine, enter an SSH target or alias, a label and an optional remote session under **Connections**. Herdr performs setup in the terminal and asks before installing or replacing its remote server. OpenSSH owns authentication; Shepherdr does not store credentials. Profiles remain in Herdr's existing catalog, where they can also be renamed, disabled or removed.
+
+Shepherdr connects enabled profiles at session startup. **Status** refreshes the catalog and retries failed connections or incomplete monitoring without dropping working connections. A catalog refresh stops watches for disabled or removed profiles without stopping remote agents.
 
 Profiles belong to the host running Pi, not the machine displaying its terminal. Omit `machine` for local agent calls. `list` and `find` search all machines unless filtered. Explicit `local` also means the host running Pi. For remote calls, use the opaque profile ID returned by `list`, not its label or hostname. Renaming a profile changes its label, not its routing identity.
 
@@ -46,7 +50,7 @@ Remote machines connect over noninteractive SSH. The target needs `node` on its 
 
 ## Agent calls
 
-Call the `agents` tool with `action: "help"` before first use, then send flat request objects. Code and Notebook Mode expose the same router as `await tools.agents({ action: "help" })`; every call requires `action`.
+Call `agents` with `{}` before first use, alone, then send flat request objects with `action`. Code and Notebook Mode use `await tools.agents()`. Explicit `action: "help"` also returns help.
 
 | Action | Result |
 | --- | --- |
@@ -56,68 +60,141 @@ Call the `agents` tool with `action: "help"` before first use, then send flat re
 | `spawn` | Spawn a profiled Pi agent and send its initial task |
 | `send` | Send a peer message without waiting or subscribing |
 | `assign` | Delegate a task to an existing agent |
+| `attach` | Share context or join a board with an existing idle agent |
+| `detach` | Leave selected membership and retain read-only counterpart checkpoints |
 | `read` | Read the latest assistant reply or bounded terminal output |
-| `answer` | Answer a worker blocked on Pi Ask |
+| `reply` | Deliver an opaque reply to a worker's extension |
 | `watch` | Push future settlement from an existing Pi agent |
 | `unwatch` | Stop reporting an agent |
 
 `spawn` and `assign` block by default. Set `blocking: false` when the controller should continue other work immediately. A profile's `blocking` setting overrides the call for `spawn`. Task completion and blockage are then delivered automatically.
 
-`answer` requires the pending `ask_id` from `read` or a blocked report. It returns `accepted` only when that exact Ask persisted the supplied responses; an accepted retry sends no input.
+Nonblocking extension messages notify the controller once; blocking messages arrive with the worker's blocked result. Both remain visible in `read` and later task reports until the producer closes them. Each replyable message includes a ready `reply` call with its machine, target, extension and message ID. Fill in the extension's reply template. `send` does not resolve an extension message.
 
-Questions, status updates and replies use `send`. It returns after submission, does not accept `blocking`, and never creates or changes a watch or task. Use `assign` only to delegate work whose result you need, not to exchange coordination messages.
+`reply` returns the extension's receipt after semantic delivery. Blocking messages also wait for resumed work unless another call already owns that wait. Nonblocking replies do not wait for the worker's task to finish. Shepherdr forwards strings unchanged. The producing extension owns their meaning, validation and retries.
 
-Automatic delegation watches end when the task finishes or fails. Blocked tasks stay watched until resolved. Only an explicit `watch` keeps reporting subsequent work until `unwatch`. Sending an update to your worker preserves its existing task watch without replacing the task.
+Use `send` for messages and work updates without waiting or adding supervision. Use `assign` when you need the result: it also accepts updates to running work, sharing that work's pending result rather than replacing it. If another call is already waiting, the update returns after submission and leaves that waiter intact. Close finished workers silently instead of waking them with completion acknowledgements or shutdown notices.
 
-Every `spawn` needs an `agent_type` and a concise two- or three-word `label`. The label names both the Herdr tab and Pi session; the routing `name` remains optional and is derived from it when omitted.
+Delegation and explicit `watch` keep reporting subsequent work until `unwatch` or the agent's pane closes. Finishing or failing a task clears that task, not its watch. Follow-up messages through `send` retain completion reporting without replacing the task.
+
+Every `spawn` needs an `agent_type` and a concise `label`. The label names both the Herdr tab and Pi session; the routing `name` remains optional and is derived from it when omitted.
 
 Cancelling a blocking call does not kill its worker. The waiter detaches and the eventual result returns through normal asynchronous delivery.
+
+After Pi compaction or Pi Codex context rollover, the controller receives its supervised agents' exact machine and target, submitted tasks and follow-up instructions, and last observed status, including settled and blocked workers. Read a target for its reply or pending extension messages. This reminder does not start a turn or bypass normal turn preparation.
 
 Prompts sent through `agents` identify peer messages versus delegated tasks and include the sender's host, session, workspace, tab and pane identity, with current names. Reports include source workspace and tab names too. Raw `herdr agent prompt` calls bypass this attribution. These are runtime locations, not the desktop window showing a pane.
 
 Messages sent through `agents` bypass the receiving Pi editor, preserving unsent drafts. Update and reload Shepherdr on receiving agents as well as controllers. If a receiver is unavailable, delivery fails without pasting into its terminal. Raw `herdr agent prompt` still uses terminal input and does not provide this protection.
 
-Messages beginning with `/` use the target Pi session's command, skill and prompt-template expansion, with sender attribution kept out of the arguments. Skills and templates retain normal task waiting. Registered extension commands return `commandSubmitted: true` without waiting or adding a task watch, even through `spawn` or `assign`; submission does not confirm command success. TUI-only commands such as `/model` and `/settings` are not available through this route. When Pi Codex Conversion is installed, update and reload it too.
+Messages beginning with `/` use the target Pi session's command, skill and prompt-template expansion, with sender attribution kept out of the arguments. Skills and templates retain normal task waiting. Prompt templates remain supported, but you must tell your agent which templates exist separately. When Pi Codex Conversion is installed, update and reload it too.
+
+### Agent commands
+
+Call `agents` with `{ commands: true }` to list this session's available slash commands and descriptions without executing them. Add `target` and optionally `machine` to inspect another session, including a busy one. Current-session discovery also works outside Herdr. `machine` alone is rejected because it does not identify a session. Skills and prompt templates are not included.
+
+These built-in commands are available through agent messages without an allowlist:
+
+| Command | Result |
+| --- | --- |
+| `/quit` | Shut down Pi gracefully and close its Herdr pane |
+| `/model <provider/model>` | Change the model |
+| `/thinking <level>` | Change the thinking level |
+| `/name <name>` | Rename the session |
+| `/new` | Start a new session |
+| `/reload` | Reload Pi resources |
+| `/resume <path>` | Resume the session at the supplied path |
+| `/compact [instructions]` | Compact the session with optional instructions |
+
+Custom extension commands must be both registered in the receiving Pi session and allowed in its global user config. **Settings → Agent commands** shows the actual config path. The file is `pi-shepherdr.json` in Pi's agent directory, normally `~/.pi/agent`. Add `extensionCommands`, preserving any existing fields:
+
+```json
+{
+  "extensionCommands": {
+    "my-command": "Run my custom extension action"
+  }
+}
+```
+
+Keys are command names without `/`; values are nonempty descriptions. Only the global user config grants permission. A repository's `.pi/pi-shepherdr.json` cannot allow commands. The config is read on each call. A missing allowlist allows no custom extension commands; malformed config grants none.
+
+Blocked commands return the built-in commands and currently registered, allowed extension commands. Commands return `commandSubmitted: true` without adding a task watch, even through `spawn` or `assign`. Submission does not confirm command success, except `/quit`, which waits for Pi to exit and its pane to close. Built-in commands other than `/quit` require an idle target. Skills and prompt templates keep their existing behavior.
 
 Idle messages start a prepared user turn. Messages arriving during a run use steering, promoted to developer messages when Pi Codex developer delivery is active. Otherwise they remain ordinary Pi custom messages.
 
-For `answer` inside Code or Notebook Mode, update Pi Ask on workers together with Shepherdr on controllers.
+### Extension messages
+
+An extension can publish a durable message without importing Shepherdr:
+
+```ts
+pi.appendEntry("shepherdr-extension-message", {
+  version: 1,
+  extension: "your-extension",
+  id: "unique-message-id",
+  state: "pending",
+  message: "Extension-authored text for the controller",
+  reply: "Extension-authored reply template", // optional
+  blocking: false,
+});
+```
+
+Use a unique ID per message within the extension. `blocking` says whether replying should wait for resumed work. Omit `reply` for messages requiring human handling. Close a message with another entry using the same `version`, `extension` and `id`, and `state: "closed"`. Local and remote readers follow the active session branch and expose every pending record.
+
+Register the reply handler on Pi's event bus:
+
+```ts
+pi.events.on("@howaboua/pi-shepherdr/extension-reply/v1", event => {
+  const { extension, id, message, respond } = event;
+  if (extension !== "your-extension") return;
+  respond(handleReply(id, message));
+});
+```
+
+Claim synchronously with `respond(string | Promise<string>)`. Resolve only after delivering the response and persisting its resulting state. Reject through that promise for validation or delivery errors. Shepherdr returns the opaque result string. Each extension owns one handler and must guard its session lifetime and retry semantics.
+
+Replies use the authenticated peer connection, including across machines, and can reach busy or blocked workers without starting a model turn. Missing handlers fail visibly. An unacknowledged delivery can still have reached its handler, so inspect the target before retrying. Update and reload Shepherdr on both ends and any producing extension that used the previous Ask-specific integration.
+
+### Attach existing agents
+
+Use `attach` before delegating when an independently started agent needs shared notes, history or board membership:
+
+```js
+await tools.agents({ action: "attach", target: "<target from find>", context: true, board: true })
+```
+
+Supply both booleans and enable at least one. `context` shares notes and history through aliases without changing either session's original context identity or moving its notes. `contextAgent` addresses the target from the controller; `controllerContextAgent` addresses the controller from the target. Use these paths as `history`'s `agent_name` or as `<agent>/notes/<path>` for notes. Each agent's relative note paths remain its own. The target receives its controller alias without starting a turn.
+
+Context attachment requires updated Codex Conversion with Local, Tree or Remote storage. Each owner keeps its original context identity and storage, including when the two agents use different stores. Remote access uses the reader's active Codex transport and requires the original account and backend, regardless of provider name. The explicit `context: true` choice does not depend on the controller's spawn-sharing setting. Use Code or Notebook with ordinary query and text for mixed-storage search and writes. Direct sensitive calls cannot cross between encrypted Remote arguments and ordinary Local or Tree arguments. If attachment changes context access during an exec cell, start a new cell before using notes or history.
+
+An account mismatch rejects context sharing. Each agent keeps its own notes and history. If the account changes after attachment, pinned Remote notes become unavailable, including native Remote notes. Notes do not move to a new account or another store. Use messages to exchange the context the other agent needs.
+
+`board: true` requires Pi Agent Board loaded in both sessions. It joins the controller's enabled board and returns `boardAgent` for subscriptions and notifications. The target's previous board archive stays untouched. If the folders differ, that archive remains in its original folder rather than becoming part of the controller's archive. Board-only attachment works without Codex Conversion and with Remote context storage.
+
+The target must be idle and both Pi sessions must be saved. Existing shared-context members and controllers with context children cannot be context targets. Existing board members and roots with board children cannot switch boards. A target supports one controller and one fixed set of attachment choices. Attachment starts no task or watch; `assign` and `send` never attach implicitly.
+
+Attachments survive resume, not forks. Local and Tree live access needs the owning Pi processes and machine connections. Remote access uses authenticated backend references rather than the owner's running process. After an interrupted attachment, resume the original sessions and retry the same target and choices. The target may already have joined even when the controller reports failure; retries reuse the original aliases and membership rather than creating duplicates.
+
+To detach, call `agents` with `action: "detach"`, the same target, and both booleans. Enable each membership you want to leave. Context detach retains counterpart notes under the existing aliases read-only. Local and Tree notes use captured checkpoints. Remote notes retain an authenticated reference to the original owner's saved backend notes, not a frozen plaintext snapshot. Counterpart history and writes stop at detach. Native notes and history keep their original identities. Board detach restores the target's previous board and stops its shared-board notifications without deleting either archive. Board members with children cannot detach. Reattachment is unsupported.
+
+If an attached owner closes or dies, Local and Tree notes reads first use its latest saved checkpoints when the source machine and session file remain reachable. This needs no running owner process and never writes to its session file. If the source is unavailable, reads return the timestamped snapshot captured at attachment, explicitly marked stale with the access failure. No latest-checkpoint guarantee is possible for a disconnected source machine or unsaved notes. Local and Tree counterpart history still requires its live owner. Remote notes and history remain reachable through the backend with the original account and backend. Backend failures stay visible without a local fallback. An incomplete detach fails with a retry instruction rather than claiming success.
 
 ## Message board
 
-The board is off by default. In the root session, run `/herdr board` to open its settings menu. Choose a session override, a remembered folder default, or **Enable globally**. Disabling the board hides its tool and stops notifications without deleting history. Board storage requires Node.js 22.13 or newer. Pi Codex Conversion is not required.
+Boards are provided by the separate [Pi Agent Board](../pi-agent-board) extension. Install it in every participating Pi session, then reload:
 
-Session overrides survive resume but do not carry into new root sessions or forks. Folder settings apply only to sessions launched in that exact folder, not its child directories. Global enablement is a separate setting. Precedence is session, folder, then global. Bound children inherit their root's choice even with a different working directory. Orchestration mode and shared notes remain independent.
-
-The menu saves folder settings in `<launch-folder>/.pi/pi-shepherdr.json`:
-
-```json
-{ "board": { "enabled": true } }
+```sh
+pi install npm:@howaboua/pi-agent-board
 ```
 
-The extension creates `pi-shepherdr.json` in Pi's global agent directory with this default:
+The same discussions, subscriptions and saved history continue without migration. Pi Agent Board owns the `board` tool, settings and `/board` browser viewer. Shepherdr has no fallback board or board controls under `/herdr`. If a saved board setting is on but the extension is missing, Shepherdr displays an installation warning once per session. Saved settings and archives remain untouched. Pi Codex Conversion is optional.
 
-```json
-{ "board": { "enabledGlobally": false } }
-```
+Shepherdr supplies family membership, attachments and remote routing. Children spawned while the board is enabled inherit its location and board ID even with another working directory. The spawn result's `boardAgent` is their address for subscriptions and explicit notifications, distinct from a pane or shared-notes identity. Independently started agents, existing `assign` targets and children spawned while it is off do not join automatically. Use explicit `attach` to join an existing agent. Board identity is independent of orchestration mode, shared notes and `share_context`.
 
-The agent directory defaults to `~/.pi/agent` and respects `PI_CODING_AGENT_DIR`. Enabling a board in the home folder writes `~/.pi/pi-shepherdr.json`, not the global setting. It does not enable boards in other folders. Storage location never implies activation scope. JSON edits are picked up before the next user turn or on `/reload`; invalid configuration disables the board with an explicit error.
-
-Command equivalents are `/herdr board on` or `off` for this session, `/herdr board on folder` or `off folder` for a folder default, and `/herdr board on global` or `off global` for the global default. `/herdr board inherit` clears the session override; `/herdr board inherit folder` clears the folder override. A session override can mask changes to either default. Outside the TUI, `/herdr board` reports status and archive location.
-
-Agents call `board` with `action: "help"` to discover channels, posts, replies, search, subscriptions and bounded reads. Code and Notebook Mode use `tools.board`. Agents choose when discussions are useful. Enabling the board, starting sessions, reading history and spawning children do not create an empty board. The first successful channel creation or post to a new channel creates it.
-
-Results fit 8,000 serialized UTF-8 bytes, including JSON escaping and metadata. Reads may return smaller pages or text slices than requested. Continue with the returned cursor or `next_offset_chars`. A search with `after_message_id` requires a post in the selected board, even before an archive exists.
-
-One archive at `<owning-folder>/.pi/agent-message-board.sqlite` retains all boards for that folder. Each root Pi session has an isolated board; resume keeps it and new root sessions get separate boards. Children spawned while the board is enabled inherit its location and board ID even with another working directory. The spawn result's `boardAgent` is their address for subscriptions and explicit notifications, distinct from a pane or shared-notes identity. Independently started agents, existing `assign` targets and children spawned while it is off do not join automatically. Board identity is independent of shared notes and `share_context`.
-
-Calls default to the current board. `list_boards` lists saved boards, and `board_id` on read and search actions browses their history. Writes and subscriptions always target the current board. There is no task assignment, post editing or board deletion tool. These archives contain discussion text; keep them out of version control and do not share them with users who should not read that text.
-
-Posting subscribes its author to discussion replies unless the author explicitly unsubscribed. Channel subscriptions concern only new first posts. Explicit notification targets receive a one-time preview without subscribing. Notifications reach running turns only: no waking idle agents and no queued offline notices. Full text remains available through reads.
-
-Child board calls use the owning Pi sessions and existing SSH connections, not a separately provisioned service. The root and intermediate controllers must be running as processes, but need not be in an active model turn. Resume the owner and use `/herdr connect` after a lost connection. Future root sessions can browse the archive even when the old owner is offline. A fork starts a new independent identity. Profiles selecting an existing session cannot bind to an enabled board through `spawn`; use `assign` without board membership instead.
+Child board calls use the owning Pi sessions and existing SSH connections, not a separately provisioned service. The root and intermediate controllers must be running as processes, but need not be in an active model turn. Resume the owner and reconnect under `/herdr` → **Status** after a lost connection. Future root sessions can browse the archive even when the old owner is offline. A fork starts a new independent identity. Profiles selecting an existing session cannot bind to an enabled board through `spawn`; use `attach` followed by `assign` instead.
 
 ## Shared notes and history
+
+With compatible Pi Codex Conversion on both ends, Shepherdr marks fresh spawned workers before their first task with their immediate parent's native Pi session ID and `subagentKind: "collab_spawn"`. Each worker keeps its own native session ID. This relationship works with shared notes disabled and does not grant notes access. Resume preserves it; forks and profiles selecting existing sessions do not acquire an inherited relationship. Older PCC versions without the optional capability retain ordinary delegation. The [extension API guide](../../docs/extension-apis.md#parent-and-worker-relationships) documents PCC's `bindRelationship` service contract for other orchestrators. Shepherdr owns transport, not a separate public relationship RPC API.
 
 With Pi Codex Conversion 3.0.40 or newer and notes-based continuity, enable **Share subagent context** under `/codex context` in the controller. It is off by default. Shared `spawn` gives each child a unique context identity before its first turn; `contextAgent` in the result identifies its notes and history. Shared nested spawns stay in the same family. Turning sharing off affects new spawns only; existing identity survives resume. `assign` and independently started agents remain unchanged. Older compatible Conversion versions keep ordinary delegation without sharing.
 
@@ -125,9 +202,9 @@ Set `"share_context": false` in a profile to keep its new workers' notes and his
 
 Pi creates each worker session normally. The worker records its shared identity before Shepherdr delivers the first task; no pre-created session file or launch override is needed.
 
-Remote sharing requires Remote storage and the same Codex account on both ends. Local and Tree route through the owning Pi sessions and existing SSH connections. Those owners and intermediate controllers must be running; unavailable routes fail explicitly. Resume the owner and use `/herdr connect` after a connection loss. No note store is copied or silently substituted.
+Remote sharing requires Remote storage and the same Codex account on both ends. Local and Tree route through the owning Pi sessions and existing SSH connections. Those owners and intermediate controllers must be running; unavailable routes fail explicitly. Resume the owner and reconnect under `/herdr` → **Status** after a connection loss. No note store is copied or silently substituted.
 
-Both extensions work independently. A target without active context support still starts, with a warning that its context is not shared. A conflicting storage mode or account rejects the shared spawn before task delivery. Profiles that select or resume an existing session cannot participate in shared `spawn`; use `assign` instead.
+Both extensions work independently. A target without active context support still starts, with a warning that its context is not shared. A conflicting storage mode or account rejects the shared spawn before task delivery. Profiles that select or resume an existing session cannot participate in shared `spawn`; use `attach` for context access, then `assign`.
 
 ## Profiles
 

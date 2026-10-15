@@ -2,6 +2,8 @@
 
 Adds an agent-callable `vent` tool for recording repeated or systemic workflow friction in a project-specific log under `~/.pi/agent/vent/`.
 
+This package is no longer maintained and will receive no further releases. Source is retained for reference and adaptation. The workflow now lives as a [Pi Codex custom tool](../pi-codex-conversion/).
+
 Use it for recurring tool failures, repeated manual workarounds, noisy output that forces the same retries, or instructions that repeatedly cause backtracking. Ordinary lint errors, one-off mistakes, and routine debugging do not belong there.
 
 Entries are batched near the end of an agent turn to avoid constant tool chatter.

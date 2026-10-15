@@ -1,6 +1,6 @@
 {
 	"name": "@howaboua/pi-gippity-control",
-	"version": "0.0.24",
+	"version": "0.0.26",
 	"description": "GipPity voice and LAN remote control for any Pi model",
 	"keywords": [
 		"pi-package",
@@ -52,8 +52,8 @@
 	"dependencies": {
 		"proxy-from-env": "2.1.0",
 		"selfsigned": "^5.5.0",
-		"undici": "8.10.2",
-		"ws": "^8.21.3"
+		"undici": "8.11.2",
+		"ws": "^8.22.0"
 	},
 	"peerDependencies": {
 		"@earendil-works/pi-ai": ">=1.0.0",
@@ -61,12 +61,12 @@
 		"@earendil-works/pi-tui": ">=1.0.0"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "^2.5.10",
-		"@earendil-works/pi-ai": "1.0.0",
-		"@earendil-works/pi-coding-agent": "1.0.0",
-		"@earendil-works/pi-tui": "1.0.0",
-		"@types/node": "^26.2.0",
-		"@types/ws": "^8.18.1",
+		"@biomejs/biome": "^2.5.15",
+		"@earendil-works/pi-ai": "1.1.0",
+		"@earendil-works/pi-coding-agent": "1.1.0",
+		"@earendil-works/pi-tui": "1.1.0",
+		"@types/node": "^26.6.5",
+		"@types/ws": "^8.18.2",
 		"typescript": "^7.0.2"
 	}
 }

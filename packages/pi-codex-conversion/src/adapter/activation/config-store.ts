@@ -2,8 +2,9 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { dirname, join } from "node:path";
 import { CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { migrateCodexConversionConfigIfNeeded } from "./config-migration.ts";
-import { DEFAULT_CODEX_CONVERSION_CONFIG, normalizeCodexConversionConfig, type CodexConversionConfig, type LunaCacheKeepaliveMinutes } from "./config.ts";
+import { DEFAULT_CODEX_CONVERSION_CONFIG, normalizeCodexConversionConfig, type CodexConversionConfig, type LunaCacheKeepaliveMinutes, type LunaCacheKeepaliveIntervalMinutes, type CacheKeepaliveIntervalMinutes } from "./config.ts";
 import { readCodexCacheEnvironment } from "./cache-environment.ts";
+import { normalizeFastMode } from "./fast-mode.ts";
 
 // Lite deliberately shares the original package's config so replacing either
 // package does not require a reset or a second settings file.
@@ -36,12 +37,16 @@ function mergeConfigDocument(existing: Record<string, unknown>, owned: Record<st
 	return merged;
 }
 
-function clearAbsentOwnedOptionals(document: Record<string, unknown>, owned: Record<string, unknown>): void {
+function clearAbsentOwnedOptionals(document: Record<string, unknown>, owned: Record<string, unknown>, folderScope: boolean): void {
 	const voice = isRecord(document["voice"]) ? document["voice"] : undefined;
 	const ownedVoice = isRecord(owned["voice"]) ? owned["voice"] : undefined;
 	if (!voice || !ownedVoice) return;
 	for (const key of ["contextModel", "inputDevice", "outputDevice"])
-		if (!(key in ownedVoice)) delete voice[key];
+		if (!(key in ownedVoice)) {
+			// A project-level Off must override a globally selected summary model.
+			if (folderScope && key === "contextModel") voice[key] = null;
+			else delete voice[key];
+		}
 }
 
 function writeConfigDocumentAtomic(configPath: string, document: Record<string, unknown>): void {
@@ -61,7 +66,7 @@ function writeConfigDocumentAtomic(configPath: string, document: Record<string, 
 function withoutProjectOnlyConfig(config: CodexConversionConfig): CodexConversionConfig {
 	return {
 		...config,
-		openai: { ...config.openai, cacheKeepalive: false },
+		openai: { ...config.openai, cacheKeepalive: false, cacheKeepaliveIntervalMinutes: 25 },
 	};
 }
 
@@ -69,6 +74,7 @@ function withoutProjectOnlyDocument(document: Record<string, unknown>): Record<s
 	const openai = isRecord(document["openai"]) ? { ...document["openai"] } : undefined;
 	if (!openai) return document;
 	delete openai["cacheKeepalive"];
+	delete openai["cacheKeepaliveIntervalMinutes"];
 	const next = { ...document };
 	if (Object.keys(openai).length > 0) next["openai"] = openai;
 	else delete next["openai"];
@@ -79,6 +85,7 @@ function withoutGlobalOnlyDocument(document: Record<string, unknown>): Record<st
 	const openai = isRecord(document["openai"]) ? { ...document["openai"] } : undefined;
 	if (!openai) return document;
 	delete openai["lunaCacheKeepaliveMinutes"];
+	delete openai["lunaCacheKeepaliveIntervalMinutes"];
 	const next = { ...document };
 	if (Object.keys(openai).length > 0) next["openai"] = openai;
 	else delete next["openai"];
@@ -146,14 +153,14 @@ export function hasFolderCodexConversionConfig(cwd: string, projectTrusted: bool
 	return [...OWNED_CONFIG_KEYS, ...LEGACY_OWNED_CONFIG_KEYS].some((key) => {
 		if (key !== "openai") return key in project;
 		const openai = isRecord(project["openai"]) ? project["openai"] : undefined;
-		return !!openai && Object.keys(openai).some((option) => option !== "cacheKeepalive");
+		return !!openai && Object.keys(openai).some((option) => option !== "cacheKeepalive" && option !== "cacheKeepaliveIntervalMinutes");
 	});
 }
 
 function applyProcessOverrides(config: CodexConversionConfig, env: NodeJS.ProcessEnv): CodexConversionConfig {
 	const cacheEnvironment = readCodexCacheEnvironment(env);
 	const fast = env["PI_CODEX_FAST"]?.trim().toLowerCase();
-	const fastOverride = fast === "1" || fast === "true"
+	const fastOverride = fast === "ultrafast" ? "ultrafast" : fast === "1" || fast === "true"
 		? true
 		: fast === "0" || fast === "false"
 			? false
@@ -166,7 +173,7 @@ function applyProcessOverrides(config: CodexConversionConfig, env: NodeJS.Proces
 		...config,
 		openai: {
 			...config.openai,
-			...(fastOverride !== undefined ? { fast: fastOverride } : {}),
+			...(fastOverride !== undefined ? { fast: normalizeFastMode(fastOverride) } : {}),
 			...(cacheEnvironment.diagnostics !== undefined
 				? { cacheDiagnostics: cacheEnvironment.diagnostics }
 				: {}),
@@ -193,6 +200,7 @@ export function setProjectCodexCacheKeepalive(
 	cwd: string,
 	projectTrusted: boolean,
 	enabled: boolean,
+	intervalMinutes?: CacheKeepaliveIntervalMinutes,
 ): { ok: true } | { ok: false; error: string } {
 	if (!projectTrusted) return { ok: false, error: "Trust this folder before changing project cache keepalive" };
 	const path = getProjectCodexConversionConfigPath(cwd);
@@ -203,6 +211,7 @@ export function setProjectCodexCacheKeepalive(
 		const openai = isRecord(document["openai"]) ? { ...document["openai"] } : {};
 		if (enabled) openai["cacheKeepalive"] = true;
 		else delete openai["cacheKeepalive"];
+		if (intervalMinutes !== undefined) openai["cacheKeepaliveIntervalMinutes"] = intervalMinutes;
 		if (Object.keys(openai).length > 0) document["openai"] = openai;
 		else delete document["openai"];
 		if (Object.keys(document).length === 0) rmSync(path, { force: true });
@@ -218,11 +227,13 @@ export function setProjectCodexCacheKeepalive(
 export function setGlobalCodexLunaCacheKeepalive(
 	minutes: LunaCacheKeepaliveMinutes,
 	globalConfigPath: string = getCodexConversionConfigPath(),
+	intervalMinutes?: LunaCacheKeepaliveIntervalMinutes,
 ): { ok: true } | { ok: false; error: string } {
 	const config = readCodexConversionConfig(globalConfigPath);
 	return writeCodexConversionConfig({
 		...config,
-		openai: { ...config.openai, lunaCacheKeepaliveMinutes: minutes },
+		openai: { ...config.openai, lunaCacheKeepaliveMinutes: minutes,
+			...(intervalMinutes !== undefined ? { lunaCacheKeepaliveIntervalMinutes: intervalMinutes } : {}) },
 	}, globalConfigPath);
 }
 
@@ -248,7 +259,11 @@ export function clearFolderCodexConversionConfig(
 	for (const key of [...OWNED_CONFIG_KEYS, ...LEGACY_OWNED_CONFIG_KEYS]) {
 		if (key === "openai" && isRecord(project[key])) {
 			const keepalive = project[key]["cacheKeepalive"];
-			const nextOpenAI = keepalive === true ? { cacheKeepalive: true } : {};
+			const interval = project[key]["cacheKeepaliveIntervalMinutes"];
+			const nextOpenAI = {
+				...(keepalive === true ? { cacheKeepalive: true } : {}),
+				...(interval === 25 || interval === 55 ? { cacheKeepaliveIntervalMinutes: interval } : {}),
+			};
 			if (Object.keys(nextOpenAI).length === 0) delete project[key];
 			else project[key] = nextOpenAI;
 			continue;
@@ -288,7 +303,7 @@ export function writeCodexConversionConfig(
 		document = folderScope
 			? withoutDisabledProjectCacheKeepalive(withoutGlobalOnlyDocument(document))
 			: withoutProjectOnlyDocument(document);
-		clearAbsentOwnedOptionals(document, normalized);
+		clearAbsentOwnedOptionals(document, normalized, folderScope);
 		for (const key of LEGACY_OWNED_CONFIG_KEYS) delete document[key];
 		const compaction = document["compaction"];
 		if (isRecord(compaction))

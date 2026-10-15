@@ -16,6 +16,7 @@ import {
 	type VoiceState,
 } from "./controller-support.ts";
 import type { CodexRealtimePeer } from "./conversation/peer.ts";
+import type { TransferredVoiceControls } from "./handoff-contract.ts";
 import type { CodexRealtimeConversation } from "./conversation/session.ts";
 import type { CodexVoiceSessionMessages } from "./session-messages.ts";
 import type { CodexVoiceMode } from "./ui.ts";
@@ -25,10 +26,14 @@ export interface RealtimePeerPlan {
 	onActive?(session: CodexRealtimeConversation, peer: CodexRealtimePeer): void;
 	onInactive?(session: CodexRealtimeConversation, error: Error, resuming: boolean): void;
 	onStatus?(status: string): void;
+	onTransferred?(peer: CodexRealtimePeer, controls: TransferredVoiceControls): void;
+	onTransferEnded?(peer: CodexRealtimePeer, error?: Error): void;
+	onStopped?(): void;
 }
 
 export interface VoiceControllerRuntime {
 	state: VoiceState;
+	alternateVoice?: boolean;
 	context?: ExtensionContext | undefined;
 	config?: CodexConversionConfig | undefined;
 	announcedMode?: CodexVoiceMode | undefined;
@@ -80,6 +85,7 @@ export async function startControllerMode(options: {
 	mode: CodexVoiceMode;
 	realtimePeerPlan?: RealtimePeerPlan | undefined;
 	resume?: boolean | undefined;
+	alternateVoice?: boolean | undefined;
 	inputMuted?: boolean | undefined;
 	preparedRealtimeContext?: PreparedRealtimeContext | undefined;
 	signal?: AbortSignal | undefined;
@@ -111,6 +117,9 @@ export async function startControllerMode(options: {
 	const startGeneration = ++runtime.startGeneration;
 	runtime.context = options.ctx;
 	runtime.config = options.config;
+	runtime.alternateVoice = options.resume
+		? runtime.alternateVoice ?? false
+		: options.alternateVoice ?? false;
 	runtime.realtimePeerPlan = options.mode === "realtime" ? options.realtimePeerPlan : undefined;
 	// A prepared refresh replaces only the call, not its queued Pi work.
 	if (!options.preparedRealtimeContext) options.messages.setContext(options.ctx);
@@ -217,15 +226,25 @@ async function startConversation(
 	const peer = options.realtimePeerPlan?.createPeer();
 	await startControllerConversation({
 		auth,
-		config: options.config,
+		config: runtime.alternateVoice
+			? {
+					...options.config,
+					voice: {
+						...options.config.voice,
+						v3Voice: options.config.voice.v3AlternateVoice,
+					},
+				}
+			: options.config,
 		instructions,
 		initialItems,
 		inputMuted: options.inputMuted,
 		greeting: options.resume
 			? undefined
-			: initialItems?.length
-				? "contextual"
-				: "fresh",
+			: options.alternateVoice !== undefined
+				? "handoff"
+				: initialItems?.length
+					? "contextual"
+					: "fresh",
 		peer,
 		signal,
 		lifecycle: {

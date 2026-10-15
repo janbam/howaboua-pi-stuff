@@ -1,6 +1,6 @@
 import { getAgentDir, type AgentToolResult, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { CodexExtensionRuntime } from "../extension/runtime.ts";
-import { getCodeModeExtensionTools } from "../code-mode-extension-tools.ts";
+import { getCodeModeExtensionToolSnapshot } from "../code-mode-extension-tools.ts";
 import {
 	type CodeModeRegistration,
 	registerCodeModeTools,
@@ -18,7 +18,7 @@ import { codeModeImageResult, toNestedTool } from "./code-mode/nested-tool-adapt
 import { createContextWindowTools } from "../context-management/tools.ts";
 import { resolveRemoteContextScope } from "../context-management/remote-scope.ts";
 import { appendRemoteDelivery } from "../context-management/remote-delivery.ts";
-import { createMcpCodeModeBridge } from "./code-mode/mcp-tools.ts";
+import { createPiCodeModeBridge } from "./code-mode/pi-tools.ts";
 import { syncAdapter } from "./activation/activation.ts";
 
 const LONG_RUNNING_TOOL_OUTER_YIELD_MS = 1_800_000;
@@ -30,7 +30,7 @@ export async function registerCodexCodeMode(
 	let latestContext: ExtensionContext | undefined;
 	let stopped = false;
 	let pendingNativeProjection = false;
-	const mcp = createMcpCodeModeBridge(pi);
+	const piTools = createPiCodeModeBridge(pi);
 	const isActive = (ctx: unknown) => {
 		if (ctx) latestContext = ctx as ExtensionContext;
 		const plan = resolveCodexRuntimePlanForState(ctx as ExtensionContext, runtime.state);
@@ -65,24 +65,24 @@ export async function registerCodexCodeMode(
 						syncAdapter(pi, latestContext, runtime.state);
 				});
 			}
-			const changes = mcp.prepareLoadout(loadout);
+			const changes = piTools.prepareLoadout(loadout);
 			return { ...changes, hiddenDeclarations: [...(changes.hiddenDeclarations ?? []), "codemode",
 				...(nativeSearch ? ["tool_search"] : [])] };
 		},
 		getTools: (ctx) => {
 			const context = ctx as ExtensionContext | undefined;
+			const extensions = getCodeModeExtensionToolSnapshot(pi, context, {
+				eligibleTopLevelNames: runtime.state.previousToolNames ?? pi.getActiveTools(),
+			});
 			return [
 				...createNestedTools(pi, runtime, context),
-				...getCodeModeExtensionTools(
-					pi,
-					context,
-					runtime.state.previousToolNames ?? pi.getActiveTools(),
-				),
-				...mcp.getTools(),
+				...extensions.tools,
+				...piTools.getTools(extensions.allToolNames),
 			];
 		},
 		isActive,
 		opaqueResultScope: (ctx) => resolveRemoteContextScope(ctx, runtime.state),
+		lazyOpaqueResultScope: () => Boolean(runtime.state.externalNotes),
 		deliverOpaqueResponse: (response, callId, scope, ctx) => appendRemoteDelivery(pi, response, callId, scope, ctx),
 		executionKind: (ctx) =>
 			resolveCodexRuntimePlanForState(ctx as ExtensionContext, runtime.state).kind === "notebook"
@@ -223,10 +223,17 @@ function createNestedTools(
 			{ ...(imageCapable ? { resultValue: codeModeImageResult } : {}) },
 		));
 	}
-	if (ctx && resolveCodexRuntimePlanForState(ctx, runtime.state).contextManagement) {
-		const [, getContextRemaining] = createContextWindowTools(pi, runtime.state);
-		tools.push(toNestedTool(
-			getContextRemaining,
+	if (ctx && (runtime.state.externalNotes || resolveCodexRuntimePlanForState(ctx, runtime.state).contextManagement)) {
+		const externalRemaining = runtime.state.externalNotes?.tools?.find(tool => tool.name === "get_context_remaining");
+		if (externalRemaining) tools.push(toNestedTool(externalRemaining, "await tools.get_context_remaining({})", {}, {
+			resultValue: result => {
+				const text = result.content.find(part => part.type === "text");
+				const remaining = text?.type === "text" ? JSON.parse(text.text) as { remainingTokens?: number | null } : undefined;
+				return { tokens_left: remaining?.remainingTokens ?? null };
+			},
+		}));
+		else if (!runtime.state.externalNotes) tools.push(toNestedTool(
+			createContextWindowTools(pi, runtime.state)[1],
 			"await tools.get_context_remaining({})",
 			{},
 			{

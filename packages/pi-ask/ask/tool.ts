@@ -1,11 +1,14 @@
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
+import { Check } from "typebox/value";
 import { AskParameters, type AskPrompt } from "./contracts.js";
 import {
 	type AskCoordinatorOptions,
 	createAskCoordinator,
 } from "./coordinator.js";
 import {
+	askInputProblem,
+	isAskHelpInput,
 	isSteeringAskInput,
 	normalizeAskInput,
 	normalizeResponses,
@@ -33,27 +36,48 @@ export function createAskRuntime({
 	deliverSteer,
 	onBlockedChange,
 	onPendingChange,
+	onRequestChange,
 	onPresent,
 }: AskToolOptions = {}) {
 	const coordinator = createAskCoordinator({
 		...(askInComposer ? { askInComposer } : {}),
 		...(deliverSteer ? { deliverSteer } : {}),
 		...(onPendingChange ? { onPendingChange } : {}),
+		...(onRequestChange ? { onRequestChange } : {}),
 		...(onPresent ? { onPresent } : {}),
 	});
 
 	const tool = defineTool({
 		name: "ask",
 		label: "Ask",
-		description: "Request user input or action",
+		description: "Request user input or action; {} for help",
 		parameters: AskParameters,
-		promptGuidelines: [
-			"ask: Omit delivery to wait; steer only while reversible work can continue. Handoffs wait for user action; state the completion signal",
-			"ask: For reviews, make each finding a prompt with disposition choices; do not report first.",
-			"ask: Other/rephrase is automatic; omit choices for free text",
-		],
 		executionMode: "sequential",
+		prepareArguments(input) {
+			const params = input === undefined ? {} : input;
+			const problem = askInputProblem(params);
+			if (problem) throw new Error(problem);
+			if (!Check(AskParameters, params))
+				throw new Error("Invalid ask arguments; ask({}) returns help");
+			return params;
+		},
 		async execute(toolCallId, params, signal, _onUpdate, ctx) {
+			if (isAskHelpInput(params)) {
+				return {
+					content: [
+						textContent(
+							[
+								"ask({}) or ask({ help: true }) returns help",
+								'ask({ prompts: [{ title, body?, multiple?, choices?: [{ label, description? }] }], delivery?: "wait"|"steer", handoff? })',
+								"Omit delivery to wait; steer only while reversible work can continue. Handoffs wait for user action; state the completion signal",
+								"For reviews, make each finding a prompt with disposition choices; do not report first",
+								"Other/rephrase is automatic; omit choices for free text. Blank Other/rephrase means rephrase or follow up",
+							].join("\n"),
+						),
+					],
+					details: { kind: "help" },
+				};
+			}
 			const { delivery, handoff, prompts } = normalizeAskInput(params);
 			if (prompts.length === 0) {
 				throw new Error(
@@ -72,7 +96,7 @@ export function createAskRuntime({
 				return {
 					content: [
 						textContent(
-							"Question presented. Continue working; the response will arrive as steering.",
+							"Question queued. Continue working; the response will arrive as steering.",
 						),
 					],
 					details: { kind: "prompt", pending: true, id: toolCallId },
@@ -92,12 +116,20 @@ export function createAskRuntime({
 			const presentationSignal = signal
 				? AbortSignal.any([signal, coordinator.sessionSignal])
 				: coordinator.sessionSignal;
-			const rawResponses = await coordinator.present(ctx, prompts, {
-				handoff,
-				signal: presentationSignal,
-				onActiveChange: (active) =>
-					onBlockedChange?.({ ...blockedState, active }),
-			});
+			let rawResponses: unknown;
+			try {
+				rawResponses = await coordinator.present(ctx, prompts, {
+					id: toolCallId,
+					handoff,
+					signal: presentationSignal,
+					onActiveChange: (active) =>
+						onBlockedChange?.({ ...blockedState, active }),
+				});
+				coordinator.complete(toolCallId);
+			} catch (error) {
+				coordinator.complete(toolCallId, String(error));
+				throw error;
+			}
 			const responses = normalizeResponses(prompts, rawResponses);
 			if (!responses) {
 				return {
@@ -115,6 +147,8 @@ export function createAskRuntime({
 			};
 		},
 		renderCall(args, theme, context) {
+			if (isAskHelpInput(args))
+				return new Text(theme.fg("toolTitle", theme.bold("ask help")), 0, 0);
 			const count = Array.isArray(args.prompts) ? args.prompts.length : 0;
 			const label =
 				args.handoff === true
@@ -142,6 +176,7 @@ export function createAskRuntime({
 
 	return {
 		tool,
+		reply: coordinator.reply,
 		restorePending: coordinator.restorePending,
 		shutdown: coordinator.shutdown,
 	};

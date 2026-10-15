@@ -1,24 +1,55 @@
 import {
 	type CodexConversionConfig,
 	DEFAULT_CODEX_CONVERSION_CONFIG,
+	FAST_MODE_FAMILIES,
 	LUNA_CACHE_KEEPALIVE_MINUTES_OPTIONS,
 	normalizeCodexVerbosity,
 } from "../../adapter/activation/config.ts";
+import { allModelsFastModeState, normalizeFastMode } from "../../adapter/activation/fast-mode.ts";
 import { type ConfigSetting, projectCacheKeepalive, setting, toggle } from "./config-items-shared.ts";
 
 export function buildOpenAISettings(
 	config: CodexConversionConfig,
 ): ConfigSetting[] {
 	return [
-		toggle("fast", "Fast mode", config.openai.fast, (enabled, current) => ({
-			...current,
-			openai: { ...current.openai, fast: enabled },
-		}), "Request priority processing where supported. May use more quota or cost more."),
+		toggle(
+			"daybreak",
+			"Daybreak",
+			config.openai.daybreak,
+			(enabled, current) => ({ ...current, openai: { ...current.openai, daybreak: enabled } }),
+			"Use the connected Codex account's advertised Daybreak access without changing the model. Turn off to continue if support cannot be confirmed.",
+		),
+		setting(
+			{
+				id: "fast-all",
+				label: "All models Fast Mode",
+				currentValue: allModelsFastModeState(config.openai.fast),
+				values: ["off", "on", "ultrafast"],
+				description: "Set speed for every model, then override families individually. Ultrafast requires access; prices are estimated at base rates where unpublished.",
+			},
+			(value, current) => ({
+				...current,
+				openai: { ...current.openai, fast: normalizeFastMode(value === "ultrafast" ? value : value === "on") },
+			}),
+		),
+		...FAST_MODE_FAMILIES.map((family) => setting(
+			{
+				id: `fast-${family}`,
+				label: `${family[0]!.toUpperCase()}${family.slice(1)} Fast Mode`,
+				currentValue: config.openai.fast[family] === "ultrafast" ? "ultrafast" : config.openai.fast[family] ? "on" : "off",
+				values: ["off", "on", "ultrafast"],
+				description: "Request priority (on) or ultrafast across versions. Requires access; unpublished ultrafast prices use base estimates.",
+			},
+			(value, current) => ({
+				...current,
+				openai: { ...current.openai, fast: { ...current.openai.fast, [family]: value === "ultrafast" ? value : value === "on" } },
+			}),
+		)),
 		{
 			item: {
 				id: "lunaCacheKeepaliveMinutes",
-				description: "Send idle requests every 2.5 minutes for this duration to keep GPT-5.6 Luna's prompt cache warm. Uses quota.",
-				label: "GPT-5.6 Luna cache keepalive (global)",
+				description: "Limit idle Luna keepalive requests to this duration across versions. Uses quota. Off disables requests.",
+				label: "Luna keepalive duration (global)",
 				currentValue: config.openai.lunaCacheKeepaliveMinutes === 0
 					? "off"
 					: `${config.openai.lunaCacheKeepaliveMinutes} mins`,
@@ -26,10 +57,21 @@ export function buildOpenAISettings(
 			},
 			action: "global-luna-cache-keepalive",
 		},
+		{
+			item: {
+				id: "lunaCacheKeepaliveIntervalMinutes",
+				label: "Luna keepalive request interval (global)",
+				description: "Choose 2.5 or 4.5 minutes between idle requests within the duration above. Does not enable keepalive. Cache retention is not guaranteed.",
+				currentValue: `${config.openai.lunaCacheKeepaliveIntervalMinutes} mins`,
+				values: ["2.5 mins", "4.5 mins"],
+			},
+			action: "global-luna-cache-keepalive-interval",
+		},
 		projectCacheKeepalive(
 			"cacheKeepalive",
-			"GPT-5.6 Sol/Terra cache keepalive (this project)",
+			"Astra/Sol/Terra keepalive request interval (this project)",
 			config.openai.cacheKeepalive,
+			config.openai.cacheKeepaliveIntervalMinutes,
 		),
 		setting(
 			{
@@ -92,8 +134,8 @@ export function buildOpenAISettings(
 		setting(
 			{
 				id: "cacheDiagnostics",
-				description: "Show cache and continuation status below the editor, with optional diagnostic logging.",
-				label: "Cache diagnostics",
+				description: "Show compact cache status, with optional request, transport and timing logs.",
+				label: "Codex diagnostics",
 				currentValue: formatCacheDiagnostics(config.openai.cacheDiagnostics),
 				values: ["Off", "Status", "Status + log"],
 			},

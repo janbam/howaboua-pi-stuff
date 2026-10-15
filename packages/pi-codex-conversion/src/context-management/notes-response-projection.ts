@@ -39,14 +39,15 @@ export async function projectNotesResponses(result: AgentToolResult<unknown>, re
 		...(result.details && typeof result.details === "object" ? result.details : {}), codexHistoryNotes } };
 }
 
-/** Transport bytes become protected outputs only on the authenticated reader's current call. */
+/** Bind shared outputs to the current authenticated call; bridge callers supply live adapter availability. */
 export async function projectSharedNotesResult(result: SharedContextResult, callId: string,
-	ctx: ExtensionContext, signal?: AbortSignal): Promise<SharedContextResult> {
+	ctx: ExtensionContext, signal?: AbortSignal, adapterEnabled = true): Promise<SharedContextResult> {
 	const responses = result.details.externalNotesResponses;
 	if (!responses?.length) return result;
 	const { externalNotesResponses: _transport, ...details } = result.details;
-	if (ctx.model?.api !== "openai-codex-responses") return { ...result, details,
-		content: [...result.content, { type: "text", text: "Shared encrypted contents are unavailable on this model. Local results remain available; use a compatible model for remote contents." }] };
+	// Routed reads bypass the local hybrid gate, so enforce protected delivery here too.
+	if (!adapterEnabled || ctx.model?.api !== "openai-codex-responses") return { ...result, details,
+		content: [...result.content, { type: "text", text: "Shared encrypted contents are unavailable here. Local results remain available; enable the Codex adapter on a compatible model for remote contents." }] };
 	const projected = await projectNotesResponses({ ...result, details }, responses.map(response => ({ ...response,
 		bytes: Uint8Array.from(Buffer.from(response.bytesBase64, "base64")) })), callId, ctx, signal, true);
 	return { ...result, ...projected, details: projected.details as SharedContextResult["details"] };

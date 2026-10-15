@@ -24,7 +24,7 @@ export function createExternalNotesRemoteService(isAdapterEnabled: () => boolean
 			const result = await router(ctx, { sessionId: identity.sessionId, agentName: target,
 				namespace: query.namespace, params: query.params }, signal);
 			if (!result) throw new Error("Cross-agent notes owner is unavailable");
-			return projectSharedNotesResult(result, callId, ctx, signal);
+			return projectSharedNotesResult(result, callId, ctx, signal, isAdapterEnabled());
 		},
 	};
 }

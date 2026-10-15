@@ -6,7 +6,7 @@ Works without Shepherdr or Pi Codex Conversion. Shepherdr adds agent-family memb
 
 ## Install
 
-Requires Pi 1.1.0 or newer and Node.js 22.18 or newer.
+Requires Pi 1.2.0 or newer and Node.js 22.18 or newer.
 
 ```sh
 pi install npm:@howaboua/pi-agent-board

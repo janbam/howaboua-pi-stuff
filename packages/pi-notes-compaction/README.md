@@ -4,7 +4,7 @@ Keep working across fresh context windows with local checkpoint notes, searchabl
 
 ## Install
 
-Requires Pi 1.1.0 or newer and Node.js 22.18 or newer.
+Requires Pi 1.2.0 or newer and Node.js 22.18 or newer.
 
 ```sh
 pi install npm:@howaboua/pi-notes-compaction

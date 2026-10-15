@@ -147,7 +147,8 @@ export function createCodexTurnLifecycle(
 				runtime.voice.piInput(event.text, event.streamingBehavior);
 		},
 		beforeAgentStart: async (event, ctx) => {
-			if (!state.externalNotes) state.contextTree.handoff.preparing(event.prompt);
+			// Handoffs consume user text; both user and custom kickoffs still need full preparation below.
+			if (!state.externalNotes && event.messageType === "user") state.contextTree.handoff.preparing(event.prompt);
 			if (state.adapterEnabled && !state.config.voiceFeaturesOnly) await reserve.beforeTurn(ctx);
 			runtime.autoReasoning.begin(ctx);
 			const plan = syncAdapter(pi, ctx, state);

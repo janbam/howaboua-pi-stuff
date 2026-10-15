@@ -22,7 +22,7 @@ Review supported workflows: who triggers the failure, and how does execution rea
 Weigh consequence and exposure against fix complexity. Rare severe failures may warrant fixes. Hypotheticals alone do not justify coordination, recovery or compatibility machinery.
 Respect product tradeoffs. Optional capabilities are not defects. Do not inflate severity with unsupported worst cases. If a review questions scope, cull first.
 
-Trace each kickoff through the complete before_agent_start chain before prompt/tool rewrites and prewarm. Custom/developer-message turns and in-run steering bypass it. User-message kickoffs must enter settled. Never substitute captured-prompt patches for other extensions' preparation.
+Trace each kickoff through the complete before_agent_start chain before prompt/tool rewrites and prewarm. Pi 1.2 prepares both user and idle custom-message kickoffs while busy; only user events carry prompt text. In-run steering does not start another preparation chain. Rebuild prompt sections for every kickoff; never substitute captured-prompt patches for other extensions' preparation.
 Code/Notebook nested tools sit outside provider JSON schemas. Callable tools do not prove their prompt contracts survived. Verify final instructions and native schemas separately.
 Slash commands are for users, tools for agents. Prefer one routed entry command unless explicitly asked for several.
 

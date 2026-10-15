@@ -5,15 +5,15 @@ Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist ups
 - Entry = one feature: commits/PRs, behavior, files touched. Tests and changelogs are omitted; `git show --stat <commit>` has the full list.
 - In-code divergences in shared files may carry `// FORK_MOD: <why>` comments; `rg FORK_MOD packages` lists them. Conflicts on those lines keep the fork side.
 - Upstream status is "not proposed" unless stated.
-- Upstream baseline: `@howaboua/pi-codex-conversion@3.0.52` (`76f20771`), including Pi 1.1.0. TypeBox pins now match upstream at `1.3.36`.
+- Upstream baseline: `@howaboua/pi-codex-conversion@3.0.52` (`76f20771`). This fork targets Pi 1.2.0 with its TypeBox pin, `1.3.27`.
 
 ## Repo
 
-### Pi 1.2 checkout linking
+### Pi 1.2 SDK and checkout linking
 
 - PR: #27
-- Behavior: the checkout helper validates and links the four consumed Pi packages, plus `pi-server` only when the checkout still contains it.
-- Files: `scripts/link-pi-checkout.mjs`
+- Behavior: extensions require Pi 1.2.0, share its TypeBox pin, and prepare both user and custom kickoffs without treating custom messages as user-text handoffs. The checkout helper links declared Pi dependencies across all workspaces; the removed server package is no longer referenced.
+- Files: `package.json`, `bun.lock`, `packages/*/package.json`, package requirement documentation, `scripts/{link-pi-checkout,pi-sdk-policy}.mjs`, `packages/pi-codex-conversion/src/extension/turn-lifecycle.ts`
 
 ### Root `AGENTS.md` rules
 

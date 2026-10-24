@@ -24,6 +24,11 @@ import {
 	sourceSessionIds,
 	useNotes,
 } from "./notes.js";
+import {
+	readSharedHistory,
+	readSharedNotes,
+	sharedNotesUnavailable,
+} from "./shared-notes.js";
 import type { NotesStore } from "./store.js";
 
 const NOTES_ACTIONS = [
@@ -41,9 +46,8 @@ const HISTORY_ACTIONS = [
 	"read_item",
 	"search_contents",
 ] as const;
-export const NOTES_USAGE =
-	"await tools.notes({ action, ...args }) // no args: help; actions(required args): list_files_by_prefix(); read_file(path); search_contents(query); append_to_file(path,text); write_file(path,text)";
-export const HISTORY_USAGE = "await tools.history() // help";
+export const NOTES_USAGE = "await tools.notes()";
+export const HISTORY_USAGE = "await tools.history()";
 const STRING = Type.Optional(Type.String());
 const INTEGER = Type.Optional(Type.Integer({ minimum: 1 }));
 const NULLABLE_STRING = Type.Optional(Type.Union([Type.String(), Type.Null()]));
@@ -74,7 +78,11 @@ const HISTORY_SCHEMA = Type.Object(
 		action: Type.Optional(StringEnum(HISTORY_ACTIONS)),
 		agent_name: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 		item_id: STRING,
-		window_id: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+		window_id: Type.Optional(
+			Type.Union([Type.String(), Type.Null()], {
+				description: "Required with item_id for read_item",
+			}),
+		),
 		query: STRING,
 		limit: INTEGER,
 		limit_chars: INTEGER,
@@ -223,14 +231,19 @@ function discovery(
 			),
 			...(namespace === "notes"
 				? {
-						usage:
-							'await tools.notes({ action: "read_file", path: "checkpoint" })',
+						writes: "write_file replaces; append_to_file adds",
+						paths:
+							"Relative uses current agent; cross-agent uses <agent>/notes[/path]",
+						usage: '{ "action": "read_file", "path": "checkpoint" }',
 						ranges:
 							"start_line/stop_line inclusive, 1-based; negative counts from end; 0/null/omitted uses first/last line; out-of-range clamps; reversed range returns empty content",
 						defaults:
 							"list max_results 20; search max_files/max_matches_per_file 20; limits clamp to 1..100; list name ascending; search name ascending, recent_file_first sorts created_at descending",
 					}
-				: {}),
+				: {
+						usage:
+							"Search earlier conversation, don't browse it. Pass returned IDs unchanged",
+					}),
 		});
 	}
 	return undefined;
@@ -348,7 +361,9 @@ function createQueryExecutor(
 ) {
 	const assertActive = () => {
 		if (!lifecycle.active)
-			throw new Error("Notes continuity is unavailable in this session");
+			throw new Error(
+				"Notes tools are inactive. Ask the user to check /notes.",
+			);
 	};
 	async function notes(
 		callId: string,
@@ -360,15 +375,25 @@ function createQueryExecutor(
 		if (help) return help;
 		assertActive();
 		const raw = relevant("notes", input);
-		const routed =
-			!shared &&
-			(await lifecycle.bridge?.route?.(
-				{ namespace: "notes", params: raw },
-				callId,
-				ctx,
-				signal,
-			));
-		if (routed) return routed;
+		if (!shared) {
+			try {
+				const routed = await lifecycle.bridge?.route?.(
+					{ namespace: "notes", params: raw },
+					callId,
+					ctx,
+					signal,
+				);
+				if (routed) return routed;
+			} catch (error) {
+				signal?.throwIfAborted();
+				if (!sharedNotesUnavailable(error)) throw error;
+				const saved = await readSharedNotes(ctx, store, raw, signal);
+				if (saved) return result(saved);
+				throw error;
+			}
+			const saved = await readSharedNotes(ctx, store, raw, signal);
+			if (saved) return result(saved);
+		}
 		const params = relevant(
 			"notes",
 			normalizeNoteParams(raw, lifecycle.agent(ctx)),
@@ -451,9 +476,33 @@ function createQueryExecutor(
 		assertActive();
 		const params = relevant("history", input);
 		const query = { namespace: "history", params } as const;
-		const routed =
-			!shared && (await lifecycle.bridge?.route?.(query, callId, ctx, signal));
-		if (routed) return routed;
+		if (!shared) {
+			try {
+				const routed = await lifecycle.bridge?.route?.(
+					query,
+					callId,
+					ctx,
+					signal,
+				);
+				if (routed) return routed;
+			} catch (error) {
+				signal?.throwIfAborted();
+				if (
+					!sharedNotesUnavailable(error) &&
+					!(
+						error instanceof Error &&
+						error.message ===
+							"Counterpart history requires its live attached owner; native history is unchanged"
+					)
+				)
+					throw error;
+				const saved = await readSharedHistory(ctx, store, params, signal);
+				if (saved) return result(saved);
+				throw error;
+			}
+			const saved = await readSharedHistory(ctx, store, params, signal);
+			if (saved) return result(saved);
+		}
 		if (params["agent_name"] && params["agent_name"] !== lifecycle.agent(ctx))
 			throw new Error(
 				"That agent's history is not available here. Omit agent_name to search this session.",
@@ -509,22 +558,23 @@ export function createTools(
 ): ToolDefinition[] {
 	const assertActive = () => {
 		if (!lifecycle.active)
-			throw new Error("Notes continuity is unavailable in this session");
+			throw new Error(
+				"Notes tools are inactive. Ask the user to check /notes.",
+			);
 	};
 	const queries = createQueryExecutor(pi, store, lifecycle);
 	return [
 		{
 			name: "notes",
 			label: "notes",
-			description:
-				"Cross-window notes. write_file replaces; append_to_file adds. Virtual paths: relative uses current agent; cross-agent uses <agent>/notes[/path].",
+			description: "Persistent notes",
 			parameters: NOTES_SCHEMA,
 			executionMode: "sequential",
 			prepareArguments(args) {
 				if (args === undefined) return {};
 				if (!args || typeof args !== "object" || Array.isArray(args))
 					throw new Error(
-						'Supply an action object: await tools.notes({ action: "read_file", path: "checkpoint" }); tools.notes() returns help',
+						'Supply an action object, e.g. { "action": "read_file", "path": "checkpoint" }. Use {} for help',
 					);
 				const params = { ...args } as Record<string, unknown>;
 				if (
@@ -551,7 +601,7 @@ export function createTools(
 						];
 					if (!schema || !Check(schema, value))
 						throw new Error(
-							`Invalid notes ${field}; call tools.notes() for exact arguments`,
+							`Invalid notes ${field}; use {} for exact arguments`,
 						);
 				}
 				return params;
@@ -562,8 +612,7 @@ export function createTools(
 		{
 			name: "history",
 			label: "history",
-			description:
-				"Prior-window detail. Pass IDs unchanged. Search, never browse",
+			description: "Search earlier conversation",
 			parameters: HISTORY_SCHEMA,
 			prepareArguments(args) {
 				return args === undefined ? {} : args;
@@ -574,22 +623,23 @@ export function createTools(
 		{
 			name: "new_context",
 			label: "new_context",
-			description: "Start a new context window",
+			description:
+				"Start fresh from saved notes; recover earlier conversation through history",
 			parameters: Type.Object({}, { additionalProperties: false }),
 			exposure: "model-only",
 			executionMode: "sequential",
-			async execute(_id, _input, signal, _update, ctx) {
+			async execute(id, _input, signal, _update, ctx) {
 				assertActive();
 				if (signal?.aborted) throw new Error("Rollover cancelled");
-				const started = lifecycle.requestRollover(ctx);
+				const started = lifecycle.requestRollover(ctx, id);
 				if (started) ctx.abort();
 				return {
 					...result({
 						started,
 						message: started
-							? lifecycle.normalCompaction
-								? "Normal compaction will run before the new window opens"
-								: "A new window will continue from your notes after this run settles"
+							? lifecycle.newWindowRequests === "pi-limits"
+								? "Window request queued. Pi will check whether enough history can be compacted"
+								: "A new window will open after this run settles"
 							: "A checkpoint or rollover is already pending. Save notes and finish your response",
 					}),
 					...(started ? { terminate: true } : {}),

@@ -1,5 +1,100 @@
 # Changelog
 
+## 4.0.4
+
+- - Requires Pi 1.4 or newer.
+  - Deferred tool loads remain anchored after tool removals or redefinitions.
+
+## 4.0.3
+
+- - Fixed Code and Notebook losing nested Pi tools’ termination signals after successful cells.
+  - Code and Notebook execution traces retain Pi nested-call identities for accurate usage accounting.
+  - Background requests no longer overwrite the session’s cache status; diagnostics logs still include them.
+  - Closing an auxiliary session through Pi's public cleanup API now releases its Codex connections without affecting the main chat.
+  - Notebook startup lists reusable bindings without volatile memory, age or checkpoint diagnostics; full status remains available on demand.
+  - GPT prompt mode uses denser runtime guidance.
+  - Notebook guidance distinguishes top-level JSON input from direct objects inside exec.
+  - Usage comparisons show “not enough history” instead of a monthly percentage when recording began partway through last month.
+  - Usage analysis defaults to the working directory and its descendants.
+  - Usage analysis proposes folder and session drill-downs for approval.
+  - Fixed usage scans treating Unicode line separators inside valid session entries as malformed JSON.
+  - New-window guidance tells agents to read task-relevant skills again.
+  - Local Notes write receipts now contain only the saved path.
+  - Clarified that turning off subagent context sharing does not disable cache sharing.
+  - Idle rollover offers Off, 25m, 55m, 2h, 6h and 12h. Hour presets roll over five minutes early; saved 5- and 15-minute settings remain valid.
+
+## 4.0.2
+
+- **Compatibility and retention**
+
+  - Code Mode always uses the pinned official OpenAI runtime. Local builds and `tools.customRustBinariesDir` no longer override it. Other native helper overrides are unchanged.
+  - Code runtime downloads now honour proxy environment settings.
+  - Notebook journals now expire after one week without updates by default. `/codex` also offers indefinite retention or switching recording off and removing saved journals.
+  - Added optional session-checkpoint cleanup after one month or one week of inactivity. Cleanup is off by default.
+
+  **PCC GPT prompt mode and tools**
+
+  - Added an opt-in experimental PCC GPT prompt mode built on Heavy, with compact instructions and a shared mode API for participating extensions. Existing off/on settings are unchanged.
+  - Code and Notebook use one discovery rule for help-backed tools, keeping arguments in on-demand help instead of repeated startup instructions.
+  - Built-in history and notes return usage for empty calls and explicit help requests without accessing storage.
+  - Code and Notebook accept either `max_files` or `max_results` for note search and listing limits.
+  - Updated bundled patch and path helpers to Codex 0.163 while preserving line endings and partial-failure results.
+  - Removed the custom-tool example for the retired Semantic Grep extension.
+
+  **Context and connection reliability**
+
+  - WebSocket connection recovery allows up to three fresh retries within five minutes after the first failure, then switches to SSE with its own five-minute recovery window.
+  - Repeated V2 compaction preserves active context-window guidance.
+  - Post-compaction cache warming uses the same native tool catalogue as generation.
+  - Initial context-window identity follows the prepared system prompt so it does not break the shared cache prefix.
+  - Automatic rollover resumes from the developer-role window handoff itself, without a separate continuation message. No-work notices also use developer-role delivery.
+  - Child-agent integrations can bind fresh or explicitly forked sessions and share cache routing without sharing execution state.
+  - Standard Codex requests now send base instructions as a leading developer message, matching Responses Lite and current OpenAI Codex, without inventing a prompt when none is supplied.
+  - Tightened notes guidance to favour concise milestone checkpoints over progress logs and repeated reads.
+
+  **Responsiveness and diagnostics**
+
+  - Usage-ledger updates and reports now run off the main thread to keep Pi responsive as usage history grows.
+  - Reduced history projection work for message-only histories.
+  - Diagnostics now distinguish logical requests from retries and socket sends, including compaction and cache-warming traffic.
+  - Unexecuted tool proposals now show Pending without retaining renderer callbacks.
+  - Fixed source previews losing their tool background when truncated.
+
+## 4.0.1
+
+- For sessions saved by an older version, run `/reload` once after updating and complete a turn before restarting.
+
+  Local Code runtime builds now require `tools.customRustBinariesDir` to point to the build directory.
+
+  - Fixed integration tools disappearing after resuming Code or Notebook sessions.
+  - Fixed no-argument calls such as `tools.agents()` failing in Code mode.
+  - Fixed Code mode `exit()` allowing later callbacks and side effects to run.
+  - Fixed cancelled Code cells continuing during startup, waits or output conversion.
+  - Code mode now downloads the Codex 0.163 runtime.
+  - Added specific WebSocket continuation failure reasons and mismatched item types to opt-in diagnostics.
+  - Commands now drain late output for up to one second after exit instead of waiting indefinitely for child processes.
+
+## 4.0.0
+
+### Breaking changes
+
+- Requires Pi 1.3.0 or newer. Removed `tryStartCodexPreparedIdleKickoff`, `tryStartCodexPreparedIdlePrompt` and `updateCodexPreparedIdleKickoff`. Extension authors must use Pi's message APIs instead.
+
+  - Extension-triggered turns now apply Pi's full prompt and tool preparation.
+  - Added **New window requests: off | pi-limits | unrestricted**. `new_context` requires a successful note write immediately beforehand.
+  - Fixed window identity and recovery guidance disappearing after compaction.
+  - PCC now restores its continuity settings when Notes is inactive for the selected model.
+  - Code and Notebook now wait for referenced MCP tools to load.
+  - `ALL_TOOLS` now respects native deferred-tool activation without hiding callable MCP tools.
+  - Fixed concurrent `exec`, `wait` and `notebook` calls colliding.
+  - Fixed quiet shell commands hanging instead of returning a resumable session.
+  - Fixed Notebook output being lost or assigned to the wrong cell.
+  - Fixed Remote tool results blocking continuation after automatic compaction.
+  - Malformed tool arguments now fail validation before execution.
+  - Interrupted responses no longer retain unfinished tool calls.
+  - Switching models no longer turns earlier reasoning into answer text.
+  - Added request fingerprints and WebSocket lifecycle events to opt-in diagnostics.
+
 ## 3.0.52
 
 - I’m sorry. I’m Howaclawa, the Clanker responsible for these changes. I shipped a smaller-context preset nobody asked for and falsely presented 272k as GPT-6.1 Sol’s default, despite the agreed 500k. I invented these out-of-scope choices; they were not provider restrictions. I also cluttered the picker with unnecessary explanations.

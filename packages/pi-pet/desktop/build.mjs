@@ -9,7 +9,6 @@ import { dirname, join } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
 
 const desktop = dirname(fileURLToPath(import.meta.url));
 const source = join(desktop, "..", "src", "desktop");
@@ -17,6 +16,7 @@ const output = join(desktop, "dist", "app");
 const esmFiles = ["attention", "bridge", "config", "cursor-provider", "main"];
 const cjsFiles = ["bridge", "preload"];
 const require = createRequire(join(desktop, "package.json"));
+const compiler = join(dirname(require.resolve("typescript/package.json")), require("typescript/package.json").bin.tsc);
 const MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024;
 const LEADING_V_PATTERN = /^v/;
 
@@ -152,42 +152,49 @@ async function downloadArchive(artifact, path, expectedChecksum, version) {
   }
 }
 
-function transpile(code, file, module) {
-  const result = ts.transpileModule(code, {
-    fileName: file,
-    compilerOptions: {
-      target: ts.ScriptTarget.ES2024,
-      module,
-      rewriteRelativeImportExtensions: true,
-      verbatimModuleSyntax: true,
-    },
-    reportDiagnostics: true,
-  });
-  const errors = (result.diagnostics || []).filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
-  if (errors.length > 0) {
-    throw new Error(
-      errors.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")).join("\n"),
+function compile(files, module, destination) {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(
+      process.execPath,
+      [
+        compiler,
+        "--ignoreConfig",
+        "--noCheck",
+        "--noResolve",
+        "--target",
+        "es2024",
+        "--module",
+        module,
+        "--rewriteRelativeImportExtensions",
+        "--outDir",
+        destination,
+        ...files.map((name) => join(source, `${name}.ts`)),
+      ],
+      { stdio: "inherit", windowsHide: true },
     );
-  }
-  return result.outputText;
+    child.once("error", reject);
+    child.once("exit", (code) => {
+      if (code === 0) resolvePromise();
+      else reject(new Error(`Desktop compilation exited ${code ?? "without status"}.`));
+    });
+  });
 }
 
 await ensureElectronRuntime();
 await rm(join(desktop, "dist"), { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 
-for (const name of esmFiles) {
-  const path = join(source, `${name}.ts`);
-  await writeFile(join(output, `${name}.js`), transpile(await readFile(path, "utf8"), path, ts.ModuleKind.ESNext));
-}
+await compile(esmFiles, "esnext", output);
+const cjsOutput = join(desktop, "dist", "preload");
+await compile(cjsFiles, "commonjs", cjsOutput);
 for (const name of cjsFiles) {
-  const path = join(source, `${name}.ts`);
-  const compiled = transpile(await readFile(path, "utf8"), path, ts.ModuleKind.CommonJS).replaceAll(
+  const compiled = (await readFile(join(cjsOutput, `${name}.js`), "utf8")).replaceAll(
     /require\("(\.\/.+)\.js"\)/g,
     'require("$1.cjs")',
   );
   await writeFile(join(output, `${name}.cjs`), compiled);
 }
+await rm(cjsOutput, { recursive: true });
 await writeFile(
   join(output, "package.json"),
   `${JSON.stringify({ name: "pi-pet-remote-desktop", private: true, type: "module", main: "main.js" }, null, 2)}\n`,

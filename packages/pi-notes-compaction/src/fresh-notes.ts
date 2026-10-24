@@ -1,8 +1,11 @@
+import type { ToolCall, ToolResultMessage } from "@earendil-works/pi-ai";
 import {
 	buildSessionProjection,
 	type SessionEntry,
 } from "@earendil-works/pi-coding-agent";
-import { NOTE_RECEIPT, noteReceipt } from "./notes.js";
+import { NOTE_RECEIPT, type NoteReceipt, noteReceipt } from "./notes.js";
+
+export const NOTES_RUN_ENTRY = "notes-compaction:run:v1";
 
 /** A receipt proves persistence. Current-run tool outcomes prove the checkpoint actually completed. */
 export function hasFreshNotes(
@@ -10,27 +13,7 @@ export function hasFreshNotes(
 	windowId: string | undefined,
 	runId?: string,
 ): boolean {
-	if (!windowId) return false;
-	const lastUser = branch.findLastIndex(
-		(entry) => entry.type === "message" && entry.message.role === "user",
-	);
-	const run = branch.slice(lastUser + 1);
-	const receipts = run
-		.filter(
-			(entry) => entry.type === "custom" && entry.customType === NOTE_RECEIPT,
-		)
-		.flatMap((entry) =>
-			entry.type === "custom" ? [noteReceipt(entry.data)] : [],
-		)
-		.filter(
-			(receipt) =>
-				receipt &&
-				receipt.origin !== "routed" &&
-				receipt.windowId === windowId &&
-				(!runId || receipt.runId === runId),
-		);
-	if (!receipts.length) return false;
-	const messages = buildSessionProjection(run).messages;
+	const { messages, receipts } = noteEvidence(branch, windowId, runId);
 	const final = messages.findLast((message) => message.role === "assistant");
 	if (
 		final?.role !== "assistant" ||
@@ -38,14 +21,102 @@ export function hasFreshNotes(
 		final.content.some((block) => block.type === "toolCall")
 	)
 		return false;
-	const calls = messages.flatMap((message) =>
-		message.role === "assistant"
-			? message.content.filter((block) => block.type === "toolCall")
-			: [],
+	return completedWrites(
+		messages.flatMap((message) =>
+			message.role === "assistant"
+				? message.content.filter((block) => block.type === "toolCall")
+				: [],
+		),
+		messages.flatMap((message) =>
+			message.role === "toolResult" ? [message] : [],
+		),
+		receipts,
 	);
-	const results = messages.flatMap((message) =>
-		message.role === "toolResult" ? [message] : [],
+}
+
+/** The current request is already in history; only its preceding completed invocation qualifies. */
+export function hasPrecedingNoteWrite(
+	branch: readonly SessionEntry[],
+	windowId: string | undefined,
+	runId: string,
+	requestCallId: string,
+): boolean {
+	const { messages, receipts } = noteEvidence(branch, windowId, runId);
+	const request = messages.findLastIndex(
+		(message) =>
+			message.role === "assistant" &&
+			message.content.some(
+				(block) => block.type === "toolCall" && block.id === requestCallId,
+			),
 	);
+	if (request < 0) return false;
+	const calls = messages
+		.slice(0, request + 1)
+		.flatMap((message) =>
+			message.role === "assistant"
+				? message.content.filter((block) => block.type === "toolCall")
+				: [],
+		);
+	const call =
+		calls[calls.findLastIndex((call) => call.id === requestCallId) - 1];
+	if (!call) return false;
+	const previous = messages.findLast(
+		(message) =>
+			message.role === "toolResult" &&
+			message.toolCallId === call.id &&
+			message.toolName === call.name,
+	);
+	return (
+		previous?.role === "toolResult" &&
+		completedWrites([call], [previous], receipts)
+	);
+}
+
+function noteEvidence(
+	branch: readonly SessionEntry[],
+	windowId: string | undefined,
+	runId?: string,
+) {
+	const lastUser = branch.findLastIndex(
+		(entry) => entry.type === "message" && entry.message.role === "user",
+	);
+	// Custom kickoffs have no user message. Scope both receipts and tool outcomes
+	// to their native preparation boundary, not an earlier custom-only run.
+	const runStart = branch.findLastIndex(
+		(entry) =>
+			entry.type === "custom" &&
+			entry.customType === NOTES_RUN_ENTRY &&
+			entry.data &&
+			typeof entry.data === "object" &&
+			"runId" in entry.data &&
+			(!runId || entry.data.runId === runId),
+	);
+	const run = branch.slice(Math.max(lastUser, runStart) + 1);
+	const receipts = run
+		.filter(
+			(entry) => entry.type === "custom" && entry.customType === NOTE_RECEIPT,
+		)
+		.flatMap((entry) =>
+			entry.type === "custom" ? [noteReceipt(entry.data)] : [],
+		)
+		.filter((receipt): receipt is NoteReceipt =>
+			Boolean(
+				receipt &&
+					receipt.origin !== "routed" &&
+					receipt.windowId === windowId &&
+					(!runId || receipt.runId === runId),
+			),
+		);
+	const messages = buildSessionProjection(run).messages;
+	return { messages, receipts };
+}
+
+function completedWrites(
+	calls: readonly ToolCall[],
+	results: readonly ToolResultMessage[],
+	receipts: readonly NoteReceipt[],
+): boolean {
+	if (!receipts.length) return false;
 	const writes = calls.filter(
 		(call) =>
 			call.name === "notes" &&

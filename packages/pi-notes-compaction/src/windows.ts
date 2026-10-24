@@ -9,7 +9,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { keyHint } from "@earendil-works/pi-coding-agent";
 import { Box, Text, TruncatedText } from "@earendil-works/pi-tui";
-import type { WindowIdentity } from "./bridge.js";
+import type { NotesBridge, WindowIdentity } from "./bridge.js";
 import {
 	renderTaskBoundaryReminder,
 	taskBoundaryEligible,
@@ -24,9 +24,19 @@ export interface WindowDetails {
 	trim: boolean;
 }
 const GUIDANCE = `<context_window_guidance>
-Keep one checkpoint per task at a stable path: request, constraints, decisions, progress, next steps, history IDs. Replace stale state; mark completion in place. Keep reusable findings and deferred ideas in separate topic notes; link, don't copy. Recording isn't permission to implement.
+Notes are recovery state, not a diary. Keep one concise, authoritative note per task or topic at a stable path. Task checkpoints cover request, constraints, decisions, status, next steps and history IDs. Use write_file to replace stale state and mark completion. Link to existing notes instead of copying or summarising their contents. Recording isn't permission to implement.
 
-Save changed state after substantial work, before replying, and before new_context or handoff. Skip routine or unchanged state. Include checkpoint paths in handoffs. After rollover, read the checkpoint, then linked notes as needed; history only for missing details.
+Batch saves at meaningful milestones, not every reply or intermediate step. Before new_context or handoff, save current state and wait for success; include the checkpoint path in handoffs. After rollover, read the checkpoint, then only needed links. Don't reread notes still in context unless they may have changed. Use history for missing details.
+
+Previous skill reads don’t carry into this window. Read the skills needed for the current task.
+</context_window_guidance>`;
+
+const GPT_GUIDANCE = `<context_window_guidance>
+Notes=recoverystate≠diary. One concise authoritative note/task-or-topic, stablepath. Taskcheckpoint=request/constraints/decisions/status/nextsteps/historyIDs. write_file→replace stalestate; mark completion. Existingnotes→link≠copy/summarise. Recording≠implementationpermission.
+
+Savebatch@meaningfulmilestones≠every reply/step. Before new_context/handoff: save currentstate→await success; handoff includes checkpointpath. Postrollover: read checkpoint→neededlinks only. In-context notes: reread only if possiblychanged. Missingdetails→history.
+
+Prior skillreads≠currentcontext. Read task-relevant skills.
 </context_window_guidance>`;
 
 export function registerWindowRenderer(pi: ExtensionAPI): void {
@@ -152,6 +162,7 @@ export function windowMessage(
 	hint: string,
 	trim: boolean,
 	kind: "window" | "identity" = "window",
+	gpt = false,
 ): CustomMessageEntryDraft {
 	const lines = [
 		`Agent name: ${agent}`,
@@ -164,7 +175,7 @@ export function windowMessage(
 	return {
 		type: "custom_message",
 		customType: WINDOW_MESSAGE,
-		content: `${GUIDANCE}\n\n<context_window>\n${lines.join("\n")}\n</context_window>`,
+		content: `${gpt ? GPT_GUIDANCE : GUIDANCE}\n\n<context_window>\n${lines.join("\n")}\n</context_window>`,
 		display: true,
 		details: {
 			protocol: 1,
@@ -177,17 +188,34 @@ export function windowMessage(
 
 export class Windows {
 	current: WindowIdentity | undefined;
+	private identityEntry:
+		| Extract<SessionEntry, { type: "custom_message" }>
+		| undefined;
+	private restoredIdentity:
+		| {
+				entryId: string;
+				timestamp: number;
+				prepare: NotesBridge["prepareReminder"];
+				message: AgentMessage;
+		  }
+		| undefined;
 	private compactedSinceBoundary = false;
 	private reminders = new Set<string>();
 	restore(entries: readonly SessionEntry[]): void {
 		this.current = undefined;
+		this.identityEntry = undefined;
 		this.compactedSinceBoundary = false;
 		this.reminders.clear();
 		for (const entry of entries) {
 			const details = windowDetails(entry);
+			if (
+				entry.type === "custom_message" &&
+				(details?.kind === "window" || details?.kind === "identity")
+			)
+				this.identityEntry = entry;
 			if (details?.kind === "window") {
 				this.current = details.identity;
-				this.compactedSinceBoundary = false;
+				if (details.trim) this.compactedSinceBoundary = false;
 			} else if (
 				details &&
 				(details.kind === "reminder" ||
@@ -279,7 +307,7 @@ export class Windows {
 			content:
 				kind === "task-boundary"
 					? renderTaskBoundaryReminder(remainingPercent)
-					: `<context_window_reminder>\n${kind === "urgent" ? "Urgent: " : ""}${remainingPercent}% remaining. Checkpoint the active request, state and known history IDs in notes, then call new_context ${kind === "urgent" ? "now, before other work" : "before continuing work"}.\n</context_window_reminder>`,
+					: `<context_window_reminder>\n${kind === "urgent" ? "Urgent: " : ""}${remainingPercent}% context remaining. Save the task state in notes, then call new_context ${kind === "urgent" ? "now, before other work" : "before continuing work"}.\n</context_window_reminder>`,
 			display: true,
 			details: {
 				protocol: 1,
@@ -289,8 +317,74 @@ export class Windows {
 			} satisfies WindowDetails,
 		};
 	}
-	projectMessages(messages: readonly AgentMessage[]): AgentMessage[] {
-		if (this.compactedSinceBoundary) return [...messages];
+	projectMessages(
+		messages: readonly AgentMessage[],
+		prepareIdentity?: NotesBridge["prepareReminder"],
+	): AgentMessage[] {
+		if (this.compactedSinceBoundary) {
+			const summary = messages.findIndex(
+				(message) => message.role === "compactionSummary",
+			);
+			const entry = this.identityEntry;
+			const details = entry && windowDetails(entry);
+			const hasIdentity = messages.some((message) => {
+				const current =
+					message.role === "custom" &&
+					messageWindowDetails(message.customType, message.details);
+				return (
+					current &&
+					(current.kind === "window" || current.kind === "identity") &&
+					current.identity.currentWindowId === this.current?.currentWindowId
+				);
+			});
+			if (
+				summary < 0 ||
+				messages[0]?.role !== "system" ||
+				!entry ||
+				!details ||
+				typeof entry.content !== "string" ||
+				hasIdentity
+			)
+				return [...messages];
+			const timestamp = messages[summary]!.timestamp;
+			if (
+				this.restoredIdentity?.entryId !== entry.id ||
+				this.restoredIdentity.timestamp !== timestamp ||
+				this.restoredIdentity.prepare !== prepareIdentity
+			) {
+				const draft: CustomMessageEntryDraft = {
+					type: "custom_message",
+					customType: WINDOW_MESSAGE,
+					content: `${entry.content}\n\nIf no checkpoint is available, use history to recover missing context.`,
+					display: false,
+					details: {
+						...details,
+						kind: "identity",
+						trim: false,
+					} satisfies WindowDetails,
+				};
+				const prepared = prepareIdentity?.(draft) ?? draft;
+				this.restoredIdentity = {
+					entryId: entry.id,
+					timestamp,
+					prepare: prepareIdentity,
+					message: {
+						role: "custom",
+						customType: prepared.customType,
+						content: prepared.content,
+						display: prepared.display,
+						details: prepared.details,
+						timestamp,
+					},
+				};
+			}
+			// Carry the older identity ahead of its summary, outside opaque native replay.
+			return [
+				...messages.slice(0, summary),
+				this.restoredIdentity.message,
+				...messages.slice(summary),
+			];
+		}
 		let boundary = -1;
 		for (let i = 0; i < messages.length; i++) {
 			const message = messages[i]!;
@@ -300,7 +394,7 @@ export class Windows {
 				throw new Error(
 					"Invalid saved context window. Open an intact session branch to continue.",
 				);
-			if (details?.kind === "window") boundary = details.trim ? i : -1;
+			if (details?.kind === "window" && details.trim) boundary = i;
 		}
 		if (boundary < 0) return [...messages];
 		const system = getCurrentSystemMessage(messages.slice(0, boundary));
@@ -312,7 +406,7 @@ export class Windows {
 		let boundary = -1;
 		for (let i = 0; i < entries.length; i++) {
 			const details = windowDetails(entries[i]!);
-			if (details?.kind === "window") boundary = details.trim ? i : -1;
+			if (details?.kind === "window" && details.trim) boundary = i;
 			// Normal Pi/PCC compaction has already chosen its own checkpoint.
 			if (entries[i]!.type === "compaction") boundary = -1;
 		}

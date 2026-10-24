@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
@@ -5,66 +6,68 @@ import type {
 import type {
 	CodexDeveloperCustomMessage,
 	CodexDeveloperMessageOptions,
-	trySendCodexDeveloperCustomMessage,
-	tryStartCodexPreparedIdleKickoff,
-	tryStartCodexPreparedIdlePrompt,
+	CodexDeveloperMessageRequest,
 } from "@howaboua/pi-codex-conversion/developer-messages";
 
-const senders = new WeakMap<
-	ExtensionAPI,
-	typeof trySendCodexDeveloperCustomMessage
->();
-const preparedKickoffs = new WeakMap<
-	ExtensionAPI,
-	typeof tryStartCodexPreparedIdleKickoff
->();
-const fallbackKickoffs = new WeakMap<
-	ExtensionAPI,
-	"preparing" | "running" | "queued"
->();
-const preparedPrompts = new WeakMap<
-	ExtensionAPI,
-	typeof tryStartCodexPreparedIdlePrompt
->();
-const PACKAGE = "@howaboua/pi-codex-conversion";
-const MODULE = `${PACKAGE}/developer-messages`;
-
-export async function registerDeveloperDelivery(
-	pi: ExtensionAPI,
-): Promise<void> {
-	try {
-		const api = await import(
-			"@howaboua/pi-codex-conversion/developer-messages"
+const contexts = new WeakMap<ExtensionAPI, ExtensionContext>();
+const PENDING_MESSAGE = "herdr-pending-message";
+interface PendingMessage {
+	sessionId: string;
+	message: CodexDeveloperCustomMessage & {
+		details: { herdrAdmissionId: string };
+	};
+	queued?: boolean;
+}
+export function registerDeveloperDelivery(pi: ExtensionAPI): void {
+	pi.on("session_start", (event, ctx) => {
+		contexts.set(pi, ctx);
+		const entries = ctx.sessionManager.getEntries();
+		const pending = entries.flatMap((entry) =>
+			entry.type === "custom" && entry.customType === PENDING_MESSAGE
+				? [readPendingMessage(entry.data)]
+				: [],
 		);
-		if (typeof api.trySendCodexDeveloperCustomMessage === "function")
-			senders.set(pi, api.trySendCodexDeveloperCustomMessage);
-		if (typeof api.tryStartCodexPreparedIdleKickoff === "function")
-			preparedKickoffs.set(pi, api.tryStartCodexPreparedIdleKickoff);
-		if (typeof api.tryStartCodexPreparedIdlePrompt === "function")
-			preparedPrompts.set(pi, api.tryStartCodexPreparedIdlePrompt);
-	} catch (error) {
-		if (!isUnavailable(error)) throw error;
-	}
-	pi.on("session_start", () => {
-		fallbackKickoffs.delete(pi);
-	});
-	pi.on("session_tree", () => {
-		fallbackKickoffs.delete(pi);
-	});
-	pi.on("agent_start", () => {
-		if (fallbackKickoffs.get(pi) === "preparing")
-			fallbackKickoffs.set(pi, "running");
-	});
-	pi.on("agent_settled", (_event, ctx) => {
-		const state = fallbackKickoffs.get(pi);
-		if (state === "running" || state === "queued") fallbackKickoffs.delete(pi);
-		if (state === "queued") startPreparedIdleTurn(pi, ctx);
+		const queued = new Set(
+			pending
+				.filter((data) => data.queued)
+				.map((data) => data.message.details.herdrAdmissionId),
+		);
+		const delivered = new Set(
+			entries.flatMap((entry) =>
+				entry.type === "custom_message" &&
+				entry.details &&
+				typeof entry.details === "object" &&
+				"herdrAdmissionId" in entry.details
+					? [entry.details.herdrAdmissionId]
+					: [],
+			),
+		);
+		for (const data of pending) {
+			const id = data.message.details.herdrAdmissionId;
+			if (
+				data.sessionId !== ctx.sessionManager.getSessionId() ||
+				delivered.has(id) ||
+				(event.reason === "reload" && queued.has(id))
+			)
+				continue;
+			pi.sendMessage(data.message, {
+				deliverAs: "nextTurn",
+				triggerTurn: false,
+			});
+			delivered.add(id);
+			if (!data.queued)
+				pi.appendEntry(PENDING_MESSAGE, { ...data, queued: true });
+			ctx.ui.notify(
+				"Pending coordination restored. Send a message to continue.",
+				"warning",
+			);
+		}
 	});
 	pi.on("session_shutdown", () => {
-		fallbackKickoffs.delete(pi);
+		contexts.delete(pi);
 	});
 	pi.on("input", (event, ctx) => {
-		// Idle prompts must run Pi's complete before_agent_start preparation chain.
+		// Input hooks run before Pi reserves a user kickoff; only real steering is promoted.
 		if (
 			ctx.isIdle() ||
 			event.streamingBehavior === undefined ||
@@ -73,7 +76,7 @@ export async function registerDeveloperDelivery(
 		)
 			return;
 		if (
-			senders.get(pi)?.(
+			trySendDeveloperMessage(
 				pi,
 				{
 					customType: "herdr-agent-message",
@@ -89,51 +92,34 @@ export async function registerDeveloperDelivery(
 	});
 }
 
-export function startPreparedIdleTurn(
-	pi: ExtensionAPI,
-	ctx: Pick<ExtensionContext, "ui" | "sessionManager">,
-	start?: () => void,
-): void {
-	// Session history survives tree cuts; a new active branch is not a fresh agent.
-	const prompt =
-		!start &&
-		ctx.sessionManager
-			.getEntries()
-			.some(
-				(entry) =>
-					entry.type === "message" && entry.message.role === "assistant",
-			)
-			? "Continue, unless awaiting for user approval."
-			: "Continue.";
-	if (start) {
-		if (preparedPrompts.get(pi)?.(pi, start)) return;
-		if (preparedKickoffs.has(pi) && !preparedPrompts.has(pi))
-			throw new Error(
-				"Update Pi Codex Conversion and reload before sending slash commands",
-			);
-	} else if (preparedKickoffs.get(pi)?.(pi, ctx, prompt)) return;
-	if (fallbackKickoffs.has(pi)) {
-		if (start)
-			throw new Error(
-				"Target has a pending turn; retry after it starts or settles",
-			);
-		// Pi is already idle while earlier settlement handlers are awaiting.
-		if (fallbackKickoffs.get(pi) === "running")
-			fallbackKickoffs.set(pi, "queued");
-		ctx.ui.notify(
-			"An automatic turn is pending. If no turn starts, send a user message or reload the session.",
-			"warning",
-		);
-		return;
+function readPendingMessage(value: unknown): PendingMessage {
+	if (
+		value &&
+		typeof value === "object" &&
+		"sessionId" in value &&
+		typeof value.sessionId === "string" &&
+		"message" in value &&
+		value.message &&
+		typeof value.message === "object"
+	) {
+		const message = value.message as PendingMessage["message"];
+		if (
+			typeof message.customType === "string" &&
+			typeof message.content === "string" &&
+			typeof message.display === "boolean" &&
+			message.details &&
+			typeof message.details === "object" &&
+			typeof message.details.herdrAdmissionId === "string"
+		)
+			return {
+				sessionId: value.sessionId,
+				message,
+				queued: "queued" in value && value.queued === true,
+			};
 	}
-	fallbackKickoffs.set(pi, "preparing");
-	try {
-		if (start) start();
-		else pi.sendUserMessage(prompt, { deliverAs: "steer" });
-	} catch (error) {
-		fallbackKickoffs.delete(pi);
-		throw error;
-	}
+	throw new Error(
+		"Stored pending coordination is invalid. Reload a valid session before continuing.",
+	);
 }
 
 export function sendPolicyMessage(
@@ -141,45 +127,62 @@ export function sendPolicyMessage(
 	message: CodexDeveloperCustomMessage,
 	options: CodexDeveloperMessageOptions,
 ): void {
-	if (senders.get(pi)?.(pi, message, options)) return;
-	// Without Conversion there is no Notes admission to defer. Persist before
-	// kickoff so failed preflight cannot strand an accepted report in memory.
-	pi.sendMessage(
-		message,
-		options.deliverAs === "nextTurn"
-			? { ...options, deliverAs: "steer" }
-			: options,
-	);
+	if (trySendDeveloperMessage(pi, message, options)) return;
+	const ctx = contexts.get(pi);
+	if (options.deliverAs !== "nextTurn" && options.triggerTurn && ctx) {
+		const request: {
+			protocol: 1;
+			ctx: ExtensionContext;
+			preparation?: Promise<void>;
+		} = { protocol: 1, ctx };
+		pi.events.emit("pi-notes-compaction:custom-turn-admission:v1", request);
+		if (request.preparation) {
+			const sessionId = ctx.sessionManager.getSessionId();
+			const pending = {
+				...message,
+				details: { ...message.details, herdrAdmissionId: randomUUID() },
+			};
+			pi.appendEntry(PENDING_MESSAGE, { sessionId, message: pending });
+			void request.preparation
+				.then(() => {
+					if (
+						contexts.get(pi) !== ctx ||
+						ctx.sessionManager.getSessionId() !== sessionId
+					)
+						throw new Error("Session changed before message delivery");
+					pi.sendMessage(pending, options);
+				})
+				.catch((error) => {
+					if (contexts.get(pi) !== ctx) return;
+					ctx.ui.notify(
+						`Coordination remains pending: ${String(error)}. Retry rollover or reload the session.`,
+						"error",
+					);
+				});
+			return;
+		}
+	}
+	pi.sendMessage(message, options);
 }
 
-function isUnavailable(error: unknown): boolean {
-	if (
-		!error ||
-		typeof error !== "object" ||
-		!("code" in error) ||
-		!("message" in error) ||
-		typeof error.message !== "string"
-	)
-		return false;
-	if (
-		error.code === "ERR_MODULE_NOT_FOUND" ||
-		error.code === "MODULE_NOT_FOUND"
-	) {
-		const missing = error.message.match(
-			/Cannot find (?:package|module) ['"]([^'"]+)['"]/,
-		)?.[1];
-		const normalized = missing?.replaceAll("\\", "/").replace(/\.js$/, "");
-		return (
-			missing === PACKAGE ||
-			normalized === MODULE ||
-			normalized?.endsWith(`/${MODULE}`) === true
-		);
-	}
-	return (
-		(error.code === "ERR_PACKAGE_PATH_NOT_EXPORTED" ||
-			error.code === "ERR_UNSUPPORTED_DIR_IMPORT") &&
-		(error.message.includes(MODULE) ||
-			(error.message.includes("Package subpath './developer-messages'") &&
-				error.message.includes(PACKAGE)))
+function trySendDeveloperMessage(
+	pi: ExtensionAPI,
+	message: CodexDeveloperCustomMessage,
+	options: CodexDeveloperMessageOptions,
+): boolean {
+	const request: CodexDeveloperMessageRequest = {
+		protocol: 1,
+		content: message.content,
+		message,
+		options,
+	};
+	// The broker's receipt is discovery: no PCC installation or active adapter is required.
+	pi.events.emit(
+		"@howaboua/pi-codex-conversion.developer-custom-message/v1",
+		request,
 	);
+	if (!request.outcome) return false;
+	if (request.outcome.ok) return true;
+	if (request.outcome.reason === "unavailable") return false;
+	throw new Error(request.outcome.error);
 }

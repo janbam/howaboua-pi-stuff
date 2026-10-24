@@ -1,5 +1,42 @@
 # @howaboua/pi-notes-compaction
 
+## 0.0.9
+
+- - Fixed history lookup errors to identify the missing ID and explain how to retry. History arguments now clarify that read_item requires both IDs.
+  - GPT-mode checkpoint guidance uses denser prose.
+  - New-window guidance tells agents to read task-relevant skills again.
+  - Notes write receipts now contain only the saved path.
+  - Idle rollover offers Off, 25m, 55m, 2h, 6h and 12h. Hour presets roll over five minutes early; saved 5- and 15-minute settings remain valid.
+
+## 0.0.8
+
+- **Continuity and integrations**
+
+  - Fixed Notes guidance missing from PCC's first post-compaction cache-warming request.
+  - With PCC active, Notes guidance uses developer-role delivery. Automatic rollover resumes from the window handoff itself, without a separate continuation message.
+  - Initial window identity now follows the prepared system prompt, preserving the shared prefix for child-agent caching.
+  - External integrations can adopt a new fork into a notes family before its first task without rewriting inherited history.
+
+  **Guidance and discovery**
+
+  - Added compact checkpoint guidance for PCC GPT prompt mode.
+  - Simplified Notes and History discovery, with write, path and history-ID guidance in their help.
+  - Tightened notes guidance to favour concise milestone checkpoints over progress logs and repeated reads.
+
+## 0.0.7
+
+- Shared local agent history now remains readable after its owner closes or Shepherdr is removed.
+
+## 0.0.6
+
+- Requires Pi 1.2.0 or newer.
+
+  - Added per-model activation through `/notes` and an editable whitelist.
+  - Added **New window requests: off | pi-limits | unrestricted**. `new_context` requires a successful note write immediately beforehand.
+  - Shared local notes now remain readable after their owner closes or Shepherdr is removed.
+  - Fixed window identity and recovery guidance disappearing after compaction.
+  - Continuations now apply Pi's full prompt and tool preparation.
+
 ## 0.0.5
 
 - We've been informed that Astra and Sol currently retain their prompt caches for around an hour. If you use notes-managed idle rollover, consider increasing it from 25 to 55 minutes. Cache retention can vary. YMMV. We'll keep monitoring. Please share your cache-retention and long-context quota observations in [the feedback thread](https://github.com/IgorWarzocha/howaboua-pi-stuff/issues/508).

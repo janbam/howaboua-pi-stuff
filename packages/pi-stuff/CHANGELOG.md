@@ -1,5 +1,44 @@
 # @howaboua/pi-stuff
 
+## 0.0.106
+
+- Include bundled package updates:
+
+  - @howaboua/pi-ask: Use denser question and handoff help in PCC GPT prompt mode.
+  - @howaboua/pi-auto-trees: Use denser priming and commit-summary guidance in PCC GPT prompt mode.
+  - @howaboua/pi-better-skills-tool: - Skills help and catalog results now explain reference-only reads and batching skill bodies with references. - Invalid Code and Notebook calls now show no-argument discovery syntax. - GPT-mode catalog help uses denser guidance. - Skill results include structured read receipts for usage tracking, distinguishing references and continuation pages.
+  - @howaboua/pi-github-watch: Use denser watch help in PCC GPT prompt mode.
+  - @howaboua/pi-shepherdr: - Worker roles now follow shared project instructions, preserving a longer common startup prefix and exact role whitespace across machines. Update and reload Shepherdr on controllers and worker hosts together. - Fixed broken remote connections causing unhandled pipe errors and leaving requests pending. - Worker-notice warnings now identify the affected machine and explain how to reconnect. - GPT-mode Board briefings use denser guidance. - Blocking agent calls can run in parallel while the controller waits for their results. - Launched workers identify themselves to compatible extensions so human-only features can stay off.
+  - @howaboua/pi-suggestions: Add opt-in next-step suggestions for human terminal sessions, with editable inline drafts and /suggestions model, reasoning and on/off settings. Private prediction history reuses provider caching within each chat context window.
+  - @howaboua/pi-unicode-charts: Use denser chart guidance in PCC GPT prompt mode.
+  - @howaboua/pi-skill-code: Removed the manual Codex PR review request template from repository-delivery guidance.
+
+## 0.0.105
+
+- Include bundled package updates:
+
+  - @howaboua/pi-ask: Use consistent tool discovery across native, Code and Notebook modes, with compact help in PCC GPT prompt mode.
+  - @howaboua/pi-auto-trees: Use compact priming, commit-summary and voice guidance in opt-in PCC GPT prompt mode.
+  - @howaboua/pi-better-skills-tool: Use consistent skill discovery across native, Code and Notebook modes, with compact help in PCC GPT prompt mode.
+  - @howaboua/pi-github-watch: - Added GitHub Actions run watches that wake the session when a run finishes. Completed runs return their result immediately. - Added consistent tool discovery across native, Code and Notebook modes, with compact help in PCC GPT prompt mode. - PR watches now surface unresolved review threads, including existing feedback, without repeated notifications for unchanged threads. Notices encourage replies and resolution after feedback is addressed. - Conversation watches now detect edits while ignoring the authenticated account's replies and duplicate inline-review receipts. - PR watches now stop when the PR is closed or merged. Already-closed PRs return their state without starting a watch.
+  - @howaboua/pi-pet: Added empty-call reaction discovery, including when no pet is connected, and deferred Code and Notebook help.
+  - @howaboua/pi-shepherdr: **Worker integrations** - Fresh workers now share their parent's cache routing with compatible Codex Conversion. Shared notes remain optional, and native sessions and histories remain separate. - Fresh workers inherit the live Board setting before their first request, keeping Board tools and guidance available from startup. - Added an optional Pulses runner with persistent workers, saved-session reuse and completion reports that wake the parent. **Agent tools and guidance** - Expanded tool calls now show outgoing tasks, messages, replies and focus handoffs in full. - Added compact agent help and hosted Board briefings for PCC GPT prompt mode. - Agent discovery now uses the same help contract across native, Code and Notebook tools. - Added delegation guidance for distinct scopes, shared project context and combined validation. - Invalid spawn names now explain naming limits and how to use a longer label. Spawn guidance favours short two-word names.
+  - @howaboua/pi-unicode-charts: Use compact chart guidance in opt-in PCC GPT prompt mode.
+
+## 0.0.104
+
+- Include bundled package updates:
+
+  - @howaboua/pi-shepherdr: Fixed duplicate sessions showing a stack trace instead of a warning explaining how to restore shared context.
+
+## 0.0.103
+
+- Include bundled package updates:
+
+  - @howaboua/pi-github-watch: Initial release: opt-in GitHub issue and PR comment watches, with delayed PR checks and notifications that wake the same session across providers.
+  - @howaboua/pi-pet: Desktop attachment now uses Electron 44 and requires macOS 13 or newer, or a supported 64-bit Windows or Linux desktop. Linux ARMv7, 32-bit Windows and Linux Unity are no longer supported. The browser miniapp is unchanged.
+  - @howaboua/pi-shepherdr: Requires Pi 1.2.0 or newer. - Idle assignments and completion reports now apply Pi's full prompt and tool preparation. - Fixed local and remote spawns failing during session startup. - Supervision reminders now distinguish other agents' tasks from the current task after compaction.
+
 ## 0.0.102
 
 - Include bundled package updates:

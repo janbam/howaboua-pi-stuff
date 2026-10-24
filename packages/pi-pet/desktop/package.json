@@ -7,8 +7,8 @@
     "start": "electron dist/app"
   },
   "devDependencies": {
-    "electron": "41.10.7",
-    "typescript": "^6.0.3"
+    "electron": "44.7.2",
+    "typescript": "^7.0.2"
   },
   "engines": {
     "node": ">=22.12.0"

@@ -7,7 +7,11 @@ import {
 	truncateToWidth,
 	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
-import { IDLE_MINUTES, type NotesSettings } from "./settings.js";
+import {
+	IDLE_MINUTES,
+	NEW_WINDOW_REQUESTS,
+	type NotesSettings,
+} from "./settings.js";
 import { TASK_BOUNDARY_PRESETS, taskBoundaryLabel } from "./task-boundary.js";
 
 export async function openNotesSettings(
@@ -21,14 +25,25 @@ export async function openNotesSettings(
 	},
 ): Promise<void> {
 	while (true) {
-		const status = options.status();
 		const action = await ctx.ui.custom<"close" | "prune">(
 			(tui, theme, _kb, done) => {
 				const settings = options.settings();
 				const idleValue = (minutes: number) =>
-					minutes === 0 ? "off" : `${minutes} min`;
+					minutes === 0
+						? "Off"
+						: minutes < 60
+							? `${minutes}m`
+							: `${Math.ceil(minutes / 60)}h`;
 				const list = new SettingsList(
 					[
+						{
+							id: "active",
+							label: "Active",
+							description: `Whitelist matches exact model IDs from any provider. Edit modelWhitelist in ${options.settingsPath}, then reload Pi. Example: ["gpt-6-luna", "gpt-6.1-sol"].`,
+							currentValue:
+								settings.active === "all" ? "All models" : "Whitelist",
+							values: ["All models", "Whitelist"],
+						},
 						{
 							id: "compact",
 							label: "Normal compaction",
@@ -36,6 +51,14 @@ export async function openNotesSettings(
 								"Use Pi/PCC compaction for /compact and new_context. Off uses notes-only rollover; /compact then waits for your next prompt.",
 							currentValue: settings.normalCompaction ? "on" : "off",
 							values: ["off", "on"],
+						},
+						{
+							id: "newWindowRequests",
+							label: "New window requests",
+							description:
+								"Off disables new_context. Pi-limits keeps the current window when Pi finds too little history to compact. Unrestricted accepts requests at any size. Normal compaction still chooses how windows roll over. Manual /compact and idle rollover are separate.",
+							currentValue: settings.newWindowRequests,
+							values: [...NEW_WINDOW_REQUESTS],
 						},
 						{
 							id: "taskBoundaryReminder",
@@ -88,9 +111,20 @@ export async function openNotesSettings(
 							return;
 						}
 						try {
-							if (id === "compact")
+							if (id === "active")
+								options.save({
+									...current,
+									active: value === "All models" ? "all" : "whitelist",
+								});
+							else if (id === "compact")
 								options.save({ ...current, normalCompaction: value === "on" });
-							else if (id === "taskBoundaryReminder")
+							else if (id === "newWindowRequests") {
+								const newWindowRequests = NEW_WINDOW_REQUESTS.find(
+									(mode) => mode === value,
+								);
+								if (newWindowRequests)
+									options.save({ ...current, newWindowRequests });
+							} else if (id === "taskBoundaryReminder")
 								options.save({
 									...current,
 									taskBoundaryReminder:
@@ -108,13 +142,19 @@ export async function openNotesSettings(
 						} catch (error) {
 							list.updateValue(
 								id,
-								id === "taskBoundaryReminder"
-									? taskBoundaryLabel(current.taskBoundaryReminder)
-									: id === "compact"
-										? current.normalCompaction
-											? "on"
-											: "off"
-										: idleValue(current.idleMinutes),
+								id === "active"
+									? current.active === "all"
+										? "All models"
+										: "Whitelist"
+									: id === "taskBoundaryReminder"
+										? taskBoundaryLabel(current.taskBoundaryReminder)
+										: id === "newWindowRequests"
+											? current.newWindowRequests
+											: id === "compact"
+												? current.normalCompaction
+													? "on"
+													: "off"
+												: idleValue(current.idleMinutes),
 							);
 							ctx.ui.notify(
 								`Could not save notes settings: ${String(error)}`,
@@ -137,8 +177,14 @@ export async function openNotesSettings(
 							rule,
 							`  ${theme.bold("Notes & context")}`,
 							"",
-							...status.flatMap((line) =>
-								wrap(line).map((part) => theme.fg("dim", part)),
+							...options
+								.status()
+								.flatMap((line) =>
+									wrap(line).map((part) => theme.fg("dim", part)),
+								),
+							"",
+							...wrap(
+								"This extension works best on GPT6+ models. For other models we recommend switching the active option to whitelist or switching normal compaction on to work alongside the notes system.",
 							),
 							"",
 							...list.render(width).slice(0, -2),

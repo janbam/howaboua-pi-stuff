@@ -195,8 +195,7 @@ export class CodexContextTreeCoordinator {
 			this.navigation = undefined;
 			const queued = this.takeQueuedInputs();
 			if (queued.length) {
-				// One admission: concurrent sendUserMessage calls can race while Pi
-				// still reports idle during asynchronous prompt preparation.
+				// Preserve queued attachments and expansion in one successor admission.
 				const content = queued.flatMap((input) => inputContent(input));
 				if (pending.triggerTurn) this.kickoff.queueInput(content);
 				else this.restoreQueuedInputToEditor(ctx, queued);

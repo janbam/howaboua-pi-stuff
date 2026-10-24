@@ -12,7 +12,7 @@ For the argument and token numbers, read [How I gave Pi 17 tools without loading
 pi install npm:@howaboua/pi-codex-conversion
 ```
 
-Requires Pi 1.2.0 or newer and Node.js 22.19 or newer. Native helpers for macOS, Linux and Windows are bundled for x64 and arm64.
+Requires Pi 1.4.0 or newer and Node.js 22.19 or newer. Native helpers for macOS, Linux and Windows are bundled for x64 and arm64.
 
 Open `/codex` after installation. Codex-like GPT models use the structured adapter by default.
 
@@ -105,10 +105,12 @@ On Codex transport, the Daybreak toggle keeps your selected model and chooses an
 
 `tools.customRustBinariesDir` overrides bundled helpers by filename, including `exec_bridge`, `apply_patch`, `view_image` and `pi-codex-voice`. Build on the target machine, collect the binaries in one directory, set its path, then `/reload`.
 
+Code Mode always uses the pinned official OpenAI runtime, downloaded on first use. It does not use local builds or `tools.customRustBinariesDir`.
+
 ### Optional controls
 
 - **Append CODEX_APPEND_SYSTEM.md:** when this file exists in Pi's agent directory, normally `~/.pi/agent` or `PI_CODING_AGENT_DIR` when set, adds its contents as a `<codex_append_system>` section after every Codex prompt section. On by default under **General**, following the selected Global or project settings scope.
-- **Heavy system prompt overwrite:** removes roughly 40% of Pi's known default scaffold while preserving other extensions' additions. Off by default.
+- **Heavy system prompt overwrite:** **on** removes roughly 40% of Pi's known default scaffold while preserving other extensions' additions. **GPT (experimental)** builds on that baseline with denser PCC instructions and participating toolkit guidance. Tool arguments and capabilities stay unchanged. Savings depend on execution mode and context. Off by default. Existing boolean configuration still works. Set `prompt.heavySystemPromptOverwrite` to `"gpt"` for GPT mode.
 - **Current time reminders:** choose 30 or 60 minutes under **General**. Active Responses adapters receive a persisted UTC developer message on the first inference in each context and when the interval has elapsed. No timer, extra turn or system-prompt change. Off by default.
 - **Auto reasoning:** lets GPT-6 Astra, Sol and Luna, plus GPT-6.1 Sol, adjust effort through `change_reasoning` on Codex transport. Offers low, medium, high, xhigh and max, never below your selected level, and restores that level after the run settles, including retries and compaction. Enable `tools.autoReasoning` under **Tools**. Off by default.
 
@@ -133,9 +135,10 @@ Choose under `/codex context`:
 | --- | --- | --- |
 | **Continuity strategy** | Compaction · Notes and history · Notes + history + compaction | Always |
 | **History and notes storage** | Local · Tree · Remote | Using notes |
+| **New window requests** | off · pi-limits · unrestricted (default) | Using notes |
 | **Use notes for tree summaries** | On (default) · Off | Using notes |
 | **Share subagent context** | Off (default) · On | Using notes |
-| **Idle rollover** | Off (default) · 5 · 15 · 25 · 55 minutes | Using Notes and history on an eligible route |
+| **Idle rollover** | Off (default) · 25m · 55m · 2h · 6h · 12h | Using Notes and history on an eligible route |
 | **Compaction method** | Pi summary · Codex V2 · Both | Using compaction |
 | **Preserved user messages (V2 only)** | 16k · 32k · 64k | Using Codex V2 or Both |
 
@@ -171,11 +174,15 @@ The model receives history, notes, rollover and remaining-context tools. Code an
 
 Remote results remain tied to their original context family and Codex account. An account mismatch makes pinned notes unavailable without moving them to another account or store. Agents can exchange needed context through messages. Re-reading a completed result does not count as a new note checkpoint.
 
-With **Notes and history**, `/compact` reuses notes from the last completed run and opens a window without starting a new turn. New input or another run makes those notes stale. Without fresh notes, or with checkpoint instructions, it asks the agent to save state, then opens the window after that run settles. A failed or missing note leaves the current window in place. With **Notes + history + compaction**, explicit `new_context` compacts before rollover.
+With **Notes and history**, `/compact` reuses notes from the last completed run and opens a window without starting a new turn. New input or another run makes those notes stale. Without fresh notes, or with checkpoint instructions, it asks the agent to save state, then opens the window after that run settles. A failed or missing note leaves the current window in place. With **Notes + history + compaction**, explicit `new_context` attempts compaction before rollover.
+
+**New window requests** controls agent requests independently of the continuity strategy. **off** hides `new_context`. **pi-limits** requires Pi to accept the history for compaction, including with notes-only continuity. A declined request continues in the same window. **unrestricted** permits requests at any size. If normal compaction has nothing to summarise, it opens a new identity without trimming the existing context. Other failures do not open a window. Manual `/compact` and idle rollover are unaffected.
+
+Before `new_context`, the immediately preceding tool invocation must successfully save a context note. Direct notes writes, nested writes completed by `exec`, and writes completed through `wait` count. Failed or unfinished writes and intervening read-only calls do not count.
 
 **Note save markers** in `/codex display` is off by default. When enabled, completed turns with confirmed saved notes get a **✓ Notes saved** marker. The next user prompt gets a **Notes** bookmark in `/tree` once it arrives. Select that prompt with **No summary** to return to the saved-notes boundary with your prompt back in the editor. Run plain `/compact` in **Notes and history**, then resubmit the prompt. A new window opens without another note-writing turn. Tree navigation preserves the checkpoint's original idle age. Existing user labels are preserved, and turning markers off keeps saved bookmarks.
 
-**Idle rollover** is off by default and applies only to **Notes and history**, with Local, Tree or Remote storage. Choose 5, 15, 25 or 55 minutes. After that duration since a run settled, the next prompt opens a window first only if the latest completed run saved fresh notes. Otherwise the prompt starts normally in the current window, without a checkpoint request. The original prompt and attachments proceed through normal preparation. Resume uses the recorded settlement time. Older runs without a recorded settlement do not trigger idle rollover. Existing `idleNotesRollover: true` configuration retains 25 minutes; `false` remains off. This is a cache optimisation, not a cache-expiry check. If rollover fails, input and attachments remain pending. Submit another prompt to retry, or reload to cancel pending input.
+**Idle rollover** is off by default and applies only to **Notes and history**, with Local, Tree or Remote storage. Choose 25m, 55m, 2h, 6h or 12h. Hour presets use a five-minute buffer, stored as 115, 355 or 715 minutes. Saved 5- and 15-minute settings remain valid. After that duration since a run settled, the next prompt opens a window first only if the latest completed run saved fresh notes. Otherwise the prompt starts normally in the current window, without a checkpoint request. The original prompt and attachments proceed through normal preparation. Resume uses the recorded settlement time. Older runs without a recorded settlement do not trigger idle rollover. Existing `idleNotesRollover: true` configuration retains 25 minutes; `false` remains off. This is a cache optimisation, not a cache-expiry check. If rollover fails, input and attachments remain pending. Submit another prompt to retry, or reload to cancel pending input.
 
 Automatic overflow recovery compacts in the current window. Notes-only sessions use Pi summary for this emergency recovery. Other strategies use the selected method. Pi's automatic compaction must be enabled.
 
@@ -256,11 +263,11 @@ text(status);
 
 ### Pi extension and MCP tools
 
-Pi-callable extension tools automatically appear in `tools` and `ALL_TOOLS`, with no extra registration. An [explicit integration](#extension-apis) takes precedence for the same Pi tool, including its custom behavior and activation gate. Hidden and model-only tools are not imported.
+Pi-callable extension tools automatically appear in `tools`, with no extra registration. `ALL_TOOLS` lists active direct tools and tools with `codemode` exposure. Native extension tools with `deferred` exposure appear in the catalogue only while active in Pi, but remain callable by name while inactive. Catalogue changes leave standing tool instructions unchanged. An [explicit integration](#extension-apis) takes precedence for the same Pi tool, including its custom behaviour and activation gate. Hidden and model-only tools are not imported.
 
-Configure MCP servers once in Pi's built-in MCP extension. Its callable tools and resource helpers use the same bridge. Pi's extension switches, tool restrictions and disabled servers are respected. Pi retains connection management, authentication, permissions and tool hooks; its native `codemode` extension is not required.
+Configure MCP servers once in Pi's built-in MCP extension. Its callable tools and resource helpers use the same bridge and remain discoverable in `ALL_TOOLS`. Pi's extension switches, tool restrictions and disabled servers are respected. Pi retains connection management, authentication, permissions and tool hooks; its native `codemode` extension is not required.
 
-`exec` does not wait for pending MCP connections. In Code and Notebook modes, missing-tool errors identify the MCP namespace when known, otherwise flag ambiguous name prefixes. If that server connects, retry in a new exec cell. If failures repeat, the agent should suggest disabling that specific server to you. This recovery guidance does not retry calls or disable servers.
+`exec` waits for pending MCP connections named in its source before starting the cell. Using `ALL_TOOLS` waits for all enabled servers. Names assembled dynamically or hidden in retained functions may not identify a server. Missing-tool errors identify the MCP namespace when known, otherwise flag ambiguous name prefixes. If that server connects, retry in a new exec cell. Repeated failures may require disabling that server. Calls are never retried automatically and servers are never disabled automatically.
 
 MCP discovery starts from Pi's server summaries. Read, `find` or `filter` the synchronous `ALL_TOOLS` array for complete usage, schemas and server instructions. Each cell's catalogue contains tools connected when that cell starts. Custom and deferred tools use the same catalogue, not another discovery tool.
 
@@ -425,7 +432,8 @@ Adapted tools retain Pi context, UI, schema, progress and rendering. JavaScript 
 
 | Option | Purpose |
 | --- | --- |
-| `usage` | Callable contract. Include arguments or a help entry point. Only `promptGuidelines` accompany it, not native descriptions, snippets or schemas |
+| `usage` | Callable contract with arguments. Only `promptGuidelines` accompany it, not native descriptions, snippets or schemas |
+| `discovery: "help"` | Opt in only when an empty call returns usage without performing an operation. The prompt lists the capability without a call signature. Omit `usage` to generate the no-argument help call |
 | `toolName` | Non-default Responses namespace |
 | `resultValue` | Structured JavaScript result instead of ordinary model-visible content |
 | `blocking` | `true` or an input predicate to hold the turn. Otherwise long calls can yield to `wait` |
@@ -436,6 +444,14 @@ Adapted tools retain Pi context, UI, schema, progress and rendering. JavaScript 
 Activation is also sampled at normal session and input boundaries. Prompt, registry and outer-tool filtering then stay fixed through the run.
 
 Working integrations include [`pi-ask`](../pi-ask) for blocking UI, [`pi-better-skills-tool`](../pi-better-skills-tool) and [`pi-browser`](../pi-browser) for freeform input, [`pi-codex-web-run`](../pi-codex-web-run) and [`pi-codex-imagegen`](../pi-codex-imagegen) for namespaced structured results, and [`pi-shepherdr`](../pi-shepherdr) for activation and per-call blocking.
+
+### GPT prompt mode
+
+The optional `@howaboua/pi-codex-conversion/prompt-mode` export provides `registerGptPromptMode(pi, apply)`. The synchronous `apply(active, context)` callback selects your extension's own compact wording before prompt and tool capture. Re-register native definitions only when their text changes. Return their current `name`, `promptSnippet` and `promptGuidelines` so the prepared prompt uses the same metadata. Keep tool names, arguments and execution unchanged.
+
+The returned registration exposes `active` for help and nested-tool providers, plus `dispose()`. Registration works in either load order and disposes on shutdown. Without an active PCC adapter the mode is false. Optional integrations should retain ordinary wording when the module is unavailable. Do not compress user content, project instructions or other extensions' text.
+
+See [PCC GPT prompt mode](../../docs/extension-apis.md#pcc-gpt-prompt-mode) for the callback contract, preparation timing and an integration example.
 
 ### Developer messages
 

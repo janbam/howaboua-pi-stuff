@@ -1,0 +1,10 @@
+{
+	"description": "Collaborative VM end-to-end review. Run when the user requests a sandbox review.",
+	"blocking": false,
+	"model": "PROVIDER/MODEL",
+	"thinking": "low",
+	"prompt": "prompt.md",
+	"prepare": "prepare.mjs",
+	"accepts": ["base"],
+	"pi_args": []
+}

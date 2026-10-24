@@ -1,9 +1,10 @@
+import { admitCustomTurn } from "../custom-turn-admission.ts";
 import type {
 	ContextEvent,
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { trySendCodexDeveloperCustomMessage, tryStartCodexPreparedIdlePrompt } from "../developer-messages.ts";
+import { trySendCodexDeveloperCustomMessage } from "../developer-messages.ts";
 import { CANCELLED, interruptible } from "./cancellation.ts";
 import { isVoiceContextExcludedMessage } from "./context-visibility.ts";
 import type { CodexRealtimeConversation } from "./conversation/session.ts";
@@ -231,19 +232,17 @@ export class CodexVoiceSessionMessages {
 				) return;
 			}
 			signal.throwIfAborted();
-			const startsTurn = ctx.isIdle();
+			const admission = admitCustomTurn(this.pi, ctx);
+			if (admission && (await interruptible(admission, signal)) === CANCELLED)
+				signal.throwIfAborted();
+			signal.throwIfAborted();
+			if (generation !== this.contextGeneration || this.context !== ctx) return;
 			deliveryStarted = true;
 			this.callbacks.onDelegation(turn.delegationId, turn.input, source);
 			this.piTurnActive = true;
 			this.callbacks.onWorking();
 			const message = realtimeVoiceMessage(turn.input, "delegation", turn.transcriptDelta);
-			if (startsTurn) {
-				this.pi.sendMessage(message, { triggerTurn: false });
-				if (tryStartCodexPreparedIdlePrompt(this.pi) === false)
-					throw new Error("Prepared voice delegation kickoff is unavailable");
-			} else {
-				this.pi.sendMessage(message, { triggerTurn: true, deliverAs: "steer" });
-			}
+			this.pi.sendMessage(message, { triggerTurn: true, deliverAs: "steer" });
 		} catch (error) {
 			if (
 				generation !== this.contextGeneration ||

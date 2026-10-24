@@ -24,6 +24,9 @@ export interface PendingPiCompactionNativeWindow {
 export interface AdapterState {
 	/** Session-local master switch restored from the active session branch. */
 	adapterEnabled: boolean;
+	restoreNativeNotesTools?: () => void;
+	/** Committed retirement cuts survive the model-dependent policy handoff. */
+	notesProjection?: Pick<NotesOwner, "projectMessages" | "projectBranch">;
 	externalNotes?: {
 		owner: NotesOwner;
 		tools?: readonly ToolDefinition[] | undefined;

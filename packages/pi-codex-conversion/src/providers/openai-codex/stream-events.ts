@@ -258,7 +258,7 @@ function responseStreamOptions<TApi extends Api>(options: OpenAICodexStreamOptio
 export async function processMappedCodexResponsesStream<TApi extends Api>(
 	events: AsyncIterable<StreamEventShape>,
 	output: AssistantMessage,
-	stream: AssistantMessageEventStream,
+	stream: Pick<AssistantMessageEventStream, "push">,
 	model: Model<TApi>,
 	options: OpenAICodexStreamOptions | undefined,
 ): Promise<void> {
@@ -268,7 +268,7 @@ export async function processMappedCodexResponsesStream<TApi extends Api>(
 export async function processCodexResponsesStream<TApi extends Api>(
 	events: AsyncIterable<StreamEventShape>,
 	output: AssistantMessage,
-	stream: AssistantMessageEventStream,
+	stream: Pick<AssistantMessageEventStream, "push">,
 	model: Model<TApi>,
 	options: OpenAICodexStreamOptions | undefined,
 ): Promise<void> {

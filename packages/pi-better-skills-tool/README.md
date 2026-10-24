@@ -8,7 +8,7 @@ Progressive skill discovery for Pi, Code Mode and Notebook Mode. The `skills` to
 pi install npm:@howaboua/pi-better-skills-tool
 ```
 
-Requires Pi 1.2.0 or newer. Install `@howaboua/pi-codex-conversion` 3.0.43 or newer too for Code Mode and Notebook Mode. The extension remains a normal Pi tool when Codex conversion is absent.
+Requires Pi 1.2.0 or newer. Install `@howaboua/pi-codex-conversion` 3.0.52 or newer too for Code Mode and Notebook Mode. The extension remains a normal Pi tool when Codex conversion is absent.
 
 ## Start Pi normally
 
@@ -29,7 +29,7 @@ await tools.skills("read codebase-hygiene testing js-ts")
 await tools.skills("read communication conversation writing; read codebase-hygiene testing")
 ```
 
-Pi's loaded skill catalog is authoritative during normal use. When Pi has no loaded skills, including `--no-skills` sessions, the tool falls back to the standard global `skills/` directory under Pi's agent directory and `$PWD/.pi/skills/`. A same-named session skill overrides the global skill. Skill reads include absolute package paths for later reference, script, or asset access.
+The tool scans the standard global `skills/` directory under Pi's agent directory and `$PWD/.pi/skills/`, then overlays Pi's loaded catalog. Loaded skills win name collisions without hiding filesystem skills when Pi loads only part of the catalog, including `--no-skills` sessions. A loaded skill with `disable-model-invocation` removes that name. Skill reads include absolute package paths for later reference, script, or asset access.
 
 After the initial skill, an exact skill name adds that full skill package. Reference shorthand resolves within the most recently selected skill first, then across the visible catalog. A unique reference can come from another skill. An ambiguous global reference requires a skill-qualified name such as `communication/references/conversation` or an absolute source path. A read with only references still returns only the requested Markdown and source paths, without repeating the initial package inventory.
 
@@ -38,5 +38,3 @@ Separate independent `read` or `list` commands with `;`. Each group resolves ref
 Results stay within 48 KiB of UTF-8 text. Larger results include an `Incomplete` marker and an exact continuation command ending in `--offset <byte>`. Run that command to retrieve the next part. Continuations are stateless and re-read the catalog, so restart the original command if skill files change between calls. Normalized commands, excluding the offset suffix, are limited to 4 KiB to keep continuation instructions within the result budget.
 
 Remove or disable any legacy `codex-conversion-custom-tools/skills.toml` after installing this extension. Keeping both definitions gives Code Mode two tools named `skills`, which it rejects.
-
-The Code Mode surface is freeform because its input is already a compact routed command. It does not add a provider grammar. Code Mode's outer `exec` grammar remains the only constrained grammar involved.

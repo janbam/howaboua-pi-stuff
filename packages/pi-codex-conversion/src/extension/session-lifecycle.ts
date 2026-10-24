@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { readEffectiveCodexConversionConfig } from "../adapter/activation/config-store.ts";
 import { readSessionAdapterEnabled } from "../adapter/activation/session-state.ts";
 import { syncAdapter } from "../adapter/activation/activation.ts";
@@ -12,12 +12,15 @@ import { maybeWarnLocalCheckoutVersion } from "../adapter/local-version-warning.
 import { clearApplyPatchRenderState } from "../tools/apply-patch/tool.ts";
 import type { CodeModeRegistration } from "../tools/code-mode/tools.ts";
 import { initializeBashParser } from "../shell/bash.ts";
-import { appendNotebookTreeEpoch } from "../tools/notebook-mode/session-identity.ts";
+import { appendNotebookTreeEpoch, notebookSessionIdentity } from "../tools/notebook-mode/session-identity.ts";
+import { activateNotebookCheckpoint, type NotebookCheckpointActivity } from "../tools/notebook-mode/checkpoint-activity.ts";
+import { resolveNotebookProject } from "../tools/notebook-mode/project-identity.ts";
+import { scheduleNotebookStorageMaintenance } from "../tools/notebook-mode/storage-retention.ts";
 import type { CodexExtensionRuntime } from "./runtime.ts";
 import { discoverExternalNotesOwner } from "../context-management/external-notes-bridge.ts";
 import type { CodexToolRegistration } from "./tools.ts";
 import type { CodexUiController } from "./ui.ts";
-import { registerCodexDeveloperMessageBroker, updateCodexPreparedIdleKickoff } from "../developer-messages.ts";
+import { registerCodexDeveloperMessageBroker } from "../developer-messages.ts";
 import { registerCodexContextBriefingHost } from "../context-briefings.ts";
 import type { ExtensionHandler, SessionStartEvent, ModelSelectEvent, SessionBeforeSwitchEvent, SessionBeforeForkEvent, SessionBeforeTreeEvent, SessionTreeEvent, SessionShutdownEvent, SessionBeforeSwitchResult, SessionBeforeForkResult, SessionBeforeTreeResult } from "@earendil-works/pi-coding-agent";
 
@@ -34,6 +37,16 @@ export function createCodexSessionLifecycle(
 ) {
 	const { state, tracker, sessions } = runtime;
 	let activeContext: ExtensionContext | undefined;
+	let checkpointActivity: NotebookCheckpointActivity | undefined;
+	let checkpointSession: string | undefined;
+	const trackCheckpoint = async (ctx: ExtensionContext): Promise<void> => {
+		checkpointActivity?.release();
+		checkpointSession = notebookSessionIdentity(ctx);
+		checkpointActivity = await activateNotebookCheckpoint({
+			project: resolveNotebookProject(ctx.cwd), session: checkpointSession, agentDir: getAgentDir(),
+		});
+		scheduleNotebookStorageMaintenance(getAgentDir());
+	};
 	let pendingExtensionToolRefresh = false;
 	const unregisterContextBriefingHost = registerCodexContextBriefingHost(pi);
 	const unregisterDeveloperMessageBroker = registerCodexDeveloperMessageBroker(
@@ -42,7 +55,6 @@ export function createCodexSessionLifecycle(
 			activeContext &&
 			supportsCodexDeveloperMessages(activeContext, state),
 		),
-		() => activeContext?.isIdle() ?? false,
 	);
 	const unregisterExtensionToolRefresh = onCodeModeExtensionToolsRefresh(
 		pi,
@@ -57,6 +69,7 @@ export function createCodexSessionLifecycle(
 		},
 	);
 	const activate = (ctx: ExtensionContext): void => {
+		if (checkpointSession === notebookSessionIdentity(ctx)) checkpointActivity?.touch();
 		activeContext = ctx;
 		pendingExtensionToolRefresh = false;
 	};
@@ -70,7 +83,7 @@ export function createCodexSessionLifecycle(
 	return {
 		start: async (event, ctx) => {
 			discoverExternalNotesOwner(pi, state);
-			updateCodexPreparedIdleKickoff(pi, "session_reset");
+			await trackCheckpoint(ctx);
 			activate(ctx);
 			state.notebookStatusMessageId = undefined;
 			ui.invalidateUsageStatus();
@@ -151,15 +164,15 @@ export function createCodexSessionLifecycle(
 			activate(ctx);
 			const previousMode = state.executionMode;
 			runtime.resetTransport(ctx.sessionManager.getSessionId());
-			// Internal rollover is still preparing the same claimed user kickoff.
+			// Internal rollover preserves the admission that requested it.
 			if (!state.externalNotes && state.contextTree.handleSessionTree(event)) return;
-			updateCodexPreparedIdleKickoff(pi, "session_reset");
 			state.notebookStatusMessageId = undefined;
 			if (previousMode === "notebook" || state.executionMode === "notebook") appendNotebookTreeEpoch(pi);
 			await codeMode.shutdownHost();
 			// Reconcile every session-local adapter surface against the newly selected branch.
 			state.adapterEnabled = readSessionAdapterEnabled(ctx);
 			codexProvider.applyEnabled(state.adapterEnabled);
+			await trackCheckpoint(ctx);
 			proxyProvider.applyConfig(state.config, ctx.modelRegistry);
 			await runtime.configureDiagnostics(ctx);
 			ui.applyAdapterEnabled(ctx);
@@ -172,7 +185,6 @@ export function createCodexSessionLifecycle(
 			}
 		},
 		shutdown: async (_event, ctx) => {
-			updateCodexPreparedIdleKickoff(pi, "session_reset");
 			const failures: unknown[] = [];
 			pendingExtensionToolRefresh = false;
 			await runShutdownStep(failures, unregisterExtensionToolRefresh);
@@ -190,6 +202,7 @@ export function createCodexSessionLifecycle(
 			await runShutdownStep(failures, () => proxyProvider.shutdown());
 			await runShutdownStep(failures, () => codexProvider.shutdown());
 			await runShutdownStep(failures, () => codeMode.shutdown());
+			await runShutdownStep(failures, () => checkpointActivity?.release());
 			state.developerMessages.clear();
 			state.contextWindows.reset();
 			state.contextKickoff.reset();

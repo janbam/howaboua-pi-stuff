@@ -100,8 +100,18 @@ export class CodeModeHostClient {
 		);
 		let cellId: string | undefined;
 		const abort = () => {
-			cancelOperation(this.session, id);
-			if (cellId) void this.terminate(cellId, context).catch(() => undefined);
+			if (cellId) {
+				cancelOperation(this.session, id);
+				void this.terminate(cellId, context).catch(() => undefined);
+			} else {
+				// Keep the start acknowledgement: cancellation may race cell creation.
+				// Once its id arrives, the aborted branch below terminates that cell.
+				try {
+					this.session.send({ type: "operation/cancel", id });
+				} catch {
+					// Host teardown also rejects the pending start acknowledgement.
+				}
+			}
 		};
 		signal?.addEventListener("abort", abort, { once: true });
 		try {
@@ -112,12 +122,20 @@ export class CodeModeHostClient {
 				throw abortError();
 			}
 			const response = this.delegation.attach(parseRuntimeResponse(await initial));
+			const result = await this.waitForBlockers(
+				response,
+				context,
+				effectiveYieldTimeMs,
+				signal,
+			);
+			throwIfAborted(signal);
 			return {
-				...(await this.waitForBlockers(response, context, effectiveYieldTimeMs, signal)),
+				...result,
 				maxOutputTokens: maxOutputTokens ?? 10_000,
 			};
 		} catch (error) {
 			this.session.rejectOperation(id, toError(error));
+			throwIfAborted(signal);
 			throw error;
 		} finally {
 			signal?.removeEventListener("abort", abort);
@@ -144,12 +162,25 @@ export class CodeModeHostClient {
 		context: ToolExecutionContext,
 		signal?: AbortSignal,
 	): Promise<RuntimeResponse> {
-		return this.waitForBlockers(
-			await this.cells.wait(cellId, yieldTimeMs, context, signal),
-			context,
-			yieldTimeMs,
-			signal,
-		);
+		throwIfAborted(signal);
+		// Cancelling a host wait only drops its observer, not the running cell.
+		// Keep this active through blocker waits as well as the wire operation.
+		const abort = () => {
+			void this.terminate(cellId, context).catch(() => undefined);
+		};
+		signal?.addEventListener("abort", abort, { once: true });
+		try {
+			const result = await this.waitForBlockers(
+				await this.cells.wait(cellId, yieldTimeMs, context, signal),
+				context,
+				yieldTimeMs,
+				signal,
+			);
+			throwIfAborted(signal);
+			return result;
+		} finally {
+			signal?.removeEventListener("abort", abort);
+		}
 	}
 
 	async terminate(

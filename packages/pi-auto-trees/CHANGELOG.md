@@ -1,5 +1,13 @@
 # @howaboua/pi-auto-trees
 
+## 0.1.18
+
+- Use denser priming and commit-summary guidance in PCC GPT prompt mode.
+
+## 0.1.17
+
+- Use compact priming, commit-summary and voice guidance in opt-in PCC GPT prompt mode.
+
 ## 0.1.16
 
 - GPT-6 Sol and Luna now share Astra's Codex support.

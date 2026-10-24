@@ -61,7 +61,7 @@ export async function readReceiver(path) {
 						code: "ENOENT",
 					}),
 				),
-			5_000,
+			30_000,
 		);
 		const read = () => {
 			void readFile(path, "utf8").then(

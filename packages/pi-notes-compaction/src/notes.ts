@@ -327,15 +327,23 @@ export function useNotes(
 			} satisfies NoteReceipt);
 		} catch {
 			throw new Error(
-				`Note ${root}${path} reached local storage but its session receipt failed. Reread the selected branch before retrying.`,
+				`Note ${root}${path} was stored but not attached to this session. Read it before retrying the write.`,
 			);
 		}
 		return {
-			source: "pi-session",
-			file: noteMetadata(revision, root),
+			file: { path: `${root}${path}` },
 		};
 	}
+	return readNotes(notes, params, agent);
+}
 
+export function readNotes(
+	notes: ReadonlyMap<string, NoteRevision>,
+	params: Record<string, unknown>,
+	agent: string,
+): Record<string, unknown> {
+	const action = params["action"];
+	const root = `${agent}/notes/`;
 	if (action === "read_file") {
 		const path = params["path"] as string;
 		const note = notes.get(path);

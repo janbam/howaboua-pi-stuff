@@ -1,14 +1,7 @@
-export type CodexCompactionInputSource = "canonical" | "reconstructed";
+import { isWebSocketContinuationMismatch, WEBSOCKET_CONTINUATION_DECISIONS, type WebSocketContinuationDecision, type WebSocketContinuationMismatch } from "../../providers/openai-codex/continuation-diagnostics.ts";
 
-export type CodexCompactionContinuation =
-	| "disabled"
-	| "no_session_cache_entry"
-	| "no_continuation"
-	| "body_mismatch"
-	| "input_shorter_than_baseline"
-	| "input_prefix_mismatch"
-	| "missing_previous_response_id"
-	| "delta";
+export type CodexCompactionInputSource = "canonical" | "reconstructed";
+export type CodexCompactionContinuation = WebSocketContinuationDecision;
 
 export type CodexCompactionReplayDecision =
 	| "validated"
@@ -28,6 +21,7 @@ export type CodexCompactionDiagnostic = {
 	checkpointModel?: string | undefined;
 	transport?: "websocket" | "sse" | undefined;
 	continuation?: CodexCompactionContinuation | undefined;
+	continuationMismatch?: WebSocketContinuationMismatch | undefined;
 	previousResponseId?: boolean | undefined;
 	fullInputItems?: number | undefined;
 	sentInputItems?: number | undefined;
@@ -35,16 +29,6 @@ export type CodexCompactionDiagnostic = {
 };
 
 const COMPACTION_INPUT_SOURCES = ["canonical", "reconstructed"] as const;
-const COMPACTION_CONTINUATIONS = [
-	"disabled",
-	"no_session_cache_entry",
-	"no_continuation",
-	"body_mismatch",
-	"input_shorter_than_baseline",
-	"input_prefix_mismatch",
-	"missing_previous_response_id",
-	"delta",
-] as const;
 const COMPACTION_REPLAY_DECISIONS = [
 	"validated",
 	"not_applicable",
@@ -80,7 +64,8 @@ export function isCodexCompactionDiagnostic(value: unknown): value is CodexCompa
 		&& isOptionalString(value["model"])
 		&& isOptionalString(value["checkpointModel"])
 		&& (value["transport"] === undefined || value["transport"] === "websocket" || value["transport"] === "sse")
-		&& (value["continuation"] === undefined || isOneOf(COMPACTION_CONTINUATIONS, value["continuation"]))
+		&& (value["continuation"] === undefined || isOneOf(WEBSOCKET_CONTINUATION_DECISIONS, value["continuation"]))
+		&& (value["continuationMismatch"] === undefined || isWebSocketContinuationMismatch(value["continuationMismatch"]))
 		&& (value["previousResponseId"] === undefined || typeof value["previousResponseId"] === "boolean")
 		&& isOptionalNonNegativeNumber(value["fullInputItems"])
 		&& isOptionalNonNegativeNumber(value["sentInputItems"])

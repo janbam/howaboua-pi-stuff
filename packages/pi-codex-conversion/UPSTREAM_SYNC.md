@@ -13,6 +13,14 @@ This is the maintainer checklist for syncing the bundled provider with Pi and Op
 - Standalone web search: [`../pi-codex-web-run/UPSTREAM_SYNC.md`](../pi-codex-web-run/UPSTREAM_SYNC.md)
 - Standalone image generation: [`../pi-codex-imagegen/UPSTREAM_SYNC.md`](../pi-codex-imagegen/UPSTREAM_SYNC.md)
 
+## Pi 1.4 compatibility
+
+Compared released Pi `1.4.0` with `1.3.0` for request shape, headers, reasoning, service tiers, retries and stream termination. The adapter now requires Pi 1.4 and uses its enum-based `resolveTranscriptTools()` API with `foldedSystemMessages`. The `"additions"` policy keeps initial tools top-level and anchors later additions after the last removal or redeclaration. Pi's separate `"changes"` policy, initial `additional_tools` placement and tool-removal notices are not adopted here. The adapter's existing Codex headers, base-instruction placement and transport recovery remain intentional differences.
+
+## October 17 base-instruction placement
+
+Adopted Codex `c9253c4977` (#51156), checked against `ce0323f2f2`: STANDARD and Responses Lite carry nonempty base instructions as a leading developer input message, not top-level `instructions`. Empty base instructions add no message or fallback prompt. Lite retains its preceding tool namespace item and its existing reasoning and parallel-call settings; STANDARD retains flat tools. Pi 1.3.0's stock `dist/api/openai-codex-responses.js` still uses top-level instructions and a fallback prompt; this scoped divergence is intentional. Native replay and compaction continue to accept older request layouts. Other reference pins above are unchanged.
+
 ## Pi 0.99.1 compatibility
 
 Compared the published SDK and stock Codex provider for request shape, headers, reasoning, service tiers, retries and stream termination. The adapter keeps its existing Codex transport and recovery policy.
@@ -82,6 +90,12 @@ Idle keepalive refreshes the last finalized provider-request prefix on an isolat
 Pi projects forced prompts onto requests without recording them in the transcript. Final-request capture retains that effective prompt for native compaction; transcript replay uses the persisted structured sections. `SystemMessage.replace` is no longer part of the upstream contract.
 
 Live cache/compaction validation used source commit `e4c75a732`; it has not been repeated against published Pi `0.99.1`. Isolated SDK captures verify final prompts and tools, not provider cache hits.
+
+## October 16 continuation diagnostics
+
+Reviewed Codex `rust-v0.163.0` at `83086188ae`. Adapted the bounded continuation failure labels from `fac5d0ba91b991ddb5a0f049289acd84135927b5` (#51895): changed request properties and mismatched input item types reach opt-in logs, including compaction prewarm. Unknown property names and item types are never logged verbatim. Existing request comparisons, pending-tool-output continuation, retry policy and wire payloads remain unchanged.
+
+The official Code Mode runtime pin and bridge boundary are recorded in [`code-mode/UPSTREAM_SYNC.md`](code-mode/UPSTREAM_SYNC.md). The local executor's output-drain adaptation is recorded in [`src/tools/exec/rust/UPSTREAM`](src/tools/exec/rust/UPSTREAM).
 
 ## Monitor on each Codex sync
 
@@ -198,7 +212,7 @@ Do not fabricate these values. Add one only when Pi owns the corresponding lifec
 
 ## Live smoke checks
 
-Code-mode host source and protocol are tracked separately in [`code-mode/UPSTREAM_SYNC.md`](code-mode/UPSTREAM_SYNC.md). The conversion package owns its copied TypeScript bridge and activation boundary; do not replace them with a runtime dependency on another Pi extension.
+The Code-mode host release and protocol are tracked separately in [`code-mode/UPSTREAM_SYNC.md`](code-mode/UPSTREAM_SYNC.md). The conversion package owns its TypeScript bridge and activation boundary; do not replace them with a runtime dependency on another Pi extension.
 
 After a material transport sync, verify against OpenAI Codex OAuth:
 

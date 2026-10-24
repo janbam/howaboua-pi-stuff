@@ -1,19 +1,36 @@
 import type { ExtensionAPI, ToolLoadout, ToolLoadoutChanges } from "@earendil-works/pi-coding-agent";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { Check } from "typebox/value";
 import { missingMcpToolMessage } from "../../tools/code-mode/mcp-tool-recovery.ts";
 import type { ProgrammaticCodeModeToolDefinition } from "../../tools/code-mode/types.ts";
 import { ALL_CODEX_ADAPTER_TOOL_NAMES } from "../activation/runtime-plan.ts";
 
+const hiddenDeclarations = new WeakMap<ExtensionAPI, ReadonlySet<string>>();
+
+/** Reconstructed requests bypass Pi's post-context hidden-declaration projection. */
+export function projectPiCodeModeDeclarations(pi: ExtensionAPI, messages: AgentMessage[]): AgentMessage[] {
+	const hidden = hiddenDeclarations.get(pi);
+	if (!hidden?.size) return messages;
+	return messages.map(message => {
+		if (message.role !== "system" || (!message.toolsAdded && !message.toolsRemoved)) return message;
+		const { toolsAdded, toolsRemoved, ...rest } = message;
+		const added = toolsAdded?.filter(tool => !hidden.has(tool.name)) ?? [];
+		const removed = toolsRemoved?.filter(tool => !hidden.has(tool.name)) ?? [];
+		return { ...rest, ...(added.length ? { toolsAdded: added } : {}), ...(removed.length ? { toolsRemoved: removed } : {}) };
+	});
+}
+
 /** Pi owns callable admission; explicit integrations reserve their native names. */
 export function createPiCodeModeBridge(pi: ExtensionAPI): {
-	prepareLoadout(loadout: ToolLoadout): ToolLoadoutChanges;
+	prepareLoadout(loadout: ToolLoadout, additionallyHidden?: readonly string[]): ToolLoadoutChanges;
 	getTools(reservedNames?: readonly string[]): ProgrammaticCodeModeToolDefinition[];
 } {
 	let tools: ProgrammaticCodeModeToolDefinition[] = [];
 	return {
 		getTools: (reservedNames = []) => tools.filter((tool) => !reservedNames.includes(tool.name)),
-		prepareLoadout(loadout) {
+		prepareLoadout(loadout, additionallyHidden = []) {
 			const registered = new Map(pi.getAllTools().map((tool) => [tool.name, tool]));
+			const declared = new Set(loadout.declared.map((tool) => tool.name));
 			tools = loadout.callable.filter((tool) => tool.name !== "codemode"
 				&& !ALL_CODEX_ADAPTER_TOOL_NAMES.includes(tool.name)
 				&& registered.get(tool.name)?.sourceInfo?.path !== "builtin:tool-search").map((tool) => {
@@ -28,14 +45,18 @@ export function createPiCodeModeBridge(pi: ExtensionAPI): {
 					promptGuidelines: metadata?.promptGuidelines,
 					kind: "function",
 					deferLoading: true,
-					discoverWhenDeferred: true,
+					// Pi maps MCP's codemode exposure to deferred; server discovery still owns its catalogue.
+					discoverWhenDeferred: mcp || loadout.getExposure(tool.name) !== "deferred" || declared.has(tool.name),
 					...(mcp ? { discovery: "server" as const } : {}),
 					executionPipeline: "pi",
+					propagateTermination: true,
 					inputSchema: tool.parameters,
 					output: tool.outputSchema ? JSON.stringify(tool.outputSchema) : undefined,
 					async invoke(input, context, signal) {
 						if (!context.executeTool) throw new Error("Pi nested tool executor is unavailable");
-						const args = input === undefined && Check(tool.parameters, {}) ? {} : input;
+						// The Code host serializes omitted arguments as null; preserve schema-valid nulls.
+						const empty = input === undefined || (input === null && !Check(tool.parameters, null));
+						const args = empty && Check(tool.parameters, {}) ? {} : input;
 						const outcome = await context.executeTool(tool.name, args, { signal, ...(context.onUpdate ? { onUpdate: context.onUpdate } : {}) });
 						const { result } = outcome;
 						const text = result.content.filter((block) => block.type === "text").map((block) => block.text).join("\n");
@@ -56,7 +77,9 @@ export function createPiCodeModeBridge(pi: ExtensionAPI): {
 					},
 				};
 			});
-			return { hiddenDeclarations: tools.map((tool) => tool.name) };
+			const hidden = [...tools.map((tool) => tool.name), ...additionallyHidden];
+			hiddenDeclarations.set(pi, new Set(hidden));
+			return { hiddenDeclarations: hidden };
 		},
 	};
 }

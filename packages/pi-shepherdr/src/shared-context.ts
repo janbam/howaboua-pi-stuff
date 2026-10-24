@@ -11,29 +11,16 @@ import type {
 } from "@howaboua/pi-codex-conversion/context-sharing";
 import { Check } from "typebox/value";
 import { AgentAttachment } from "./attachment.js";
-import {
-	attachmentOwner,
-	attachmentRoutes,
-	Identity,
-} from "./attachment-protocol.js";
+import { Identity } from "./attachment-protocol.js";
 import type { AgentBoard } from "./board/host.js";
-import type { AgentFleet, ConnectedMachine } from "./fleet.js";
+import type { AgentFleet } from "./fleet.js";
 import { sessionPath } from "./herdr.js";
 import {
-	listenContext,
 	requestContext,
 	sessionContextPath,
 } from "./remote/shepherdr-context.mjs";
-import type { PaneInfo } from "./types.js";
+import { MEMBER_ENTRY, type Member, SpawnContext } from "./spawn-context.js";
 
-const MEMBER_ENTRY = "herdr-context-child";
-interface Member {
-	agentName: string;
-	sessionId: string;
-	threadId: string;
-	machine: string;
-	sessionFile: string;
-}
 interface Routing {
 	transport: "shepherdr";
 	parent: string;
@@ -45,12 +32,12 @@ interface ContextEnvelope {
 }
 
 export class SharedAgentContext {
-	private readonly pi: ExtensionAPI;
 	private readonly fleet: AgentFleet;
 	private readonly getService: () => ContextSharingService | undefined;
 	private readonly board: AgentBoard;
 	private running = false;
 	readonly attachment: AgentAttachment;
+	readonly spawns: SpawnContext;
 
 	constructor(
 		pi: ExtensionAPI,
@@ -58,12 +45,12 @@ export class SharedAgentContext {
 		getService: () => ContextSharingService | undefined,
 		board: AgentBoard,
 	) {
-		this.pi = pi;
 		this.fleet = fleet;
 		this.getService = getService;
 		this.board = board;
 		this.attachment = new AgentAttachment(pi, board, getService);
-		pi.on("agent_start", () => {
+		this.spawns = new SpawnContext(pi, getService);
+		pi.on("before_agent_start", () => {
 			this.running = true;
 		});
 		pi.on("agent_settled", () => {
@@ -297,235 +284,4 @@ export class SharedAgentContext {
 			);
 		return matches[0]!;
 	}
-
-	prepareRelationship(
-		ctx: ExtensionContext,
-		runtime: ConnectedMachine,
-		args: readonly string[],
-	) {
-		if (!this.getService()?.bindRelationship) return undefined;
-		// Session-selection profiles resume existing identities rather than creating workers.
-		if (
-			args.some((arg) =>
-				/^(?:--(?:session(?:-id)?|continue|resume|no-session|fork)(?:=|$)|-[cr]$)/.test(
-					arg,
-				),
-			)
-		)
-			return undefined;
-		const parentThreadId = ctx.sessionManager.getSessionId();
-		const relationship = { parentThreadId, subagentKind: "collab_spawn" };
-		return {
-			accept: async (agent: PaneInfo) => {
-				const file = sessionPath(agent);
-				if (!file) throw new Error("Spawned agent has no saved Pi session");
-				const value = await runtime.client.requestContext(
-					sessionContextPath(file),
-					{
-						operation: "bind-relationship",
-						relationship,
-					},
-				);
-				if (ctx.sessionManager.getSessionId() !== parentThreadId)
-					throw new Error("Controller session changed during spawn");
-				if (value === null)
-					return {
-						warning:
-							"Worker relationship marking requires Codex conversion on the target",
-					};
-				if (!isDeepStrictEqual(value, relationship))
-					throw new Error(
-						"Spawned agent did not adopt its parent relationship",
-					);
-				return undefined;
-			},
-		};
-	}
-
-	async prepare(
-		ctx: ExtensionContext,
-		runtime: ConnectedMachine,
-		name: string,
-		args: readonly string[] = [],
-	) {
-		const service = this.getService();
-		if (!service?.canCreateChild(ctx)) return undefined;
-		const parent = service.describe(ctx);
-		if (!parent) return undefined;
-		if (
-			args.some((arg) =>
-				/^(?:--(?:session(?:-id)?|continue|resume|no-session|fork)(?:=|$)|-[cr]$)/.test(
-					arg,
-				),
-			)
-		)
-			throw new Error(
-				"Shared context spawn cannot use profile session-selection arguments; use assign for existing agents",
-			);
-		const parentFile = ctx.sessionManager.getSessionFile();
-		if (!parentFile)
-			throw new Error(
-				"Shared context spawn requires a saved controller session",
-			);
-		const routing: Routing | undefined =
-			parent.storage === "session"
-				? {
-						transport: "shepherdr",
-						parent: runtime.local
-							? sessionContextPath(parentFile)
-							: runtime.client.contextRelayPath(),
-					}
-				: undefined;
-		const { binding, adopt } = await service.createChild(ctx, {
-			name,
-			...(routing ? { routing } : {}),
-		});
-		return {
-			accept: async (agent: PaneInfo) => {
-				const sessionFile = sessionPath(agent);
-				if (!sessionFile)
-					throw new Error("Spawned agent has no native Pi session path");
-				const value = await runtime.client.requestContext(
-					sessionContextPath(sessionFile),
-					{ operation: "bind", binding },
-				);
-				if (!value)
-					return {
-						warning:
-							"Spawned without shared context: the target needs Codex conversion with notes-based continuity",
-					};
-				if (
-					typeof value !== "object" ||
-					!("sessionId" in value) ||
-					value.sessionId !== binding.sessionId ||
-					!("agentName" in value) ||
-					value.agentName !== binding.agentName ||
-					!("storage" in value) ||
-					value.storage !== binding.storage ||
-					(binding.accountScope !== undefined &&
-						(!("accountScope" in value) ||
-							value.accountScope !== binding.accountScope))
-				)
-					throw new Error(
-						"Spawned agent did not adopt its shared context identity and storage mode",
-					);
-				if (ctx.sessionManager.getSessionId() !== parent.threadId)
-					throw new Error("Controller session changed during spawn");
-				await adopt();
-				this.pi.appendEntry<Member>(MEMBER_ENTRY, {
-					agentName: binding.agentName,
-					sessionId: parent.sessionId,
-					threadId: parent.threadId,
-					machine: runtime.machine,
-					sessionFile,
-				});
-				return { agentName: binding.agentName };
-			},
-		};
-	}
-}
-
-export async function registerSharedAgentContext(
-	pi: ExtensionAPI,
-	fleet: AgentFleet,
-	board: AgentBoard,
-): Promise<SharedAgentContext> {
-	let api:
-		| typeof import("@howaboua/pi-codex-conversion/context-sharing")
-		| undefined;
-	try {
-		api = await import("@howaboua/pi-codex-conversion/context-sharing");
-	} catch (error) {
-		const failure = error as { code?: string; message?: string };
-		const missing = failure.message?.match(
-			/Cannot find (?:package|module) ['"]([^'"]+)['"]/,
-		)?.[1];
-		const module = "@howaboua/pi-codex-conversion/context-sharing";
-		const unavailable =
-			((failure.code === "ERR_MODULE_NOT_FOUND" ||
-				failure.code === "MODULE_NOT_FOUND") &&
-				(missing === "@howaboua/pi-codex-conversion" ||
-					missing === module ||
-					missing?.endsWith(`/${module}`))) ||
-			(failure.code === "ERR_PACKAGE_PATH_NOT_EXPORTED" &&
-				failure.message?.includes("@howaboua/pi-codex-conversion") &&
-				failure.message.includes("./context-sharing"));
-		if (!unavailable)
-			throw new Error(
-				"Update pi-codex-conversion to use shared agent context",
-				{ cause: error },
-			);
-	}
-	const connection = api?.connectCodexContextSharing(pi);
-	const shared = new SharedAgentContext(
-		pi,
-		fleet,
-		() => connection?.service,
-		board,
-	);
-	let close: (() => Promise<void>) | undefined;
-	let unregister: (() => void) | undefined;
-	pi.on("session_start", async (_event, ctx) => {
-		await close?.();
-		close = undefined;
-		unregister?.();
-		unregister = connection?.service?.registerRouter(
-			Object.assign(
-				async (
-					context: ExtensionContext,
-					request: SharedContextRequest,
-					signal?: AbortSignal,
-				) => {
-					const attached = await shared.attachment.routing.route(
-						context,
-						request,
-						[],
-						(route, next) =>
-							fleet
-								.connected(route.machine)
-								.client.requestContext(
-									sessionContextPath(route.sessionFile),
-									next,
-									signal,
-								),
-						signal,
-					);
-					if (attached) return attached;
-					if (connection?.service?.describe(context)?.storage === "remote")
-						return undefined;
-					return shared.handle(
-						context,
-						{ operation: "context", request, visited: [] },
-						signal,
-					) as Promise<SharedContextResult>;
-				},
-				{
-					requiresRemoteScope: (context: ExtensionContext) =>
-						attachmentOwner(context)?.context?.controller.storage ===
-							"remote" ||
-						attachmentRoutes(context).some(
-							(route) =>
-								route.phase === "ready" &&
-								route.plan.context?.target.storage === "remote",
-						),
-				},
-			),
-		);
-		const file = ctx.sessionManager.getSessionFile();
-		if (file)
-			close = await listenContext(
-				sessionContextPath(file),
-				(request: unknown, signal: AbortSignal) =>
-					shared.handle(ctx, request, signal),
-			);
-	});
-	pi.on("session_shutdown", async () => {
-		unregister?.();
-		await close?.();
-		connection?.dispose();
-	});
-	fleet.setContextRelay((ctx, request, signal) =>
-		shared.handle(ctx, request, signal),
-	);
-	return shared;
 }

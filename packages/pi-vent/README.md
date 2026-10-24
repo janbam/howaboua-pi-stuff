@@ -2,7 +2,7 @@
 
 Adds an agent-callable `vent` tool for recording repeated or systemic workflow friction in a project-specific log under `~/.pi/agent/vent/`.
 
-This package is no longer maintained and will receive no further releases. Source is retained for reference and adaptation. The workflow now lives as a [Pi Codex custom tool](../pi-codex-conversion/).
+Upstream retired this extension. This fork retains it as a private, fork-owned package with centralized log storage. It does not publish npm releases.
 
 Use it for recurring tool failures, repeated manual workarounds, noisy output that forces the same retries, or instructions that repeatedly cause backtracking. Ordinary lint errors, one-off mistakes, and routine debugging do not belong there.
 
@@ -15,13 +15,13 @@ When the extension first opens a project that still has a repo-local `VENT.md`, 
 ## Install
 
 ```bash
-pi install npm:@howaboua/pi-vent
+pi install /absolute/path/to/this/checkout/packages/pi-vent
 ```
 
 Project-only install:
 
 ```bash
-pi install -l npm:@howaboua/pi-vent
+pi install -l /absolute/path/to/this/checkout/packages/pi-vent
 ```
 
 ## Tool

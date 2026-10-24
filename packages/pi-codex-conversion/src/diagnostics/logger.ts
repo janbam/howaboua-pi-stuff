@@ -54,6 +54,11 @@ function field(key: string, value: string | number | boolean | null | undefined)
 }
 
 function eventFields(event: CodexDiagnosticsEvent): Array<string | undefined> {
+	if (event.type === "connection") return [
+		field("event", event.type), field("socket_id", event.socketId), field("phase", event.phase),
+		field("initiator", event.initiator), field("cause", event.cause),
+		field("close_code", event.closeCode), field("close_reason", event.closeReason),
+	];
 	if (event.type === "timing") return [
 		field("event", event.type), field("lane", event.lane), field("transport", event.transport),
 		field("attempt", event.attempt), field("outcome", event.outcome),
@@ -71,8 +76,17 @@ function eventFields(event: CodexDiagnosticsEvent): Array<string | undefined> {
 		field("attempt", event.attempt),
 		field("socket", event.socketReused === undefined ? undefined : event.socketReused ? "reused" : "new"),
 		field("socket_age_ms", event.socketAgeMs),
+		field("socket_request_ordinal", event.socketRequestOrdinal),
+		field("socket_id", event.socketId),
+		field("instructions_fingerprint", event.requestMetadata?.instructionsFingerprint),
+		field("tools_fingerprint", event.requestMetadata?.toolsFingerprint),
+		field("cache_key_fingerprint", event.requestMetadata?.cacheKeyFingerprint),
+		field("routing_fingerprint", event.requestMetadata?.routingFingerprint),
+		field("options_fingerprint", event.requestMetadata?.optionsFingerprint),
 		field("socket_lane", event.socketLane),
 		field("continuation", event.continuation),
+		field("continuation_previous_item_type", event.continuationMismatch?.previousItemType),
+		field("continuation_current_item_type", event.continuationMismatch?.currentItemType),
 		field("continuation_input_items", event.continuationBaselineInputItems),
 		field("continuation_response_items", event.continuationBaselineResponseItems),
 		field("canonical_history", event.canonicalHistory),
@@ -132,6 +146,7 @@ function eventFields(event: CodexDiagnosticsEvent): Array<string | undefined> {
 			field("event", event.type),
 			field("transport", event.transport),
 			field("socket", event.socketReused ? "reused" : "new"),
+			field("socket_id", event.socketId),
 			field("socket_age_ms", event.socketAgeMs),
 			field("socket_lane", event.socketLane),
 			field("prewarm_kind", event.prewarm.kind),
@@ -155,7 +170,10 @@ function eventFields(event: CodexDiagnosticsEvent): Array<string | undefined> {
 }
 
 function formatEvent(event: CodexDiagnosticsEvent): string {
-	return `${new Date().toISOString()} ${[field("local_request_id", event.requestId), ...eventFields(event)].filter((value): value is string => value !== undefined).join(" ")}\n`;
+	return `${new Date().toISOString()} ${[field("local_request_id", event.requestId),
+		field("scope", event.scope),
+		field("request_counter_process_id", event.requestCounterProcessId), field("session_request_ordinal", event.sessionRequestOrdinal),
+		...eventFields(event)].filter((value): value is string => value !== undefined).join(" ")}\n`;
 }
 
 export async function createCodexDiagnosticsLog(options: {
@@ -181,6 +199,8 @@ export async function createCodexDiagnosticsLog(options: {
 	const header = [
 		"# Pi Codex diagnostics",
 		"# Metadata only: prompts, messages, tool arguments, images, credentials, and response IDs are omitted.",
+		"# session_request_ordinal: native session within this live process; response/compaction attempts only; retries/fallback share an ordinal; prewarm/keepalive excluded. Counts with logging off; resets on process restart, not compaction/window/socket reset or same-process resume. Missing without a native session ID.",
+		"# socket_request_ordinal: response.create attempts on this physical socket, including labelled prewarm/keepalive; resets on socket replacement. Request ordinals count attempted sends, not successful responses.",
 		`# opened=${new Date().toISOString()}`,
 		`# session_id=${JSON.stringify(options.sessionId)}`,
 		`# session_name=${JSON.stringify(options.sessionName ?? "")}`,

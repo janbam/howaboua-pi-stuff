@@ -1,4 +1,5 @@
 import type { CachedWebSocketContinuationState, CachedWebSocketRequestBodyResult, ResponsesBody, WebSocketContinuationDecision } from "./types.ts";
+import { continuationItemType, WEBSOCKET_REQUEST_CHANGE_REASONS, type WebSocketContinuationMismatch } from "./continuation-diagnostics.ts";
 
 export function requestBodyForWebSocketContinuationComparison(body: ResponsesBody): ResponsesBody {
 	const {
@@ -36,8 +37,15 @@ function responsesValuesEqual(a: unknown, b: unknown): boolean {
 	return JSON.stringify(canonicalResponseValue(a)) === JSON.stringify(canonicalResponseValue(b));
 }
 
-function requestBodiesMatchExceptInput(a: ResponsesBody, b: ResponsesBody): boolean {
-	return responsesValuesEqual(requestBodyForWebSocketContinuationComparison(a), requestBodyForWebSocketContinuationComparison(b));
+function requestBodyMismatch(previous: ResponsesBody, current: ResponsesBody): WebSocketContinuationDecision | undefined {
+	const before = requestBodyForWebSocketContinuationComparison(previous);
+	const after = requestBodyForWebSocketContinuationComparison(current);
+	if (responsesValuesEqual(before, after)) return undefined;
+	for (const [field, reason] of Object.entries(WEBSOCKET_REQUEST_CHANGE_REASONS)) {
+		if (!responsesValuesEqual(before[field], after[field])) return reason;
+	}
+	// Payload hooks can add fields. Preserve the comparison without logging arbitrary keys.
+	return "body_mismatch";
 }
 
 function getFunctionCallId(item: unknown): string | undefined {
@@ -69,24 +77,29 @@ function getPendingToolOutputDelta(body: ResponsesBody, continuation: CachedWebS
 	return pending.size === 0 && firstOutputIndex !== undefined ? currentInput.slice(firstOutputIndex) : undefined;
 }
 
-function getCachedWebSocketInputDelta(body: ResponsesBody, continuation: CachedWebSocketContinuationState): { delta?: unknown[] | undefined; decision: WebSocketContinuationDecision } {
-	if (!requestBodiesMatchExceptInput(body, continuation.lastRequestBody)) {
-		return { decision: "body_mismatch" };
-	}
+function getCachedWebSocketInputDelta(body: ResponsesBody, continuation: CachedWebSocketContinuationState): { delta?: unknown[] | undefined; decision: WebSocketContinuationDecision; mismatch?: WebSocketContinuationMismatch | undefined } {
+	const bodyMismatch = requestBodyMismatch(continuation.lastRequestBody, body);
+	if (bodyMismatch) return { decision: bodyMismatch };
 
 	const currentInput = body.input ?? [];
 	const baseline = [...(continuation.lastRequestBody.input ?? []), ...continuation.lastResponseItems];
 	if (currentInput.length < baseline.length) {
-		return { decision: "input_shorter_than_baseline" };
+		return { decision: "input_shorter_than_baseline", mismatch: {
+			previousItemType: continuationItemType(baseline[currentInput.length]),
+			currentItemType: "none",
+		} };
 	}
 
-	const prefix = currentInput.slice(0, baseline.length);
-	if (!responseInputsEqual(prefix, baseline)) {
+	const mismatchIndex = baseline.findIndex((item, index) => !responsesValuesEqual(item, currentInput[index]));
+	if (mismatchIndex !== -1) {
 		const pendingToolOutputDelta = getPendingToolOutputDelta(body, continuation);
 		if (pendingToolOutputDelta) {
 			return { delta: pendingToolOutputDelta, decision: "delta" };
 		}
-		return { decision: "input_prefix_mismatch" };
+		return { decision: "input_prefix_mismatch", mismatch: {
+			previousItemType: continuationItemType(baseline[mismatchIndex]),
+			currentItemType: continuationItemType(currentInput[mismatchIndex]),
+		} };
 	}
 
 	return { delta: currentInput.slice(baseline.length), decision: "delta" };
@@ -97,9 +110,9 @@ export function buildCachedWebSocketRequestBody(continuation: CachedWebSocketCon
 		return { body, decision: "no_continuation" };
 	}
 
-	const { delta, decision } = getCachedWebSocketInputDelta(body, continuation);
+	const { delta, decision, mismatch } = getCachedWebSocketInputDelta(body, continuation);
 	if (!delta) {
-		return { body, decision };
+		return { body, decision, ...(mismatch ? { mismatch } : {}) };
 	}
 	if (!continuation.lastResponseId) {
 		return { body, decision: "missing_previous_response_id" };

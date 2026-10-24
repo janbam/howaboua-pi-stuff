@@ -12,7 +12,7 @@ Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist ups
 
 ### Upstream 4.0.4 integration
 
-- Branch: `chore/merge-upstream-pcc-4.0.4`
+- PR: #29
 - Behavior: preserves the fork's adapter switch, prompt appendix, provider scope, shortcuts, status line, Ask notifications and skill catalog overlay alongside upstream's Pi 1.4 transcript API and GPT prompt mode. Pi peer minima retain the fork's 1.2 floor without weakening higher upstream requirements. Other retired upstream packages are removed, while Vent remains fork-owned.
 - Files: `AGENTS.md`, `FORK.md`, `bun.lock`, `knip.jsonc`, package manifests, `scripts/{link-pi-checkout,pi-sdk-policy,sync-aggregate-packages}.mjs`, `packages/pi-ask/ask/tool.ts`, `packages/pi-better-skills-tool/README.md`, `packages/pi-codex-conversion/{README.md,src/adapter/activation,src/extension,src/prompt/build-system-prompt.ts,src/ui/settings}`, `packages/{pi-observatory,pi-suggestions}/biome.json`
 
@@ -97,6 +97,7 @@ Paths below are relative to `packages/pi-codex-conversion/`.
 
 - Commits: `407c820`, `5edc924` (`FORK_MOD`)
 - Behavior: status line shows 5-hour usage next to weekly usage from one cached `/wham/usage` read, with shortened labels ("Codex", "Cache", no "left"). The compact v2 indicator and verbosity level are hidden. The usage cache lasts 1 minute instead of 5.
+- Upstream status: five-hour extraction and display are included in 4.0.4. Compact labels, hidden indicators and the one-minute cache remain fork-owned.
 - Files: `src/codex-usage/{client,payload}.ts`, `src/adapter/activation/{state,tool-set}.ts`, `src/extension/{session-lifecycle,turn-lifecycle,ui}.ts`, `src/ui/status.ts`, `src/diagnostics/{runtime.ts,AGENTS.md}`, `README.md`
 
 ### Appended Codex system prompt file

@@ -69,6 +69,8 @@ Call `agents` with `{}` before first use, alone, then send flat request objects 
 
 `spawn` and `assign` block by default. Set `blocking: false` when the controller should continue other work immediately. A profile's `blocking` setting overrides the call for `spawn`. Task completion and blockage are then delivered automatically.
 
+Blocking calls can run in parallel. In Code or Notebook, use `await Promise.allSettled([...])` to start independent calls together and wait for every result, including failures. Keep blocking enabled when the controller must wait, such as for parallel reviews. Consecutive `await` calls still run one after another; `Promise.all` can exit early on failure.
+
 Nonblocking extension messages notify the controller once; blocking messages arrive with the worker's blocked result. Both remain visible in `read` and later task reports until the producer closes them. Each replyable message includes a ready `reply` call with its machine, target, extension and message ID. Fill in the extension's reply template. `send` does not resolve an extension message.
 
 `reply` returns the extension's receipt after semantic delivery. Blocking messages also wait for resumed work unless another call already owns that wait. Nonblocking replies do not wait for the worker's task to finish. Shepherdr forwards strings unchanged. The producing extension owns their meaning, validation and retries.
@@ -120,7 +122,7 @@ Keys are command names without `/`; values are nonempty descriptions. Only the g
 
 Blocked commands return the built-in commands and currently registered, allowed extension commands. Commands return `commandSubmitted: true` without adding a task watch, even through `spawn` or `assign`. Submission does not confirm command success, except `/quit`, which waits for Pi to exit and its pane to close. Built-in commands other than `/quit` require an idle target. Skills and prompt templates keep their existing behavior.
 
-Idle messages start a prepared user turn. Messages arriving during a run use steering, promoted to developer messages when Pi Codex developer delivery is active. Otherwise they remain ordinary Pi custom messages.
+Idle messages start a custom-message turn through Pi’s complete preparation chain. Messages arriving during a run use steering, promoted to developer messages when Pi Codex developer delivery is active. Otherwise they remain ordinary Pi custom messages.
 
 ### Extension messages
 
@@ -194,7 +196,7 @@ Child board calls use the owning Pi sessions and existing SSH connections, not a
 
 ## Shared notes and history
 
-With compatible Pi Codex Conversion on both ends, Shepherdr marks fresh spawned workers before their first task with their immediate parent's native Pi session ID and `subagentKind: "collab_spawn"`. Each worker keeps its own native session ID. This relationship works with shared notes disabled and does not grant notes access. Resume preserves it; forks and profiles selecting existing sessions do not acquire an inherited relationship. Older PCC versions without the optional capability retain ordinary delegation. The [extension API guide](../../docs/extension-apis.md#parent-and-worker-relationships) documents PCC's `bindRelationship` service contract for other orchestrators. Shepherdr owns transport, not a separate public relationship RPC API.
+With compatible Pi Codex Conversion on both ends, Shepherdr marks fresh spawned workers before their first task with their immediate parent's native Pi session ID and `subagentKind: "collab_spawn"`. Workers also inherit the parent's effective cache routing identity, including nested and remote spawns. Each worker keeps its own native session, sockets and history. Cache routing works with shared notes disabled and does not grant notes access or copy the parent's transcript. Only matching prompt prefixes can benefit. Resume preserves the relationship; forks and profiles selecting existing sessions do not acquire it. Older PCC versions retain ordinary delegation and any supported parent linkage. The [extension API guide](../../docs/extension-apis.md#parent-and-worker-relationships) documents PCC's service contract for other orchestrators. Shepherdr owns transport, not a separate public relationship RPC API.
 
 With Pi Codex Conversion 3.0.40 or newer and notes-based continuity, enable **Share subagent context** under `/codex context` in the controller. It is off by default. Shared `spawn` gives each child a unique context identity before its first turn; `contextAgent` in the result identifies its notes and history. Shared nested spawns stay in the same family. Turning sharing off affects new spawns only; existing identity survives resume. `assign` and independently started agents remain unchanged. Older compatible Conversion versions keep ordinary delegation without sharing.
 
@@ -249,6 +251,30 @@ Optional profile settings:
 Ordinary delegation stays inside `agents`. For workspace, tab, pane, process, focus, layout or raw-terminal operations, run `herdr --skill` and follow the installed Herdr skill. Shepherdr does not duplicate those controls.
 
 Herdr still owns terminals, layout, agent processes and restored sessions. Shepherdr owns event subscriptions, remote routing, the fleet widget and purple settlement messages.
+
+## Worker role integration
+
+Every Shepherdr launch carries `--shepherdr-worker`, including remote workers, profiles without prompts and resumed workers. The role survives session resume after the first task. Forks do not inherit the saved role, but a fork opened inside a flagged worker process is still a worker. Existing agents reached through `assign` or `attach` are not automatically classified as workers. Pi Codex Conversion is not required.
+
+Other extensions can query the current role synchronously through public Pi events, including during `session_start`:
+
+```ts
+let worker = false;
+pi.events.emit("shepherdr:worker-role:v1", {
+  sessionManager: ctx.sessionManager,
+  reply: (value: boolean) => { worker = value; },
+});
+```
+
+No reply means Shepherdr is unavailable. The query adds no model instructions or tools. Worker launch flags describe the process, so new sessions opened inside that process remain workers.
+
+## Pulse runner
+
+Shepherdr implements Pulses' optional detached-runner contract through Pi events. Pulses owns scheduling. Each worker runs in a separate Pi process, so the main agent remains available. Its final response returns through the same monitored waking delivery as asynchronous `agents` calls, including ordinary kickoff preparation and rollover admission. There is no passive-result or blocking execution mode.
+
+The adapter reuses owned saved sessions, refuses overlapping work and verifies parent session, branch and pane identity. Worker receipts are opaque to Pulses. Use ordinary Shepherdr controls to manage worker panes. Detached pulse workers cannot become schedulers themselves.
+
+Fresh and restored workers use the `general` profile's model, thinking level and explicit Pi arguments without its implementation-role prompt. Ordinary agent spawns still use the complete profile. Fresh workers inherit the existing family board independently of their working directory, alongside optional shared Notes and cache affinity. The adapter does not choose an output destination or keep the controlling Pi alive.
 
 ## License
 

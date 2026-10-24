@@ -1,5 +1,42 @@
 # @howaboua/pi-shepherdr
 
+## 0.2.23
+
+- - Worker roles now follow shared project instructions, preserving a longer common startup prefix and exact role whitespace across machines. Update and reload Shepherdr on controllers and worker hosts together.
+  - Fixed broken remote connections causing unhandled pipe errors and leaving requests pending.
+  - Worker-notice warnings now identify the affected machine and explain how to reconnect.
+  - GPT-mode Board briefings use denser guidance.
+  - Blocking agent calls can run in parallel while the controller waits for their results.
+  - Launched workers identify themselves to compatible extensions so human-only features can stay off.
+
+## 0.2.22
+
+- **Worker integrations**
+
+  - Fresh workers now share their parent's cache routing with compatible Codex Conversion. Shared notes remain optional, and native sessions and histories remain separate.
+  - Fresh workers inherit the live Board setting before their first request, keeping Board tools and guidance available from startup.
+  - Added an optional Pulses runner with persistent workers, saved-session reuse and completion reports that wake the parent.
+
+  **Agent tools and guidance**
+
+  - Expanded tool calls now show outgoing tasks, messages, replies and focus handoffs in full.
+  - Added compact agent help and hosted Board briefings for PCC GPT prompt mode.
+  - Agent discovery now uses the same help contract across native, Code and Notebook tools.
+  - Added delegation guidance for distinct scopes, shared project context and combined validation.
+  - Invalid spawn names now explain naming limits and how to use a longer label. Spawn guidance favours short two-word names.
+
+## 0.2.21
+
+- Fixed duplicate sessions showing a stack trace instead of a warning explaining how to restore shared context.
+
+## 0.2.20
+
+- Requires Pi 1.2.0 or newer.
+
+  - Idle assignments and completion reports now apply Pi's full prompt and tool preparation.
+  - Fixed local and remote spawns failing during session startup.
+  - Supervision reminders now distinguish other agents' tasks from the current task after compaction.
+
 ## 0.2.19
 
 - Added Codex parent-child metadata for workers when used with PCC, preserved on resume and independent of shared notes.

@@ -2,8 +2,6 @@ import { StringDecoder } from "node:string_decoder";
 import { getCodexShellArgs } from "../../adapter/prompt/runtime-shell.ts";
 import { chunkToBytes, createExecBridgeClient, type BridgeReadResponse } from "./bridge-client.ts";
 
-const EXIT_OUTPUT_GRACE_MS = 100;
-
 export interface BridgeExecInput {
 	command: string;
 	executionCommand: string;
@@ -35,8 +33,6 @@ export interface BridgeExecSession {
 	terminating: boolean;
 	outputDecoders: Record<"stdout" | "stderr" | "pty", StringDecoder>;
 	outputDecodersFlushed: boolean;
-	postExitIdleSince?: number | undefined;
-	observedExitCode?: number | null | undefined;
 }
 
 export interface BridgeSessionHooks {
@@ -75,7 +71,7 @@ export function createBridgeSessionRuntime(binaryPath?: () => string | undefined
 	}
 
 	async function poll(session: BridgeExecSession, hooks: BridgeSessionHooks, waitMs = 0, maxBytes?: number): Promise<void> {
-		if (!hooks.isOwned(session)) return;
+		if (!hooks.isOwned(session) || session.finalized) return;
 		const response = await bridge.request<BridgeReadResponse>({
 			op: "read",
 			process_id: session.processId,
@@ -83,25 +79,17 @@ export function createBridgeSessionRuntime(binaryPath?: () => string | undefined
 			max_bytes: maxBytes,
 			wait_ms: waitMs,
 		});
-		let receivedOutput = false;
 		for (const chunk of response.chunks ?? []) {
 			hooks.onOutput(session, session.outputDecoders[chunk.stream].write(chunkToBytes(chunk.chunk)));
 			session.lastSeq = Math.max(session.lastSeq, chunk.seq);
-			receivedOutput = true;
 		}
 		session.lastSeq = Math.max(session.lastSeq, response.nextSeq - 1);
-		if (response.exited) {
-			session.observedExitCode = response.exitCode;
-			if (session.postExitIdleSince === undefined || receivedOutput) session.postExitIdleSince = Date.now();
-		}
-		const postExitIdle = session.postExitIdleSince !== undefined
-			&& Date.now() - session.postExitIdleSince >= EXIT_OUTPUT_GRACE_MS;
-		if (response.closed || postExitIdle) {
+		if (response.closed) {
 			if (!session.outputDecodersFlushed) {
 				session.outputDecodersFlushed = true;
 				for (const decoder of Object.values(session.outputDecoders)) hooks.onOutput(session, decoder.end());
 			}
-			setClosedExitCode(session, response.exitCode ?? session.observedExitCode);
+			setClosedExitCode(session, response.exitCode);
 			hooks.onExit(session);
 		}
 	}

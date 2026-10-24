@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { admitCustomTurn } from "./custom-turn-admission.ts";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
@@ -45,27 +46,17 @@ const DEVELOPER_MESSAGE_CHANNEL =
 	"@howaboua/pi-codex-conversion.developer-message/v1";
 const CUSTOM_DEVELOPER_MESSAGE_CHANNEL =
 	"@howaboua/pi-codex-conversion.developer-custom-message/v1";
-const PREPARED_IDLE_KICKOFF_CHANNEL =
-	"@howaboua/pi-codex-conversion.prepared-idle-kickoff/v1";
-
 type DeveloperMessageOutcome =
 	| { ok: true }
 	| { ok: false; reason: "unavailable" | "delivery"; error: string };
 
-interface DeveloperMessageRequest {
+/** Event-bus request for integrations that must work without loading PCC. */
+export interface CodexDeveloperMessageRequest {
 	protocol: 1;
 	content: string;
 	options?: CodexDeveloperMessageOptions | undefined;
 	message?: CodexDeveloperCustomMessage | undefined;
 	outcome?: DeveloperMessageOutcome | undefined;
-}
-
-interface PreparedIdleKickoffRequest {
-	protocol: 1;
-	action: "claim" | "agent_start" | "agent_settled" | "session_reset";
-	start?: () => void;
-	prompt?: string;
-	outcome?: "started" | "pending" | { error: string } | undefined;
 }
 
 export function sendCodexDeveloperMessage(
@@ -101,50 +92,6 @@ export function trySendCodexDeveloperCustomMessage(
 	throw new Error(outcome.error);
 }
 
-export function tryStartCodexPreparedIdleKickoff(
-	pi: ExtensionAPI,
-	ctx: Pick<ExtensionContext, "ui">,
-	prompt?: string,
-): boolean {
-	const outcome = tryStartCodexPreparedIdlePrompt(pi, undefined, prompt);
-	if (outcome === "pending") {
-		ctx.ui.notify(
-			"An automatic turn is pending. If no turn starts, send a user message or reload the session.",
-			"warning",
-		);
-	}
-	return outcome !== false;
-}
-
-/** Claim idle preparation; callback prompts are distinct, never coalesced away. */
-export function tryStartCodexPreparedIdlePrompt(
-	pi: ExtensionAPI,
-	start?: () => void,
-	prompt?: string,
-): "started" | "pending" | false {
-	const request: PreparedIdleKickoffRequest = {
-		protocol: 1, action: "claim", ...(start ? { start } : {}),
-		...(prompt !== undefined ? { prompt } : {}),
-	};
-	pi.events.emit(PREPARED_IDLE_KICKOFF_CHANNEL, request);
-	if (request.outcome && typeof request.outcome === "object")
-		throw new Error(request.outcome.error);
-	return request.outcome ?? false;
-}
-
-export function updateCodexPreparedIdleKickoff(
-	pi: ExtensionAPI,
-	action: Exclude<PreparedIdleKickoffRequest["action"], "claim">,
-): void {
-	const request: PreparedIdleKickoffRequest = {
-		protocol: 1,
-		action,
-	};
-	pi.events.emit(PREPARED_IDLE_KICKOFF_CHANNEL, request);
-	if (request.outcome && typeof request.outcome === "object")
-		throw new Error(request.outcome.error);
-}
-
 function dispatchCodexDeveloperMessage(
 	pi: ExtensionAPI,
 	content: string,
@@ -154,7 +101,7 @@ function dispatchCodexDeveloperMessage(
 	if (typeof content !== "string" || content.trim() === "")
 		throw new Error("Codex developer message content cannot be empty");
 	validateOptions(options);
-	const request: DeveloperMessageRequest = {
+	const request: CodexDeveloperMessageRequest = {
 		protocol: 1,
 		content,
 		...(options ? { options } : {}),
@@ -173,41 +120,30 @@ function dispatchCodexDeveloperMessage(
 export function registerCodexDeveloperMessageBroker(
 	pi: ExtensionAPI,
 	isActive: () => boolean,
-	isIdle: () => boolean = () => false,
 ): () => void {
-	let preparedIdleKickoff: "preparing" | "running" | { prompt: string | undefined } | undefined;
 	let currentContext: ExtensionContext | undefined;
 	pi.on("session_start", (event, ctx) => {
 		currentContext = ctx;
 		// Pi reloads extensions in place and retains nextTurn. A replacement
 		// AgentSession has an empty queue; recover accepted, unconsumed entries.
-		if (event.reason === "reload") return;
 		const entries = ctx.sessionManager.getEntries();
+		const pending = entries.flatMap(entry => entry.type === "custom" && entry.customType === PENDING_DEVELOPER_MESSAGE_TYPE
+			? [readPendingDeveloperMessage(entry.data)] : []);
 		const delivered = new Set(entries.flatMap(entry => entry.type === "custom_message"
 			? [developerMessageId(entry)] : []));
+		const queued = new Set(pending.filter(data => data.queued).map(data => developerMessageId(data.message)));
 		let restored = false;
-		for (const entry of entries) {
-			if (entry.type !== "custom" || entry.customType !== PENDING_DEVELOPER_MESSAGE_TYPE) continue;
-			const pending = readPendingDeveloperMessage(entry.data);
-			if (pending.sessionId !== ctx.sessionManager.getSessionId() || delivered.has(developerMessageId(pending.message))) continue;
-			pi.sendMessage(pending.message, { deliverAs: "nextTurn", triggerTurn: false });
+		for (const data of pending) {
+			const id = developerMessageId(data.message);
+			if (data.sessionId !== ctx.sessionManager.getSessionId() || delivered.has(id) ||
+				(event.reason === "reload" && queued.has(id))) continue;
+			pi.sendMessage(data.message, { deliverAs: "nextTurn", triggerTurn: false });
+			delivered.add(id);
+			if (!data.queued) pi.appendEntry(PENDING_DEVELOPER_MESSAGE_TYPE, { ...data, protocol: 1, queued: true });
 			restored = true;
 		}
 		if (restored) ctx.ui.notify("Pending developer messages restored. Send a message to continue.", "warning");
 	});
-	const startKickoff = (start?: () => void, prompt = "Continue."): PreparedIdleKickoffRequest["outcome"] => {
-		// Pi exposes no completion for async preflight. Lifecycle owners clear the
-		// claim; guessing here could launch a concurrent turn.
-		preparedIdleKickoff = "preparing";
-		try {
-			if (start) start();
-			else pi.sendUserMessage(prompt, { deliverAs: "steer" });
-			return "started";
-		} catch (error) {
-			preparedIdleKickoff = undefined;
-			return { error: error instanceof Error ? error.message : String(error) };
-		}
-	};
 	const deliver = (value: unknown) => {
 		if (!isDeveloperMessageRequest(value) || value.outcome) return;
 		if (!isActive()) {
@@ -221,13 +157,7 @@ export function registerCodexDeveloperMessageBroker(
 		}
 		try {
 			const metadata: CodexDeveloperMessageDetails = { protocol: 1, id: randomUUID() };
-			const preparedIdleTurn = value.options?.triggerTurn === true
-				&& value.options.deliverAs !== "nextTurn"
-				&& (isIdle() || preparedIdleKickoff === "preparing");
-			// Native Tree navigation is busy without a running agent. Reports
-			// arriving during the claimed preparation still belong to its turn.
-			const deferred = preparedIdleTurn || value.options?.deliverAs === "nextTurn" ||
-				(preparedIdleKickoff === "preparing" && value.options?.deliverAs === "steer" && value.options.triggerTurn !== false);
+			const deferred = value.options?.deliverAs === "nextTurn";
 			const message = value.message ? {
 				...value.message,
 				details: { ...value.message.details, [CUSTOM_DEVELOPER_DETAILS_KEY]: metadata },
@@ -237,19 +167,30 @@ export function registerCodexDeveloperMessageBroker(
 				display: true,
 				details: metadata,
 			};
-			if (deferred) {
+			// nextTurn only queues context, even when the caller also sets triggerTurn.
+			const preparation = !deferred && value.options?.triggerTurn && currentContext
+				? admitCustomTurn(pi, currentContext) : undefined;
+			if (deferred || preparation) {
 				if (!currentContext) throw new Error("Developer message delivery requires a started session");
-				// Metadata is durable but not conversation: it cannot stale Notes
-				// before admission. The eventual custom-message ID proves consumption.
+				// Journal metadata is not conversation: it cannot stale Notes before admission.
 				pi.appendEntry(PENDING_DEVELOPER_MESSAGE_TYPE, {
-					protocol: 1, sessionId: currentContext.sessionManager.getSessionId(), message,
+					protocol: 1, sessionId: currentContext.sessionManager.getSessionId(), message, queued: deferred,
 				});
 			}
-			pi.sendMessage<object>(message,
+			if (preparation && currentContext) {
+				const ctx = currentContext;
+				const sessionId = ctx.sessionManager.getSessionId();
+				void preparation.then(() => {
+					if (currentContext !== ctx || ctx.sessionManager.getSessionId() !== sessionId)
+						throw new Error("Session changed before message delivery");
+					pi.sendMessage<object>(message, value.options);
+				}).catch(error => {
+					// A replacement owner restores the durable message; old ctx is invalid.
+					if (currentContext === ctx) ctx.ui.notify(`Message remains pending: ${String(error)}. Retry rollover or reload the session.`, "error");
+				});
+			} else pi.sendMessage<object>(message,
 				deferred ? { ...value.options, triggerTurn: false, deliverAs: "nextTurn" } : value.options,
 			);
-			if (preparedIdleTurn && tryStartCodexPreparedIdlePrompt(pi) === false)
-				throw new Error("Prepared developer message kickoff is unavailable");
 			value.outcome = { ok: true };
 		} catch (error) {
 			value.outcome = {
@@ -259,48 +200,12 @@ export function registerCodexDeveloperMessageBroker(
 			};
 		}
 	};
-	const kickoff = (value: unknown) => {
-		if (!isPreparedIdleKickoffRequest(value)) return;
-		if (value.action === "session_reset") {
-			preparedIdleKickoff = undefined;
-			return;
-		}
-		if (value.action === "agent_start") {
-			if (preparedIdleKickoff === "preparing")
-				preparedIdleKickoff = "running";
-			return;
-		}
-		if (value.action === "agent_settled") {
-			if (typeof preparedIdleKickoff === "object")
-				value.outcome = startKickoff(undefined, preparedIdleKickoff.prompt);
-			else if (preparedIdleKickoff === "running")
-				preparedIdleKickoff = undefined;
-			return;
-		}
-		if (value.outcome) return;
-		if (preparedIdleKickoff) {
-			if (value.start) {
-				value.outcome = { error: "Target has a pending turn; retry after it starts or settles" };
-				return;
-			}
-			// Pi becomes idle before awaiting settlement handlers. A claim then
-			// belongs to the next turn, not the response that just finished.
-			if (preparedIdleKickoff === "running") preparedIdleKickoff = { prompt: value.prompt };
-			value.outcome = "pending";
-			return;
-		}
-		value.outcome = startKickoff(value.start, value.prompt);
-	};
-	const clearPreparedIdleKickoff = () => {
-		preparedIdleKickoff = undefined;
-	};
 	const unregister = [
 		pi.events.on(DEVELOPER_MESSAGE_CHANNEL, deliver),
 		pi.events.on(CUSTOM_DEVELOPER_MESSAGE_CHANNEL, deliver),
-		pi.events.on(PREPARED_IDLE_KICKOFF_CHANNEL, kickoff),
 	];
 	return () => {
-		clearPreparedIdleKickoff();
+		currentContext = undefined;
 		for (const remove of unregister) remove();
 	};
 }
@@ -315,14 +220,14 @@ function developerMessageId(message: { customType: string; details?: unknown }):
 	return isCodexDeveloperMessageDetails(metadata) ? metadata.id : undefined;
 }
 
-function readPendingDeveloperMessage(value: unknown): { sessionId: string; message: CodexDeveloperCustomMessage } {
+function readPendingDeveloperMessage(value: unknown): { sessionId: string; message: CodexDeveloperCustomMessage; queued: boolean } {
 	if (value && typeof value === "object" && "protocol" in value && value.protocol === 1 &&
 		"sessionId" in value && typeof value.sessionId === "string" && "message" in value &&
 		value.message && typeof value.message === "object") {
 		const message = value.message as CodexDeveloperCustomMessage;
 		if (typeof message.customType === "string" && message.customType.trim() &&
 			typeof message.content === "string" && message.content.trim() && typeof message.display === "boolean" && developerMessageId(message))
-			return { sessionId: value.sessionId, message };
+			return { sessionId: value.sessionId, message, queued: !("queued" in value) || value.queued !== false };
 	}
 	throw new Error("Stored pending developer message is invalid");
 }
@@ -355,7 +260,7 @@ export function isCodexDeveloperMessageDetails(
 
 function isDeveloperMessageRequest(
 	value: unknown,
-): value is DeveloperMessageRequest {
+): value is CodexDeveloperMessageRequest {
 	if (
 		!value ||
 		typeof value !== "object" ||
@@ -401,25 +306,6 @@ function isDeveloperMessageOutcome(
 					(value.reason === "unavailable" || value.reason === "delivery") &&
 					"error" in value &&
 					typeof value.error === "string")),
-	);
-}
-
-function isPreparedIdleKickoffRequest(
-	value: unknown,
-): value is PreparedIdleKickoffRequest {
-	return Boolean(
-		value &&
-			typeof value === "object" &&
-			"protocol" in value &&
-			value.protocol === 1 &&
-			"action" in value &&
-			(!("start" in value) || typeof value.start === "function") &&
-			(!("prompt" in value) || (typeof value.prompt === "string" && value.prompt.trim() !== "")) &&
-			(value.action === "claim" ||
-				value.action === "agent_start" ||
-				value.action === "agent_settled" ||
-				value.action === "session_reset") &&
-			(!("outcome" in value) || value.outcome === undefined),
 	);
 }
 

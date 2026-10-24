@@ -1,6 +1,7 @@
 import type { ExecutionMode } from "./execution-mode.ts";
 
 export type CodexVerbosity = "low" | "medium" | "high";
+export type HeavySystemPromptOverwrite = boolean | "gpt";
 export const FAST_MODE_FAMILIES = ["astra", "sol", "terra", "luna"] as const;
 export type FastModeFamily = (typeof FAST_MODE_FAMILIES)[number];
 export type FastModeConfig = Record<FastModeFamily | "other", boolean | "ultrafast">;
@@ -15,8 +16,9 @@ export type ContinuityStrategy = "compaction" | "notes" | "notes-and-compaction"
 export type HistoryStorage = "local" | "tree" | "remote";
 export type ContextManagementMode = "off" | HistoryStorage;
 export type CompactionMethod = "pi" | "v2" | "both";
-export const IDLE_NOTES_MINUTES_OPTIONS = [0, 5, 15, 25, 55] as const;
-export type IdleNotesMinutes = (typeof IDLE_NOTES_MINUTES_OPTIONS)[number];
+// Hour presets store their effective duration, with five minutes of headroom.
+export const IDLE_NOTES_MINUTES_OPTIONS = [0, 25, 55, 115, 355, 715] as const;
+export type IdleNotesMinutes = (typeof IDLE_NOTES_MINUTES_OPTIONS)[number] | 5 | 15;
 export type V2UserMessageRetention = 16 | 32 | 64;
 export const MIN_NOTEBOOK_HEAP_MIB = 256;
 export const MAX_NOTEBOOK_HEAP_MIB = 65_536;
@@ -57,7 +59,7 @@ export interface CodexConversionConfig {
 	executionMode: ExecutionMode;
 	voiceFeaturesOnly: boolean;
 	prompt: {
-		heavySystemPromptOverwrite: boolean;
+		heavySystemPromptOverwrite: HeavySystemPromptOverwrite;
 		currentTimeReminderMinutes: 0 | 30 | 60;
 		appendSystemPromptFile: boolean;
 	};
@@ -82,6 +84,7 @@ export interface CodexConversionConfig {
 		backgroundShellCloseShortcut: string;
 	};
 	compaction: {
+		newWindowRequests: "off" | "pi-limits" | "unrestricted";
 		continuity: ContinuityStrategy;
 		historyStorage: HistoryStorage;
 		notesTreeHandoff: boolean;
@@ -92,6 +95,8 @@ export interface CodexConversionConfig {
 		v2UserMessageRetention: V2UserMessageRetention;
 	};
 	notebook: {
+		journals: "off" | "week" | "on";
+		checkpointCleanup: "never" | "month" | "week";
 		maxHeapMiB: number;
 		plainCommandOutput: boolean;
 		profile?: string | undefined;
@@ -159,6 +164,7 @@ export const DEFAULT_CODEX_CONVERSION_CONFIG: CodexConversionConfig = {
 	},
 	compaction: {
 		continuity: "compaction",
+		newWindowRequests: "unrestricted",
 		historyStorage: "local",
 		notesTreeHandoff: true,
 		shareSubagentContext: false,
@@ -167,7 +173,7 @@ export const DEFAULT_CODEX_CONVERSION_CONFIG: CodexConversionConfig = {
 		method: "pi",
 		v2UserMessageRetention: 64,
 	},
-	notebook: { maxHeapMiB: 4_096, plainCommandOutput: false },
+	notebook: { maxHeapMiB: 4_096, plainCommandOutput: false, journals: "week", checkpointCleanup: "never" },
 	voice: {
 		v3Voice: "cove",
 		v3AlternateVoice: "ember",

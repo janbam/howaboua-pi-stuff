@@ -1,0 +1,65 @@
+{
+	"name": "@howaboua/pi-github-watch",
+	"version": "0.0.3",
+	"description": "Opt-in same-session GitHub comment and Actions run watches for Pi",
+	"type": "module",
+	"license": "MIT",
+	"author": "Igor Warzocha",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/IgorWarzocha/howaboua-pi-stuff.git",
+		"directory": "packages/pi-github-watch"
+	},
+	"keywords": [
+		"pi-package",
+		"pi-extension",
+		"github"
+	],
+	"files": [
+		"index.ts",
+		"src",
+		"README.md",
+		"LICENSE",
+		"tsconfig.json",
+		"biome.json",
+		"changelog.ts",
+		"CHANGELOG.md"
+	],
+	"main": "index.ts",
+	"exports": "./index.ts",
+	"pi": {
+		"extensions": [
+			"./changelog.ts",
+			"./index.ts"
+		]
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": ">=1.2.0",
+		"@earendil-works/pi-ai": ">=1.2.0",
+		"@howaboua/pi-codex-conversion": ">=4.0.4",
+		"typebox": "^1.3.37",
+		"@earendil-works/pi-tui": ">=1.2.0"
+	},
+	"peerDependenciesMeta": {
+		"@howaboua/pi-codex-conversion": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@howaboua/pi-codex-conversion": "4.0.4",
+		"@earendil-works/pi-coding-agent": "1.4.0",
+		"@earendil-works/pi-ai": "1.4.0",
+		"@biomejs/biome": "^2.5.15",
+		"@types/node": "^26.6.5",
+		"typebox": "1.3.37",
+		"typescript": "^7.0.2"
+	},
+	"scripts": {
+		"check": "bun run lint && bun run typecheck",
+		"lint": "biome check .",
+		"typecheck": "tsgo --noEmit",
+		"format": "biome check --write .",
+		"pack:dry": "npm pack --dry-run",
+		"prepack": "bun run check"
+	}
+}

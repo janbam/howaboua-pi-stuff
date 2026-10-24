@@ -38,7 +38,6 @@ export interface ExecCommandInput {
 	max_yield_time_ms?: number | undefined;
 	max_output_tokens?: number | undefined;
 	login?: boolean | undefined;
-	wait_until_exit?: boolean | undefined;
 }
 
 export interface WriteStdinInput {
@@ -231,22 +230,15 @@ export function createExecSessionManager(options: ExecSessionManagerOptions = {}
 				onUpdate?.(makeSnapshotResult(session, 0, input.max_output_tokens, true));
 				const execYieldMs = clampExecYieldTime(input.yield_time_ms, defaultExecYieldTimeMs, session.interactive, minNonInteractiveExecYieldTimeMs, input.max_yield_time_ms);
 				const maxExecWaitMs = Math.max(execYieldMs, input.max_yield_time_ms ?? execYieldMs);
-				let waitedMs = 0;
-				let idleTimeMs = execYieldMs;
-				for (;;) {
-					const elapsedMs = await waitForExitOrInactivity(
-						session,
-						idleTimeMs,
-						maxExecWaitMs,
-						signal,
-						onUpdate ? (elapsed) => onUpdate(makeSnapshotResult(session, waitedMs + elapsed, input.max_output_tokens)) : undefined,
-					);
-					waitedMs += elapsedMs;
-					if (signal?.aborted) {
-						throw signal.reason instanceof Error ? signal.reason : new Error("exec aborted");
-					}
-					if (!input.wait_until_exit || (session.exitCode !== undefined && session.exitCode !== null)) break;
-					idleTimeMs = Math.min(maxExecWaitMs, idleTimeMs * 2);
+				const waitedMs = await waitForExitOrInactivity(
+					session,
+					execYieldMs,
+					maxExecWaitMs,
+					signal,
+					onUpdate ? (elapsed) => onUpdate(makeSnapshotResult(session, elapsed, input.max_output_tokens)) : undefined,
+				);
+				if (signal?.aborted) {
+					throw signal.reason instanceof Error ? signal.reason : new Error("exec aborted");
 				}
 				await bridgeSessions.waitForStartup(session, signal);
 				if (session.started) await bridgeSessions.poll(session, bridgeHooks, 0);
@@ -280,6 +272,9 @@ export function createExecSessionManager(options: ExecSessionManagerOptions = {}
 			const chars = input.chars ?? "";
 			const isEmptyPoll = chars.length === 0;
 			if (!isEmptyPoll) {
+				if (session.exitCode !== undefined && session.exitCode !== null) {
+					throw new Error(`Process id ${input.session_id} already exited with code ${session.exitCode}; cannot write stdin`);
+				}
 				if (!session.interactive) {
 					throw new Error("stdin is closed for this session; rerun exec_command with tty=true to keep stdin open");
 				}

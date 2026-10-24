@@ -26,6 +26,7 @@ const LONG_RUNNING_TOOL_OUTER_YIELD_MS = 1_800_000;
 export async function registerCodexCodeMode(
 	pi: ExtensionAPI,
 	runtime: CodexExtensionRuntime,
+	beforePrepare?: (ctx: ExtensionContext) => void,
 ): Promise<CodeModeRegistration> {
 	let latestContext: ExtensionContext | undefined;
 	let stopped = false;
@@ -65,9 +66,7 @@ export async function registerCodexCodeMode(
 						syncAdapter(pi, latestContext, runtime.state);
 				});
 			}
-			const changes = piTools.prepareLoadout(loadout);
-			return { ...changes, hiddenDeclarations: [...(changes.hiddenDeclarations ?? []), "codemode",
-				...(nativeSearch ? ["tool_search"] : [])] };
+			return piTools.prepareLoadout(loadout, ["codemode", ...(nativeSearch ? ["tool_search"] : [])]);
 		},
 		getTools: (ctx) => {
 			const context = ctx as ExtensionContext | undefined;
@@ -98,7 +97,10 @@ export async function registerCodexCodeMode(
 		minimalOutput: () => runtime.state.config.ui.compactTools === "minimal",
 	});
 	return {
-		prepare: (ctx) => programmaticRuntime.prepare(ctx),
+		prepare: (ctx) => {
+			if (ctx) beforePrepare?.(ctx as ExtensionContext);
+			return programmaticRuntime.prepare(ctx);
+		},
 		getTools: (ctx) => programmaticRuntime.getTools(ctx),
 		getPromptTools: (ctx) => programmaticRuntime.getPromptTools(ctx),
 		notebookStatus: (ctx) => programmaticRuntime.notebookStatus(ctx),
@@ -126,10 +128,6 @@ function createNestedTools(
 		promptSnippet: false,
 		customRendering: runtime.state.config.ui.toolRenaming,
 		showOutputWhenCollapsed: true,
-	};
-	const execOptions = {
-		...options,
-		waitForNonInteractiveExit: true,
 	};
 	const textOutput = runtime.state.config.notebook.plainCommandOutput
 		? { textOutput: "plain-command" as const }
@@ -166,7 +164,7 @@ function createNestedTools(
 			},
 		),
 		toNestedTool(
-			createExecCommandTool(runtime.tracker, runtime.sessions, execOptions),
+			createExecCommandTool(runtime.tracker, runtime.sessions, options),
 			"await tools.exec_command({ cmd: string, workdir?: string, shell?: string, tty?: boolean, yield_time_ms?: number, max_output_tokens?: number, login?: boolean }) // returns { output: string, session_id?: number, exit_code?: number }",
 			{
 				start(id, input) {

@@ -187,8 +187,11 @@ export async function listenContext(path, handle) {
 				else throw error;
 			}
 			if (alive)
-				throw new Error(
-					"This shared context session is already open; close its other live owner first",
+				throw Object.assign(
+					new Error(
+						"This shared context session is already open; close its other live owner first",
+					),
+					{ code: "SHARED_CONTEXT_ALREADY_OPEN" },
 				);
 		}
 	} catch (error) {

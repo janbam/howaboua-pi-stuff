@@ -3,6 +3,8 @@ import type { ResponseCreateParamsStreaming } from "openai/resources/responses/r
 import type { CodexCompactionDiagnostic } from "../../adapter/compaction/diagnostics.ts";
 import type { CodexCacheKeepaliveStrategy } from "../../adapter/activation/cache-keepalive.ts";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { WebSocketContinuationDecision, WebSocketContinuationMismatch } from "./continuation-diagnostics.ts";
+export type { WebSocketContinuationDecision } from "./continuation-diagnostics.ts";
 
 export interface WebSocketLike {
 	readyState?: number | undefined;
@@ -37,16 +39,6 @@ export interface CachedWebSocketContinuationState {
 	lastResponseId: string;
 	lastResponseItems: unknown[];
 }
-
-export type WebSocketContinuationDecision =
-	| "disabled"
-	| "no_session_cache_entry"
-	| "no_continuation"
-	| "body_mismatch"
-	| "input_shorter_than_baseline"
-	| "input_prefix_mismatch"
-	| "missing_previous_response_id"
-	| "delta";
 
 export type CanonicalHistoryDecision =
 	| "compaction"
@@ -83,6 +75,11 @@ export interface CodexDiagnosticsFailure {
 	status?: number | undefined;
 }
 export interface CodexRequestDiagnostics {
+	instructionsFingerprint: string;
+	toolsFingerprint: string;
+	cacheKeyFingerprint: string;
+	routingFingerprint: string;
+	optionsFingerprint: string;
 	headersSent: boolean;
 	reasoningEffort: string;
 	serviceTier: string;
@@ -94,7 +91,21 @@ export interface CodexRequestDiagnostics {
 	subagentKind: string;
 }
 
-export type CodexDiagnosticsEvent = { requestId?: string | undefined } & (
+export type CodexDiagnosticsEvent = {
+	scope?: "session" | "auxiliary" | undefined;
+	requestId?: string | undefined;
+	sessionRequestOrdinal?: number | undefined;
+	requestCounterProcessId?: string | undefined;
+} & (
+	| {
+			type: "connection";
+			socketId: string;
+			phase: "created" | "observed" | "client_close" | "closed";
+			initiator: "client" | "peer_or_unknown";
+			cause?: string | undefined;
+			closeCode?: number | undefined;
+			closeReason?: "normal" | "going_away" | "message_too_big" | "abnormal" | "other" | undefined;
+	  }
 	| {
 			type: "timing";
 			lane: CodexDiagnosticsLane;
@@ -122,9 +133,12 @@ export type CodexDiagnosticsEvent = { requestId?: string | undefined } & (
 			sentInputItems: number;
 			model?: string | undefined;
 			socketReused?: boolean | undefined;
+			socketId?: string | undefined;
 			socketAgeMs?: number | undefined;
+			socketRequestOrdinal?: number | undefined;
 			socketLane?: "main" | "keepalive" | undefined;
 			continuation?: WebSocketContinuationDecision | undefined;
+			continuationMismatch?: WebSocketContinuationMismatch | undefined;
 			continuationBaselineInputItems?: number | undefined;
 			continuationBaselineResponseItems?: number | undefined;
 			canonicalHistory?: CanonicalHistoryDecision | undefined;
@@ -166,6 +180,7 @@ export type CodexDiagnosticsEvent = { requestId?: string | undefined } & (
 	| {
 			type: "prewarm-ready";
 			transport: "websocket";
+			socketId?: string | undefined;
 			socketReused: boolean;
 			socketAgeMs: number;
 			socketLane: "main" | "keepalive";
@@ -188,6 +203,7 @@ export type CodexUsageRecorder = (accountId: string, model: Model<Api>, usage: A
 export interface CachedWebSocketRequestBodyResult {
 	body: ResponsesBody;
 	decision: WebSocketContinuationDecision;
+	mismatch?: WebSocketContinuationMismatch | undefined;
 }
 
 export type ServiceTier = ResponseCreateParamsStreaming["service_tier"] | "ultrafast";

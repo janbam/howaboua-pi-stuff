@@ -48,7 +48,9 @@ export function toNestedTool<TParams extends TSchema, TDetails, TState>(
 ): ProgrammaticCodeModeToolDefinition {
 	const kind = contract.kind ?? "function";
 	const prepareInput = (input: unknown) => {
-		const prepared = contract.prepareInput ? contract.prepareInput(input) : input;
+		// The Code host serializes omitted arguments as null; preserve schema-valid nulls.
+		const supplied = input === null && !Check(tool.parameters, null) && Check(tool.parameters, {}) ? undefined : input;
+		const prepared = contract.prepareInput ? contract.prepareInput(supplied) : supplied;
 		return prepared === undefined && Check(tool.parameters, {}) ? {} : prepared;
 	};
 	const invoke = async (

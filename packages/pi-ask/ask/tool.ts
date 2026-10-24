@@ -29,6 +29,7 @@ type OnBlockedChange = (state: BlockedState) => void;
 
 interface AskToolOptions extends AskCoordinatorOptions {
 	onBlockedChange?: OnBlockedChange;
+	isGpt?(): boolean;
 }
 
 export function createAskRuntime({
@@ -38,6 +39,7 @@ export function createAskRuntime({
 	onPendingChange,
 	onRequestChange,
 	onPresent,
+	isGpt = () => false,
 }: AskToolOptions = {}) {
 	const coordinator = createAskCoordinator({
 		...(askInComposer ? { askInComposer } : {}),
@@ -50,7 +52,7 @@ export function createAskRuntime({
 	const tool = defineTool({
 		name: "ask",
 		label: "Ask",
-		description: "Request user input or action; {} for help",
+		description: "Request user input or action",
 		parameters: AskParameters,
 		executionMode: "sequential",
 		prepareArguments(input) {
@@ -66,13 +68,22 @@ export function createAskRuntime({
 				return {
 					content: [
 						textContent(
-							[
-								"ask({}) or ask({ help: true }) returns help",
-								'ask({ prompts: [{ title, body?, multiple?, choices?: [{ label, description? }] }], delivery?: "wait"|"steer", handoff? })',
-								"Omit delivery to wait; steer only while reversible work can continue. Handoffs wait for user action; state the completion signal",
-								"For reviews, make each finding a prompt with disposition choices; do not report first",
-								"Other/rephrase is automatic; omit choices for free text. Blank Other/rephrase means rephrase or follow up",
-							].join("\n"),
+							(isGpt()
+								? [
+										"ask({}) / ask({help:true}): usage",
+										'ask({prompts:[{title,body?,multiple?,choices?:[{label,description?}]}],delivery?:"wait"|"steer",handoff?})',
+										"wait default; steer only with reversible work remaining. Handoff: await user action; state completion signal",
+										"Review: each finding=prompt+disposition choices; never report first",
+										"Other/rephrase automatic; no choices=free text; blank Other/rephrase=rephrase/follow up",
+									]
+								: [
+										"ask({}) or ask({ help: true }) returns usage",
+										'ask({ prompts: [{ title, body?, multiple?, choices?: [{ label, description? }] }], delivery?: "wait"|"steer", handoff? })',
+										"Omit delivery to wait; steer only while reversible work can continue. Handoffs wait for user action; state the completion signal",
+										"For reviews, make each finding a prompt with disposition choices; do not report first",
+										"Other/rephrase is automatic; omit choices for free text. Blank Other/rephrase means rephrase or follow up",
+									]
+							).join("\n"),
 						),
 					],
 					details: { kind: "help" },

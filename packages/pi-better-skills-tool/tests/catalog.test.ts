@@ -52,10 +52,10 @@ test("Pi-loaded skills win collisions without replacing unrelated filesystem ski
 
 	// The overlay must affect reads as well as discovery without hiding the disk catalog.
 	assert.match(
-		runSkills("read packaged", global.root, undefined, loaded),
+		runSkills("read packaged", global.root, undefined, loaded).output,
 		/^Package body/,
 	);
-	const output = runSkills("list", global.root, undefined, loaded);
+	const { output } = runSkills("list", global.root, undefined, loaded);
 	assert.match(output, /packaged: Project winner\./);
 	assert.match(output, /guidance: Global guidance\./);
 	assert.doesNotMatch(output, /Global collision/);
@@ -89,7 +89,7 @@ test("a loaded user-only skill hides its filesystem namesake without replacing t
 			disableModelInvocation: true,
 		},
 	];
-	const output = runSkills("list", global.root, undefined, loaded);
+	const { output } = runSkills("list", global.root, undefined, loaded);
 	assert.match(output, /guidance: Global guidance\./);
 	assert.doesNotMatch(output, /injected/);
 	assert.throws(

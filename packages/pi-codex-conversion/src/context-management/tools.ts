@@ -13,10 +13,10 @@ import { toNestedTool } from "../adapter/code-mode/nested-tool-adapter.ts";
 import { remoteDeliveryScope, withRemoteContextScope } from "./remote-scope.ts";
 import { registerContextSharingService } from "./sharing-service.ts";
 import { contextRemainingRenderers, newContextRenderers } from "./rendering.ts";
-import { HISTORY_NESTED_USAGE, NOTES_NESTED_USAGE } from "./tool-contract.ts";
 import { syncAdapter } from "../adapter/activation/activation.ts";
 import type { ContextRouter } from "../context-sharing.ts";
 import { contextAgentIdentity, contextTargetAgent } from "./agent-identity.ts";
+import { hasFreshContextNotes } from "./saved-notes.ts";
 
 const EMPTY_PARAMETERS = Type.Object({}, { additionalProperties: false });
 
@@ -42,18 +42,24 @@ export function createContextWindowTools(
 		{
 			name: "new_context",
 			label: "new_context",
-			description: "Start a new context window",
+			description: "Start fresh from saved notes; recover earlier conversation through history",
 			parameters: EMPTY_PARAMETERS,
 			...newContextRenderers,
 			executionMode: "sequential",
 			async execute(_id, _params, signal, _update, ctx) {
 				const plan = assertContextManagementActive(ctx, state);
+				if (plan.newWindowRequests === "off") throw new Error("New window requests are disabled. Continue in this window.");
+				const identity = state.contextWindows.currentIdentity();
+				if (!identity || !hasFreshContextNotes(ctx.sessionManager.getBranch(), identity.currentWindowId,
+					plan.contextManagementMode, false, _id))
+					throw new Error("Save your progress with notes, wait for the write to succeed, then call new_context next.");
 				if (state.contextKickoff.hasIdleInput) return {
 					content: [{ type: "text", text: "A new window will open after this checkpoint. Save your notes and finish your reply." }],
 					details: { started: false },
 				};
-				const started = plan.compactOnRollover
-					? state.contextWindows.scheduleRolloverCompaction()
+				const usesPi = plan.compactOnRollover || plan.newWindowRequests === "pi-limits";
+				const started = usesPi
+					? state.contextWindows.scheduleRolloverCompaction(plan.newWindowRequests, plan.compactOnRollover)
 					: plan.contextManagementMode === "tree"
 					? state.contextTree.schedule(ctx)
 					: await state.contextKickoff.startWindow(pi, ctx, {
@@ -63,15 +69,15 @@ export function createContextWindowTools(
 						trimPreviousWindow: true,
 					});
 				// Pi's terminate flag only stops a batch when every result terminates.
-				if (started && !plan.compactOnRollover) ctx.abort();
+				if (started && !usesPi) ctx.abort();
 				return {
 					...(started ? { terminate: true } : {}),
 					content: [
 						{
 							type: "text",
 							text: started
-								? plan.compactOnRollover
-									? "A new context window will continue from a compaction checkpoint."
+								? usesPi
+									? "Window request scheduled; continuation follows after Pi checks the history."
 									: "A new context window will start without summarizing conversation history."
 								: "A new context window is already scheduled.",
 						},
@@ -133,10 +139,13 @@ export function registerContextManagementTools(
 		(action, path, ctx) => () => state.contextTree.handoff.finishNoteWrite(action, path, ctx),
 		route,
 	);
-	pi.registerTool(newContext);
-	pi.registerTool(getContextRemaining);
-	pi.registerTool(history);
-	pi.registerTool(notes);
+	state.restoreNativeNotesTools = () => {
+		pi.registerTool(newContext);
+		pi.registerTool(getContextRemaining);
+		pi.registerTool(history);
+		pi.registerTool(notes);
+	};
+	state.restoreNativeNotesTools();
 	// Reuse the registered routers, including family routing and Tree write completion.
 	const contract = { deferLoading: true, discoverWhenDeferred: true, modelVisibleResult: true,
 		opaqueResultScope: (result: AgentToolResult<unknown>) => {
@@ -145,9 +154,10 @@ export function registerContextManagementTools(
 				? details.codexHistoryNotes : undefined);
 		} };
 	const nestedTools = (remote: boolean, protectedResults = remote) => [
-		toNestedTool(history, "await tools.history({ action, ...args })", {}, { ...contract, opaqueResult: protectedResults, allowPlainResult: true }),
-		toNestedTool(notes, "await tools.notes({ action, ...args })", {}, {
+		toNestedTool(history, "await tools.history()", {}, { ...contract, opaqueResult: protectedResults, allowPlainResult: true }),
+		toNestedTool(notes, "await tools.notes()", {}, {
 			...contract,
+			prepareInput: prepareNestedNotesInput,
 			opaqueResult: protectedResults,
 			allowPlainResult: true,
 			propagateTermination: true,
@@ -156,7 +166,7 @@ export function registerContextManagementTools(
 		}),
 	].map((tool) => ({
 		...tool,
-		discoveryUsage: tool.name === "history" ? HISTORY_NESTED_USAGE : NOTES_NESTED_USAGE,
+		discovery: "help" as const,
 		...(protectedResults ? {
 			output: "Remote receipts only; contents reach the model automatically, not JavaScript",
 		} : {}),
@@ -190,9 +200,10 @@ export function configureExternalNotesTools(
 	ctx: ExtensionContext,
 	contracts: Readonly<Record<"notes" | "history", string>>,
 ): void {
-	if (!state.externalNotes) throw new Error("Notes continuity handoff is unavailable");
-	state.externalNotes.tools = tools;
-	state.externalNotes.contracts = contracts;
+	if (state.externalNotes) {
+		state.externalNotes.tools = tools;
+		state.externalNotes.contracts = contracts;
+	}
 	syncAdapter(pi, ctx, state);
 }
 
@@ -201,8 +212,9 @@ function externalNestedTools(state: AdapterState, ctx?: ExtensionContext) {
 	if (!external || !ctx || !isCodeModeRuntime(resolveCodexRuntimePlanForState(ctx, state))) return [];
 	const protectedResults = ctx.model?.api === "openai-codex-responses";
 	return (external.tools ?? []).filter(tool => tool.name === "notes" || tool.name === "history").map(tool => {
-		const nested = toNestedTool(tool, `await tools.${tool.name}({ action, ...args })`, {}, {
+		const nested = toNestedTool(tool, `await tools.${tool.name}()`, {}, {
 			deferLoading: true, discoverWhenDeferred: true, modelVisibleResult: true,
+			...(tool.name === "notes" ? { prepareInput: prepareNestedNotesInput } : {}),
 			opaqueResult: protectedResults, allowPlainResult: true,
 			opaqueResultScope: result => {
 				const details = result.details;
@@ -213,6 +225,7 @@ function externalNestedTools(state: AdapterState, ctx?: ExtensionContext) {
 				contextTargetAgent("notes", input as Record<string, unknown>, contextAgentIdentity(ctx).agentName) === contextAgentIdentity(ctx).agentName),
 		});
 		return { ...nested,
+			discovery: "help" as const,
 			discoveryUsage: external.contracts?.[tool.name === "notes" ? "notes" : "history"],
 			invoke: (...[input, context, signal]: Parameters<typeof nested.invoke>) => nested.invoke(input,
 				protectedResults && !context.resolveOpaqueScope && context.extensionContext
@@ -220,6 +233,20 @@ function externalNestedTools(state: AdapterState, ctx?: ExtensionContext) {
 					: context, signal),
 		};
 	});
+}
+
+function prepareNestedNotesInput(input: unknown): unknown {
+	if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+	const params = input as Record<string, unknown>;
+	const canonical = params["action"] === "search_contents" ? "max_files"
+		: params["action"] === "list_files_by_prefix" ? "max_results" : undefined;
+	if (!canonical) return input;
+	const alias = canonical === "max_files" ? "max_results" : "max_files";
+	if (!(alias in params)) return input;
+	const prepared = { ...params };
+	if (!(canonical in prepared)) prepared[canonical] = prepared[alias];
+	delete prepared[alias];
+	return prepared;
 }
 
 function assertContextManagementActive(

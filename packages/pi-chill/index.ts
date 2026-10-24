@@ -14,6 +14,7 @@ import {
 	activityMessageRenderer,
 } from "./src/activity-messages.js";
 import { ActivityRenderers } from "./src/renderers.js";
+import { watchNoticeRenderer } from "./src/watch-notices.js";
 
 export default function (pi: ExtensionAPI) {
 	const timeline = new ActivityTimeline();
@@ -65,13 +66,6 @@ export default function (pi: ExtensionAPI) {
 	pi.registerMarkdownTransformer((markdown, context) => {
 		if (!tui || !enabled) return markdown;
 		if (context.messageType === "assistant-thinking") return "";
-		if (
-			context.messageType === "user" &&
-			["Continue.", "Continue, unless awaiting for user approval."].includes(
-				markdown.trim(),
-			)
-		)
-			return "";
 		return markdown;
 	});
 	// Pass-through tools also bypass execution tracking and restore membership.
@@ -89,6 +83,10 @@ export default function (pi: ExtensionAPI) {
 		pi.registerEntryRenderer(type, (entry, options, theme) =>
 			tui ? entryRenderer(entry, options, theme) : undefined,
 		);
+	const watchRenderer = watchNoticeRenderer();
+	pi.registerMessageRenderer("github-watch", (message, options, theme) =>
+		tui && enabled ? watchRenderer(message, options, theme) : undefined,
+	);
 	pi.registerCommand("chill", {
 		description: "Toggle folded activity for this session",
 		handler: async (_args, ctx) => {

@@ -12,6 +12,9 @@ use crate::protocol::{ExecOutputStream, ExecParams, ExecResponse, ProcessOutputC
 
 const RETAINED_OUTPUT_BYTES_PER_PROCESS: usize = 8 * 1024 * 1024;
 const PROCESS_EVENT_CHANNEL_CAPACITY: usize = 256;
+// Descendants may retain the parent's pipes indefinitely. Drain late output, but
+// never let their activity extend the lifetime of an already exited command.
+const EXIT_OUTPUT_DRAIN_GRACE: Duration = Duration::from_secs(1);
 #[cfg(test)]
 const EXITED_PROCESS_RETENTION: Duration = Duration::from_millis(25);
 #[cfg(not(test))]
@@ -112,9 +115,10 @@ impl LocalProcess {
             })));
         }
 
-        tokio::spawn(stream_output(process_id.clone(), if params.tty { ExecOutputStream::Pty } else { ExecOutputStream::Stdout }, spawned.stdout_rx, Arc::clone(&self.inner), Arc::clone(&output_notify)));
-        tokio::spawn(stream_output(process_id.clone(), if params.tty { ExecOutputStream::Pty } else { ExecOutputStream::Stderr }, spawned.stderr_rx, Arc::clone(&self.inner), Arc::clone(&output_notify)));
-        tokio::spawn(watch_exit(process_id.clone(), spawned.exit_rx, Arc::clone(&self.inner), output_notify));
+        let (drain_tx, drain_rx) = watch::channel(None);
+        tokio::spawn(stream_output(process_id.clone(), if params.tty { ExecOutputStream::Pty } else { ExecOutputStream::Stdout }, spawned.stdout_rx, Arc::clone(&self.inner), Arc::clone(&output_notify), drain_rx.clone()));
+        tokio::spawn(stream_output(process_id.clone(), if params.tty { ExecOutputStream::Pty } else { ExecOutputStream::Stderr }, spawned.stderr_rx, Arc::clone(&self.inner), Arc::clone(&output_notify), drain_rx));
+        tokio::spawn(watch_exit(process_id.clone(), spawned.exit_rx, Arc::clone(&self.inner), output_notify, drain_tx));
         Ok((ExecResponse { process_id }, wake_tx, events))
     }
 
@@ -206,8 +210,24 @@ impl ExecProcess for LocalExecProcess {
     }
 }
 
-async fn stream_output(process_id: ProcessId, stream: ExecOutputStream, mut receiver: tokio::sync::mpsc::Receiver<Vec<u8>>, inner: Arc<Inner>, output_notify: Arc<Notify>) {
-    while let Some(chunk) = receiver.recv().await {
+async fn stream_output(process_id: ProcessId, stream: ExecOutputStream, mut receiver: tokio::sync::mpsc::Receiver<Vec<u8>>, inner: Arc<Inner>, output_notify: Arc<Notify>, mut drain_rx: watch::Receiver<Option<tokio::time::Instant>>) {
+    let mut deadline = None;
+    loop {
+        let chunk = tokio::select! {
+            biased;
+            _ = async {
+                match deadline {
+                    Some(deadline) => tokio::time::sleep_until(deadline).await,
+                    None => std::future::pending::<()>().await,
+                }
+            } => break,
+            changed = drain_rx.changed(), if deadline.is_none() => {
+                if changed.is_err() { break; }
+                deadline = *drain_rx.borrow_and_update();
+                continue;
+            }
+            chunk = receiver.recv() => match chunk { Some(chunk) => chunk, None => break },
+        };
         {
             let mut processes = inner.processes.lock().await;
             let Some(ProcessEntry::Running(process)) = processes.get_mut(&process_id) else { break; };
@@ -227,8 +247,9 @@ async fn stream_output(process_id: ProcessId, stream: ExecOutputStream, mut rece
     finish_output_stream(process_id, inner).await;
 }
 
-async fn watch_exit(process_id: ProcessId, exit_rx: tokio::sync::oneshot::Receiver<i32>, inner: Arc<Inner>, output_notify: Arc<Notify>) {
+async fn watch_exit(process_id: ProcessId, exit_rx: tokio::sync::oneshot::Receiver<i32>, inner: Arc<Inner>, output_notify: Arc<Notify>, drain_tx: watch::Sender<Option<tokio::time::Instant>>) {
     let exit_code = exit_rx.await.unwrap_or(-1);
+    drain_tx.send_replace(Some(tokio::time::Instant::now() + EXIT_OUTPUT_DRAIN_GRACE));
     {
         let mut processes = inner.processes.lock().await;
         if let Some(ProcessEntry::Running(process)) = processes.get_mut(&process_id) {

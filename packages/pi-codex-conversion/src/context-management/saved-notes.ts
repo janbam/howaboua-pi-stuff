@@ -10,13 +10,28 @@ export function hasFreshContextNotes(
 	windowId: string,
 	mode: ContextManagementMode,
 	requireFinalReply: boolean,
+	precedingCallId?: string,
 ): boolean {
 	if (mode === "off") return false;
 	const boundary = branch.findLastIndex((entry) => savedNotesWindowId(entry) !== undefined);
 	const entry = branch[boundary];
 	if (!entry || savedNotesWindowId(entry) !== windowId) return false;
 	// Pi owns context edits and compaction selection. Metadata never counts as new work.
-	const messages = buildSessionProjection(branch.slice(boundary + 1)).messages;
+	let messages = buildSessionProjection(branch.slice(boundary + 1)).messages;
+	if (precedingCallId) {
+		const current = messages.findLastIndex(message => message.role === "assistant" &&
+			message.content.some(part => part.type === "toolCall" && part.id === precedingCallId));
+		const assistant = messages[current];
+		if (assistant?.role !== "assistant") return false;
+		{
+			const callIndex = assistant.content.findIndex(part => part.type === "toolCall" && part.id === precedingCallId);
+			const before = assistant.content.slice(0, callIndex);
+			// Sequential tools can complete earlier calls from this same assistant batch.
+			messages = before.some(part => part.type === "toolCall")
+				? [...messages.slice(0, current), { ...assistant, content: before }, ...messages.slice(current + 1)]
+				: messages.slice(0, current);
+		}
+	}
 	const results = new Map<string, Extract<AgentMessage, { role: "toolResult" }>>();
 	const deliveries = new Map<string, RemoteDelivery>();
 	let atEnd = true;
@@ -33,7 +48,10 @@ export function hasFreshContextNotes(
 		if (atEnd) {
 			atEnd = false;
 			if (message.role === "assistant" && message.stopReason === "stop" &&
-				!message.content.some((part) => part.type === "toolCall")) continue;
+				!message.content.some((part) => part.type === "toolCall")) {
+				if (precedingCallId) return false;
+				continue;
+			}
 			if (requireFinalReply) return false;
 		}
 		if (message.role === "assistant") {
@@ -42,9 +60,9 @@ export function hasFreshContextNotes(
 			// A previous final reply ends the run. Within it, completed tool batches do not stale notes.
 			if (calls.length === 0 || calls.length !== results.size ||
 				calls.some((call) => results.get(call.id)?.toolName !== call.name)) return false;
-			const writes = calls.filter((call) => call.name === "notes"
+			const writes = calls.filter((call) => (!precedingCallId || call.id === calls.at(-1)?.id) && (call.name === "notes"
 				? call.arguments["action"] === "write_file" || call.arguments["action"] === "append_to_file"
-				: (call.name === "exec" || call.name === "wait") && nestedNoteWrite(results.get(call.id)!) !== undefined);
+				: (call.name === "exec" || call.name === "wait") && nestedNoteWrite(results.get(call.id)!) !== undefined));
 			if (writes.length > 0) return writes.every((call) => {
 				const result = results.get(call.id)!;
 				if (result.isError) return false;
@@ -65,6 +83,7 @@ export function hasFreshContextNotes(
 			});
 			results.clear();
 			deliveries.clear();
+			if (precedingCallId) return false;
 			continue;
 		}
 		if (message.role !== "toolResult" || results.has(message.toolCallId)) return false;

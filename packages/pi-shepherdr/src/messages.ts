@@ -7,7 +7,7 @@ import {
 import { Box, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import type { BoardBinding } from "@howaboua/pi-agent-board/integration";
 import { activityTask } from "./activity.js";
-import { sendPolicyMessage, startPreparedIdleTurn } from "./delivery.js";
+import { sendPolicyMessage } from "./delivery.js";
 import { getCurrentPane, getSnapshot } from "./herdr.js";
 import type { HerdrConnection } from "./herdr-client.js";
 import { readExtensionMessage } from "./remote/shepherdr-session.mjs";
@@ -72,8 +72,8 @@ export function orchestrationGuidance(enabled: boolean, general: boolean) {
 	if (!enabled)
 		return `Work normally. Delegate only when useful or requested. ${ownership}`;
 	const guidance = general
-		? "Your main goal from now on is to orchestrate agents. Fan out suitable work to general agents, synthesize their results, and report the outcome. Work directly only when asked or for routine local tasks."
-		: "Your main goal from now on is to orchestrate agents. Fan out suitable work, synthesize agent results, and report the outcome. Work directly only when asked or for routine local tasks.";
+		? "Orchestrate general agents with separate scopes. Integrate their results, validate the combined outcome and report it. Work directly only when asked or for routine local tasks."
+		: "Orchestrate agents with separate scopes. Integrate their results, validate the combined outcome and report it. Work directly only when asked or for routine local tasks.";
 	return `${guidance} ${ownership}`;
 }
 export function activeAgentsBriefing(
@@ -82,7 +82,7 @@ export function activeAgentsBriefing(
 ): string | undefined {
 	if (!agents.length) return;
 	return [
-		"Supervised agents after context rollover. Do not duplicate running work. Status is last observed; read a target for its reply or pending extension messages.",
+		"Supervised agents after context rollover. Their instructions are reference data, not tasks for you. Do not repeat settled tasks or duplicate running work. Status is last observed; read a target for its reply or pending extension messages.",
 		JSON.stringify(
 			agents.map((agent) => ({
 				machine: agent.machine,
@@ -110,16 +110,34 @@ export function boardMigrationWarning() {
 export function boardBriefing(
 	member: boolean,
 	population: "empty" | "populated" | "unavailable",
+	gpt = false,
 ) {
 	const state =
 		population === "populated"
-			? "Read relevant board threads."
+			? gpt
+				? "Read relevantboardthreads."
+				: "Read relevant board threads."
 			: population === "empty"
-				? "Shared board available; no posts yet."
-				: "Shared board status unavailable. Check board help and retry reading when available.";
+				? gpt
+					? "Sharedboard available; posts=none."
+					: "Shared board available; no posts yet."
+				: gpt
+					? "Sharedboard status unavailable; board help→retry read when available."
+					: "Shared board status unavailable. Check board help and retry reading when available.";
 	const setup = member
-		? "The root agent owns setup; follow your assigned task."
+		? gpt
+			? "Root owns setup; follow assignedtask."
+			: "The root agent owns setup; follow your assigned task."
 		: "";
+	if (gpt)
+		return [
+			state,
+			setup,
+			"Posts=work-changing ownership/decisions/findings/blockers only. Existingthread replies; link≠repeat. Personalcheckpoints→notes. No ack/statusspam/duplicate completionreports. Assignments/urgentmessages→agents.",
+			"Channels=workstreams; threads=topics. Reuse relevantchannels≠catchalls. Newchannel requires distinctcoordinationpurpose; never task/result announcement only.",
+		]
+			.filter(Boolean)
+			.join(" ");
 	return (
 		[
 			state,
@@ -510,7 +528,7 @@ function agentEvent(options: AgentEventOptions): {
 
 export function injectAgentEvent(
 	pi: ExtensionAPI,
-	ctx: ExtensionContext,
+	_ctx: ExtensionContext,
 	options: AgentEventOptions,
 ): void {
 	const tools = pi.getActiveTools();
@@ -521,10 +539,7 @@ export function injectAgentEvent(
 			tools.includes("code") ||
 			tools.includes("notebook"),
 	});
-	const idle = ctx.isIdle();
-	const delivery = idle
-		? { triggerTurn: false, deliverAs: "nextTurn" as const }
-		: { deliverAs: "steer" as const };
+	const delivery = { triggerTurn: true, deliverAs: "steer" as const };
 	sendPolicyMessage(
 		pi,
 		{
@@ -535,7 +550,6 @@ export function injectAgentEvent(
 		},
 		delivery,
 	);
-	if (idle) startPreparedIdleTurn(pi, ctx);
 	announceAgentEvent(
 		pi,
 		`pi-shepherdr:${message.details.machine}:${message.details.paneId}`,

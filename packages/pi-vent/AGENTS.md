@@ -1,1 +1,1 @@
-- Retired source only: keep this package private, preserve its version, and do not resume maintenance or publishing unless explicitly requested.
+- Fork-owned after upstream retirement. Keep this package private at its last upstream version, preserve centralized log storage and migration, and never publish it.

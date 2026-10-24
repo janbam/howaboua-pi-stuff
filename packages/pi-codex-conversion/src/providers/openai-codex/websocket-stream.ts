@@ -1,8 +1,10 @@
 import type { Api, AssistantMessage, AssistantMessageEventStream, Model } from "@earendil-works/pi-ai";
 import { createCodexRequestTiming, type CodexAttemptTiming } from "./diagnostic-timing.ts";
 import { codexRequestDiagnostics } from "./diagnostic-request.ts";
+import { nextWebSocketRequestOrdinal, webSocketDiagnosticId } from "./websocket-connection.ts";
 import { normalizeTimeoutMs } from "./sse.ts";
 import { buildCachedWebSocketRequestBody } from "./websocket-continuation.ts";
+import { serializeCodexRequest } from "./request-serialization.ts";
 import { acquireWebSocket, parseWebSocket, startWebSocketOutputOnFirstEvent } from "./websocket.ts";
 import { assertSuccessfulCodexOutput, assertSuccessfulCodexStatus, mapCodexEvents, processMappedCodexResponsesStream } from "./stream-events.ts";
 import type { CachedWebSocketRequestBodyResult, CanonicalHistoryDecision, CodexDiagnosticsLane, CodexDiagnosticsSink, CodexPrewarmDiagnostics, CodexPrewarmResult, OpenAICodexStreamOptions, ResponsesBody } from "./types.ts";
@@ -20,7 +22,7 @@ export async function processWebSocketStream<TApi extends Api>(
 	body: ResponsesBody,
 	headers: Headers,
 	output: AssistantMessage,
-	stream: AssistantMessageEventStream,
+	stream: Pick<AssistantMessageEventStream, "push">,
 	model: Model<TApi>,
 	accountId: string,
 	onStart: () => void,
@@ -37,7 +39,7 @@ export async function processWebSocketStream<TApi extends Api>(
 	const idleTimeoutMs = normalizeTimeoutMs(options?.timeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS, "timeoutMs");
 	const websocketConnectTimeoutMs = normalizeTimeoutMs(options?.websocketConnectTimeoutMs, "websocketConnectTimeoutMs");
 
-	const { socket, entry, release, reused, socketAgeMs } = await acquireWebSocket(url, headers, options?.sessionId, accountId, options?.signal, websocketConnectTimeoutMs, options?.env);
+	const { socket, entry, release, reused, socketAgeMs } = await acquireWebSocket(url, headers, options?.sessionId, accountId, options?.signal, websocketConnectTimeoutMs, options?.env, diagnostics?.record);
 	// Checkpoint validation happens after streaming; retire its server-side response state.
 	let keepConnection = !options?.canonicalCompaction;
 	let released = false;
@@ -47,15 +49,16 @@ export async function processWebSocketStream<TApi extends Api>(
 	// ChatGPT Codex Responses rejects `store: true` ("Store must be set to false").
 	// WebSocket continuation still works via connection-scoped previous_response_id state.
 	const fullBody = body;
-	const cachedRequest = useCachedContext && entry
+	const cachedRequest: CachedWebSocketRequestBodyResult = useCachedContext && entry
 		? buildCachedWebSocketRequestBody(entry.continuation, fullBody)
-		: { body: fullBody, decision: useCachedContext ? "no_session_cache_entry" : "disabled" } satisfies CachedWebSocketRequestBodyResult;
+		: { body: fullBody, decision: useCachedContext ? "no_session_cache_entry" : "disabled" };
 	const requestBody = cachedRequest.body;
 	const recordDiagnostics = noThrowCodexDiagnosticsSink(diagnostics?.record);
 	if (options?.compactionDiagnostics) {
 		Object.assign(options.compactionDiagnostics, {
 			transport: "websocket",
 			continuation: cachedRequest.decision,
+			continuationMismatch: cachedRequest.mismatch,
 			previousResponseId: Boolean(requestBody.previous_response_id),
 			fullInputItems: fullBody.input.length,
 			sentInputItems: requestBody.input.length,
@@ -69,6 +72,7 @@ export async function processWebSocketStream<TApi extends Api>(
 	};
 
 	try {
+		const socketRequestOrdinal = nextWebSocketRequestOrdinal(socket);
 		if (diagnostics && recordDiagnostics) {
 			recordDiagnostics({
 				type: "request",
@@ -81,9 +85,12 @@ export async function processWebSocketStream<TApi extends Api>(
 				sentInputItems: requestBody.input.length,
 				model: fullBody.model,
 				socketReused: reused,
+				socketId: webSocketDiagnosticId(socket),
 				socketAgeMs,
+				socketRequestOrdinal,
 				socketLane: "main",
 				continuation: cachedRequest.decision,
+				...(cachedRequest.mismatch ? { continuationMismatch: cachedRequest.mismatch } : {}),
 				...(entry?.continuation ? {
 					continuationBaselineInputItems: entry.continuation.lastRequestBody.input.length,
 					continuationBaselineResponseItems: entry.continuation.lastResponseItems.length,
@@ -94,7 +101,7 @@ export async function processWebSocketStream<TApi extends Api>(
 			});
 		}
 		diagnostics?.timing.sent();
-		socket.send(JSON.stringify({ type: "response.create", ...requestBody }));
+		socket.send(serializeCodexRequest({ type: "response.create", ...requestBody }));
 		await processMappedCodexResponsesStream(
 			startWebSocketOutputOnFirstEvent(
 				mapCodexEvents(
@@ -182,7 +189,7 @@ export async function prewarmWebSocket<TApi extends Api>(
 		? codexCacheKeepaliveSocketSessionId(options.sessionId)
 		: options.sessionId;
 	const socketLane = preserveContinuation ? "keepalive" : "main";
-	const { socket, entry, release, reused, socketAgeMs } = await acquireWebSocket(url, headers, socketSessionId, accountId, options.signal, websocketConnectTimeoutMs, options.env).catch(error => {
+	const { socket, entry, release, reused, socketAgeMs } = await acquireWebSocket(url, headers, socketSessionId, accountId, options.signal, websocketConnectTimeoutMs, options.env, recordDiagnostics).catch(error => {
 		timing.finish(options.signal?.aborted ? "aborted" : "failed");
 		recordDiagnostics?.({ type: "failure", lane: "prewarm", transport: "websocket", requestId: requestTiming.requestId, failure: codexDiagnosticsFailure(error) });
 		throw error;
@@ -195,17 +202,18 @@ export async function prewarmWebSocket<TApi extends Api>(
 	const idleTimeoutMs = normalizeTimeoutMs(options.timeoutMs ?? options.websocketConnectTimeoutMs ?? DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS, "timeoutMs");
 	try {
 		if (options.signal?.aborted) throw new Error("Request was aborted");
-		const cachedRequest = prewarm.kind === "compaction" && !preserveContinuation && !generate && entry
+		const cachedRequest: CachedWebSocketRequestBodyResult = prewarm.kind === "compaction" && !preserveContinuation && !generate && entry
 			? buildCachedWebSocketRequestBody(entry.continuation, body)
-			: { body, decision: "disabled" } satisfies CachedWebSocketRequestBodyResult;
+			: { body, decision: "disabled" };
 		const requestBody = cachedRequest.body;
 		// Acquisition validates the route, credentials and live socket. Keep the
 		// existing baseline; the real request still validates its exact continuation.
 		if (!preserveContinuation && !generate && reused && entry?.continuation
 			&& (prewarm.kind === "ordinary" || (cachedRequest.decision === "delta" && requestBody.input.length === 0))) {
-			recordDiagnostics?.({ type: "prewarm-ready", requestId: requestTiming.requestId, transport: "websocket", socketReused: reused, socketAgeMs, socketLane, prewarm });
+			recordDiagnostics?.({ type: "prewarm-ready", requestId: requestTiming.requestId, transport: "websocket", socketId: webSocketDiagnosticId(socket), socketReused: reused, socketAgeMs, socketLane, prewarm });
 			return { socketReused: reused };
 		}
+		const socketRequestOrdinal = nextWebSocketRequestOrdinal(socket);
 		recordDiagnostics?.({
 			type: "request",
 			lane: "prewarm",
@@ -217,14 +225,21 @@ export async function prewarmWebSocket<TApi extends Api>(
 			sentInputItems: requestBody.input.length,
 			model: body.model,
 			socketReused: reused,
+			socketId: webSocketDiagnosticId(socket),
 			socketAgeMs,
+			socketRequestOrdinal,
 			socketLane,
 			prewarm,
 			continuation: cachedRequest.decision,
+			...(cachedRequest.mismatch ? { continuationMismatch: cachedRequest.mismatch } : {}),
+			...(entry?.continuation ? {
+				continuationBaselineInputItems: entry.continuation.lastRequestBody.input.length,
+				continuationBaselineResponseItems: entry.continuation.lastResponseItems.length,
+			} : {}),
 			previousResponseId: Boolean(requestBody.previous_response_id),
 		});
 		timing.sent();
-		socket.send(JSON.stringify({ type: "response.create", ...requestBody, ...(generate ? {} : { generate: false }) }));
+		socket.send(serializeCodexRequest({ type: "response.create", ...requestBody, ...(generate ? {} : { generate: false }) }));
 		for await (const event of mapCodexEvents(parseWebSocket(socket, options.signal, idleTimeoutMs, (value) => {
 			if (!preserveContinuation) turnState?.capturePrewarm(value);
 		}), undefined, (event) => { timing.observe(event); return options.onProviderStreamEvent?.(event, model); })) {
@@ -252,6 +267,7 @@ export async function prewarmWebSocket<TApi extends Api>(
 		}
 		recordDiagnostics?.({
 			type: "prewarm-ready",
+			socketId: webSocketDiagnosticId(socket),
 			requestId: requestTiming.requestId,
 			transport: "websocket",
 			socketReused: reused,

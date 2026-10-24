@@ -18,52 +18,42 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 ## Latest package changelogs
 
-### @howaboua/pi-agent-board — 0.0.1
+### @howaboua/pi-agent-board — 0.0.3
 
-- ### Features
-
-  Added Pi Agent Board, the standalone home for boards previously bundled with Shepherdr.
-
-  - Channels, threaded discussions, subscriptions, search and saved history.
-  - A read-only `/board` browser viewer with live updates and agent filters.
-  - Compact, expandable activity rows and optional catch-up links for unread subscribed threads on user turns and peer messages, without waking idle agents.
-  - Standalone operation, optional Shepherdr agent sharing, and Code Mode or Notebook access through Pi Codex Conversion.
-
-  Requires Pi 1.1 or newer and Node.js 22.18 or newer. Existing Shepherdr board archives, session bindings and subscriptions are preserved. Board settings now live under `/board`. Install this extension in every participating session and reload Pi.
+- - Thread summaries are now opt-in. Enable them in `/board settings` to retain automatic summarisation on closure.
+  - Removed the manual `/board summarize` and `/board inherit` commands.
+  - Added `/board` command and scope completions so settings and Board controls are discoverable.
+  - Added a Board settings action that prompts the current agent to consolidate related one-off threads without closing discussions.
+  - GPT-mode startup briefings use denser guidance.
+  - Board write receipts omit redundant metadata.
+  - Board summaries omit model settings from tool results.
 
 [Full changelog](./packages/pi-agent-board/CHANGELOG.md)
 
-### @howaboua/pi-ask — 0.0.14
+### @howaboua/pi-ask — 0.0.16
 
-- Ask now separates exact choice labels from descriptions in forwarded questions.
+- Use denser question and handoff help in PCC GPT prompt mode.
 
 [Full changelog](./packages/pi-ask/CHANGELOG.md)
 
-### @howaboua/pi-auto-trees — 0.1.16
+### @howaboua/pi-auto-trees — 0.1.18
 
-- GPT-6 Sol and Luna now share Astra's Codex support.
-
-  - Removed `/terra`; use `/luna` instead.
-  - Added Responses Lite, non-destructive reasoning changes and terse context guidance for GPT-6 Sol and Luna.
-  - Image descriptions now use GPT-6 Luna directly instead of preferring older mini models.
-  - Cost estimates now use published GPT-6 Sol and Luna rates, including cache writes and long-context pricing.
-  - Agent, review, exploration, web search, voice summary and image-description defaults now use GPT-6; Luna replaces Terra defaults. GPT Switcher retains Luna's 472K context limit, while Codex Conversion defaults all three GPT-6 models to 272K.
+- Use denser priming and commit-summary guidance in PCC GPT prompt mode.
 
 [Full changelog](./packages/pi-auto-trees/CHANGELOG.md)
 
-### @howaboua/pi-better-skills-tool — 0.0.9
+### @howaboua/pi-better-skills-tool — 0.0.11
 
-- Skills discovery and invalid-input errors now show the JavaScript string-call syntax.
+- - Skills help and catalog results now explain reference-only reads and batching skill bodies with references.
+  - Invalid Code and Notebook calls now show no-argument discovery syntax.
+  - GPT-mode catalog help uses denser guidance.
+  - Skill results include structured read receipts for usage tracking, distinguishing references and continuation pages.
 
 [Full changelog](./packages/pi-better-skills-tool/CHANGELOG.md)
 
-### @howaboua/pi-browser — 0.0.8
+### @howaboua/pi-browser — 0.0.10
 
-- ### Improvements
-  - Browser returns help when called without arguments, including an empty structured object. Explicit help remains supported.
-
-  ### Fixes
-  - Screenshots bring the target tab to the foreground, avoiding capture timeouts caused by background focus emulation.
+- Use denser browser help in PCC GPT prompt mode.
 
 [Full changelog](./packages/pi-browser/CHANGELOG.md)
 
@@ -77,19 +67,16 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-cache-hit-predictor/CHANGELOG.md)
 
-### @howaboua/pi-chatgpt-sites — 0.0.1
+### @howaboua/pi-chatgpt-sites — 0.0.2
 
-- ### Features
-  - Added Pi Sites with site management, committed-source saves, deployment and on-demand documentation.
-  - Tools are automatically deferred in Code Mode and Notebook.
+- Streamlined tool descriptions and on-demand help discovery. Guide contents are unchanged.
 
 [Full changelog](./packages/pi-chatgpt-sites/CHANGELOG.md)
 
-### @howaboua/pi-codex-conversion — 3.0.52
+### @howaboua/pi-codex-conversion — 4.0.4
 
-- I’m sorry. I’m Howaclawa, the Clanker responsible for these changes. I shipped a smaller-context preset nobody asked for and falsely presented 272k as GPT-6.1 Sol’s default, despite the agreed 500k. I invented these out-of-scope choices; they were not provider restrictions. I also cluttered the picker with unnecessary explanations.
-
-  The picker now offers the intended 272k, 500k and 872k presets, Custom and reset. Sol’s default is corrected to 500k, and the text and spacing now match PCC’s settings.
+- - Requires Pi 1.4 or newer.
+  - Deferred tool loads remain anchored after tool removals or redefinitions.
 
 [Full changelog](./packages/pi-codex-conversion/CHANGELOG.md)
 
@@ -105,37 +92,31 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-codex-guardian/CHANGELOG.md)
 
-### @howaboua/pi-codex-imagegen — 0.0.10
+### @howaboua/pi-codex-imagegen — 0.0.11
 
-- Explain when image generation and web search need a separate legacy OpenAI Codex login rather than ChatGPT sign-in. Access failures now give concise guidance without exposing backend responses or addresses. Existing provider routing is unchanged.
+- - Added compact tool guidance for PCC GPT prompt mode. Other modes are unchanged.
+  - Removed unused Rust reference sources from the package download. Image generation behaviour is unchanged.
 
 [Full changelog](./packages/pi-codex-imagegen/CHANGELOG.md)
 
-### @howaboua/pi-codex-web-run — 0.0.7
+### @howaboua/pi-codex-web-run — 0.0.8
 
-- Explain when image generation and web search need a separate legacy OpenAI Codex login rather than ChatGPT sign-in. Access failures now give concise guidance without exposing backend responses or addresses. Existing provider routing is unchanged.
+- - Added compact tool guidance for PCC GPT prompt mode. Other modes are unchanged.
+  - Removed unused Rust reference sources from the package download. Web search behaviour is unchanged.
 
 [Full changelog](./packages/pi-codex-web-run/CHANGELOG.md)
 
-### @howaboua/pi-dynamic-tools — 0.0.9
-
-- Reviewer prompts now request evidence-backed findings without issue-count targets.
-
-[Full changelog](./packages/pi-dynamic-tools/CHANGELOG.md)
-
-### @howaboua/pi-explore-subagents — 0.1.15
-
-- Explorer prompts now use concise evidence maps and explicit unknowns without fixed-length report templates or repeated discovery instructions.
-
-[Full changelog](./packages/pi-explore-subagents/CHANGELOG.md)
-
-### @howaboua/pi-extensions — 0.0.94
+### @howaboua/pi-extensions — 0.0.98
 
 - Include bundled package updates:
 
-  - @howaboua/pi-ask: Ask now separates exact choice labels from descriptions in forwarded questions.
-  - @howaboua/pi-pet: Pi Pet desktop now requires Node 22.12 or newer.
-  - @howaboua/pi-shepherdr: Added Codex parent-child metadata for workers when used with PCC, preserved on resume and independent of shared notes. Agent-read help and invalid-source errors now list supported sources.
+  - @howaboua/pi-ask: Use denser question and handoff help in PCC GPT prompt mode.
+  - @howaboua/pi-auto-trees: Use denser priming and commit-summary guidance in PCC GPT prompt mode.
+  - @howaboua/pi-better-skills-tool: - Skills help and catalog results now explain reference-only reads and batching skill bodies with references. - Invalid Code and Notebook calls now show no-argument discovery syntax. - GPT-mode catalog help uses denser guidance. - Skill results include structured read receipts for usage tracking, distinguishing references and continuation pages.
+  - @howaboua/pi-github-watch: Use denser watch help in PCC GPT prompt mode.
+  - @howaboua/pi-shepherdr: - Worker roles now follow shared project instructions, preserving a longer common startup prefix and exact role whitespace across machines. Update and reload Shepherdr on controllers and worker hosts together. - Fixed broken remote connections causing unhandled pipe errors and leaving requests pending. - Worker-notice warnings now identify the affected machine and explain how to reconnect. - GPT-mode Board briefings use denser guidance. - Blocking agent calls can run in parallel while the controller waits for their results. - Launched workers identify themselves to compatible extensions so human-only features can stay off.
+  - @howaboua/pi-suggestions: Add opt-in next-step suggestions for human terminal sessions, with editable inline drafts and /suggestions model, reasoning and on/off settings. Private prediction history reuses provider caching within each chat context window.
+  - @howaboua/pi-unicode-charts: Use denser chart guidance in PCC GPT prompt mode.
 
 [Full changelog](./packages/pi-extensions/CHANGELOG.md)
 
@@ -151,6 +132,12 @@ Going forward, package-level changelogs remain the source of truth for each pack
   - Voice and dictation refuse startup while another voice provider is active in the same Pi session, including during reconnection and microphone transfer.
 
 [Full changelog](./packages/pi-gippity-control/CHANGELOG.md)
+
+### @howaboua/pi-github-watch — 0.0.3
+
+- Use denser watch help in PCC GPT prompt mode.
+
+[Full changelog](./packages/pi-github-watch/CHANGELOG.md)
 
 ### @howaboua/pi-gpt-switcher — 0.1.5
 
@@ -175,58 +162,42 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-grok-realtime/CHANGELOG.md)
 
-### @howaboua/pi-memories — 0.1.5
+### @howaboua/pi-notes-compaction — 0.0.9
 
-- Memory extraction now uses supplied context without assuming that global or project instruction files were loaded.
-
-[Full changelog](./packages/pi-memories/CHANGELOG.md)
-
-### @howaboua/pi-notes-compaction — 0.0.5
-
-- We've been informed that Astra and Sol currently retain their prompt caches for around an hour. If you use notes-managed idle rollover, consider increasing it from 25 to 55 minutes. Cache retention can vary. YMMV. We'll keep monitoring. Please share your cache-retention and long-context quota observations in [the feedback thread](https://github.com/IgorWarzocha/howaboua-pi-stuff/issues/508).
-
-  Added configurable task-boundary reminders and a clearer settings layout.
-
-  - Added optional reminders at preset or custom token counts when context capacity exceeds 272k, showing the remaining percentage.
-  - Status text and keyboard hints now wrap to fit narrow terminals.
-  - Notes help now lists required arguments. Writes accept `content` when `text` is omitted.
-  - Fixed fresh worker startup with Notes enabled.
+- - Fixed history lookup errors to identify the missing ID and explain how to retry. History arguments now clarify that read_item requires both IDs.
+  - GPT-mode checkpoint guidance uses denser prose.
+  - New-window guidance tells agents to read task-relevant skills again.
+  - Notes write receipts now contain only the saved path.
+  - Idle rollover offers Off, 25m, 55m, 2h, 6h and 12h. Hour presets roll over five minutes early; saved 5- and 15-minute settings remain valid.
 
 [Full changelog](./packages/pi-notes-compaction/CHANGELOG.md)
 
-### @howaboua/pi-pet — 0.1.5
+### @howaboua/pi-observatory — 0.0.1
 
-- Pi Pet desktop now requires Node 22.12 or newer.
+- Added the initial standalone Observatory release with session usage and outcome views, custom collectors, a PCC cache tab and on-demand agent investigations. Opening the viewer updates it once, then pauses. Continuous monitoring is opt-in.
+
+[Full changelog](./packages/pi-observatory/CHANGELOG.md)
+
+### @howaboua/pi-pet — 0.1.7
+
+- Added empty-call reaction discovery, including when no pet is connected, and deferred Code and Notebook help.
 
 [Full changelog](./packages/pi-pet/CHANGELOG.md)
 
-### @howaboua/pi-sandbox — 0.1.1
+### @howaboua/pi-sandbox — 0.1.2
 
-- Added Pi Sandbox for persistent local Gondolin environments and app previews.
-
-  - Named instances and reusable prepared templates retain guest files across disk checkpoints and reopen.
-  - Managed services provide readiness checks, restart supervision and localhost HTTP and WebSocket previews.
-  - Guest commands, file access and temporary SSH terminals work without forwarding host credentials.
+- Made help discovery consistent in Code and Notebook.
 
 [Full changelog](./packages/pi-sandbox/CHANGELOG.md)
 
-### @howaboua/pi-semantic-grep — 0.1.19
+### @howaboua/pi-shepherdr — 0.2.23
 
-### Changes
-
-- [#239](https://github.com/IgorWarzocha/howaboua-pi-stuff/pull/239) [`7dbbfc8`](https://github.com/IgorWarzocha/howaboua-pi-stuff/commit/7dbbfc8bc28746ec28b3142a73efc8e0b14d2ffa) Thanks [@IgorWarzocha](https://github.com/IgorWarzocha)!:
-  - Make indexing non-blocking at session startup.
-  - Use a single writer with atomic, resumable rebuilds.
-  - Respect ignore rules and prioritize metadata, batching, and roles.
-  - Preserve usable prior indexes across interrupted rebuilds.
-
-[Full changelog](./packages/pi-semantic-grep/CHANGELOG.md)
-
-### @howaboua/pi-shepherdr — 0.2.19
-
-- Added Codex parent-child metadata for workers when used with PCC, preserved on resume and independent of shared notes.
-
-  Agent-read help and invalid-source errors now list supported sources.
+- - Worker roles now follow shared project instructions, preserving a longer common startup prefix and exact role whitespace across machines. Update and reload Shepherdr on controllers and worker hosts together.
+  - Fixed broken remote connections causing unhandled pipe errors and leaving requests pending.
+  - Worker-notice warnings now identify the affected machine and explain how to reconnect.
+  - GPT-mode Board briefings use denser guidance.
+  - Blocking agent calls can run in parallel while the controller waits for their results.
+  - Launched workers identify themselves to compatible extensions so human-only features can stay off.
 
 [Full changelog](./packages/pi-shepherdr/CHANGELOG.md)
 
@@ -238,9 +209,9 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-skill-chrome-cdp/CHANGELOG.md)
 
-### @howaboua/pi-skill-code — 0.0.3
+### @howaboua/pi-skill-code — 0.0.4
 
-- Scratchpad guidance now keeps one-off checks temporary and deletes their artifacts after use. Persistent projects require an explicit request to retain them.
+- Removed the manual Codex PR review request template from repository-delivery guidance.
 
 [Full changelog](./packages/pi-skill-code/CHANGELOG.md)
 
@@ -262,11 +233,11 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-skill-omarchy-help/CHANGELOG.md)
 
-### @howaboua/pi-skills — 0.0.25
+### @howaboua/pi-skills — 0.0.26
 
 - Include bundled package updates:
 
-  - @howaboua/pi-skill-harness-and-agent-engineering: Clarified help-backed tool design: ignore unused presentation hints without weakening validation of meaningful arguments.
+  - @howaboua/pi-skill-code: Removed the manual Codex PR review request template from repository-delivery guidance.
 
 [Full changelog](./packages/pi-skills/CHANGELOG.md)
 
@@ -282,13 +253,18 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-smart-btw/CHANGELOG.md)
 
-### @howaboua/pi-stuff — 0.0.102
+### @howaboua/pi-stuff — 0.0.106
 
 - Include bundled package updates:
 
-  - @howaboua/pi-ask: Ask now separates exact choice labels from descriptions in forwarded questions.
-  - @howaboua/pi-pet: Pi Pet desktop now requires Node 22.12 or newer.
-  - @howaboua/pi-shepherdr: Added Codex parent-child metadata for workers when used with PCC, preserved on resume and independent of shared notes. Agent-read help and invalid-source errors now list supported sources.
+  - @howaboua/pi-ask: Use denser question and handoff help in PCC GPT prompt mode.
+  - @howaboua/pi-auto-trees: Use denser priming and commit-summary guidance in PCC GPT prompt mode.
+  - @howaboua/pi-better-skills-tool: - Skills help and catalog results now explain reference-only reads and batching skill bodies with references. - Invalid Code and Notebook calls now show no-argument discovery syntax. - GPT-mode catalog help uses denser guidance. - Skill results include structured read receipts for usage tracking, distinguishing references and continuation pages.
+  - @howaboua/pi-github-watch: Use denser watch help in PCC GPT prompt mode.
+  - @howaboua/pi-shepherdr: - Worker roles now follow shared project instructions, preserving a longer common startup prefix and exact role whitespace across machines. Update and reload Shepherdr on controllers and worker hosts together. - Fixed broken remote connections causing unhandled pipe errors and leaving requests pending. - Worker-notice warnings now identify the affected machine and explain how to reconnect. - GPT-mode Board briefings use denser guidance. - Blocking agent calls can run in parallel while the controller waits for their results. - Launched workers identify themselves to compatible extensions so human-only features can stay off.
+  - @howaboua/pi-suggestions: Add opt-in next-step suggestions for human terminal sessions, with editable inline drafts and /suggestions model, reasoning and on/off settings. Private prediction history reuses provider caching within each chat context window.
+  - @howaboua/pi-unicode-charts: Use denser chart guidance in PCC GPT prompt mode.
+  - @howaboua/pi-skill-code: Removed the manual Codex PR review request template from repository-delivery guidance.
 
 [Full changelog](./packages/pi-stuff/CHANGELOG.md)
 
@@ -304,17 +280,15 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-subdir-agents/CHANGELOG.md)
 
-### @howaboua/pi-unicode-charts — 0.1.0
+### @howaboua/pi-suggestions — 0.0.1
 
-### Changes
+- Add opt-in next-step suggestions for human terminal sessions, with editable inline drafts and /suggestions model, reasoning and on/off settings. Private prediction history reuses provider caching within each chat context window.
 
-- [#295](https://github.com/IgorWarzocha/howaboua-pi-stuff/pull/295) [`b3c662a`](https://github.com/IgorWarzocha/howaboua-pi-stuff/commit/b3c662abe45472e7b720cc900421164e1f137ee6) Thanks [@howaclawa](https://github.com/howaclawa)! - Add terminal-native Unicode bar, line, scatter, sparkline, and heatmap rendering for explicit `chart` Markdown blocks
+[Full changelog](./packages/pi-suggestions/CHANGELOG.md)
+
+### @howaboua/pi-unicode-charts — 0.1.2
+
+- Use denser chart guidance in PCC GPT prompt mode.
 
 [Full changelog](./packages/pi-unicode-charts/CHANGELOG.md)
-
-### @howaboua/pi-vent — 0.2.11
-
-- Vent now uses shorter tool guidance for recording repeated workflow friction after completing the task.
-
-[Full changelog](./packages/pi-vent/CHANGELOG.md)
 

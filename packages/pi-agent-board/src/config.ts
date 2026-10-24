@@ -74,10 +74,8 @@ export function readBoardConfig(folder: string, defaultEnabled = false) {
 export function writeBoardConfig(
 	folder: string,
 	scope: "folder" | "global",
-	enabled: boolean | undefined,
+	enabled: boolean,
 ) {
-	if (scope === "global" && enabled === undefined)
-		throw new Error("Global enablement must be on or off");
 	const path = boardConfigPaths(folder)[scope];
 	if (!path)
 		throw new Error(
@@ -87,10 +85,12 @@ export function writeBoardConfig(
 	const document = readDocument(path);
 	const board = object(document["board"]) ? { ...document["board"] } : {};
 	const field = scope === "global" ? "enabledGlobally" : "enabled";
-	if (enabled === undefined) delete board[field];
-	else board[field] = enabled;
-	if (enabled === undefined && !existsSync(path)) return;
+	board[field] = enabled;
 	document["board"] = board;
+	writeDocument(path, document);
+}
+
+function writeDocument(path: string, document: Record<string, unknown>) {
 	mkdirSync(dirname(path), { recursive: true });
 	const temporary = `${path}.${randomUUID()}.tmp`;
 	try {
@@ -101,4 +101,92 @@ export function writeBoardConfig(
 	} finally {
 		rmSync(temporary, { force: true });
 	}
+}
+
+export type BoardSummarySelection = "luna" | "custom";
+export type BoardSummaryModel = {
+	provider: string;
+	model: string;
+	reasoning: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+};
+
+const LUNA_SUMMARY_MODEL: BoardSummaryModel = {
+	provider: "openai-codex",
+	model: "gpt-6-luna",
+	reasoning: "high",
+};
+
+export function readBoardSummaryConfig(folder: string) {
+	const path = boardConfigPaths(folder).global;
+	const document = readDocument(path);
+	const board = object(document["board"]) ? document["board"] : {};
+	const summary = board["summary"];
+	if (summary !== undefined && !object(summary))
+		throw new Error(`${path}: board.summary must be an object`);
+	const automatic = summary?.["automatic"] ?? false;
+	if (typeof automatic !== "boolean")
+		throw new Error(`${path}: board.summary.automatic must be true or false`);
+	const selection = summary?.["selection"] ?? "luna";
+	if (selection !== "luna" && selection !== "custom")
+		throw new Error(`${path}: board.summary.selection must be luna or custom`);
+	return { path, automatic, selection, custom: summary?.["custom"] };
+}
+
+function customSummaryModel(value: unknown, path: string): BoardSummaryModel {
+	const instruction = `Edit board.summary.custom in ${path}: set provider, model and reasoning (off|minimal|low|medium|high|xhigh|max)`;
+	if (!object(value)) throw new Error(instruction);
+	const { provider, model, reasoning } = value;
+	if (
+		typeof provider !== "string" ||
+		!provider.trim() ||
+		typeof model !== "string" ||
+		!model.trim() ||
+		(reasoning !== "off" &&
+			reasoning !== "minimal" &&
+			reasoning !== "low" &&
+			reasoning !== "medium" &&
+			reasoning !== "high" &&
+			reasoning !== "xhigh" &&
+			reasoning !== "max")
+	)
+		throw new Error(instruction);
+	return { provider, model, reasoning };
+}
+
+export function resolveBoardSummaryModel(folder: string): BoardSummaryModel {
+	const config = readBoardSummaryConfig(folder);
+	return config.selection === "luna"
+		? { ...LUNA_SUMMARY_MODEL }
+		: customSummaryModel(config.custom, config.path);
+}
+
+export function writeBoardSummarySelection(
+	folder: string,
+	selection: BoardSummarySelection,
+) {
+	const config = readBoardSummaryConfig(folder);
+	const document = readDocument(config.path);
+	const board = object(document["board"]) ? { ...document["board"] } : {};
+	const summary = object(board["summary"]) ? { ...board["summary"] } : {};
+	summary["luna"] = {
+		...(object(summary["luna"]) ? summary["luna"] : {}),
+		...LUNA_SUMMARY_MODEL,
+	};
+	if (summary["custom"] === undefined)
+		summary["custom"] = { provider: "", model: "", reasoning: "high" };
+	summary["selection"] = selection;
+	board["summary"] = summary;
+	document["board"] = board;
+	writeDocument(config.path, document);
+}
+
+export function writeBoardSummaryAutomatic(folder: string, automatic: boolean) {
+	const config = readBoardSummaryConfig(folder);
+	const document = readDocument(config.path);
+	const board = object(document["board"]) ? { ...document["board"] } : {};
+	const summary = object(board["summary"]) ? { ...board["summary"] } : {};
+	summary["automatic"] = automatic;
+	board["summary"] = summary;
+	document["board"] = board;
+	writeDocument(config.path, document);
 }

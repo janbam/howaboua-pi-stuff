@@ -68,11 +68,16 @@ export interface NotesOwner {
 	protocol: 1;
 	owner: "pi-notes-compaction";
 	identity(ctx: ExtensionContext): WindowIdentity | undefined;
-	projectMessages(messages: readonly AgentMessage[]): AgentMessage[];
+	/** Current branch refreshes projection before later lifecycle hooks have run. */
+	projectMessages(
+		messages: readonly AgentMessage[],
+		entries?: readonly SessionEntry[],
+	): AgentMessage[];
 	projectBranch(entries: readonly SessionEntry[]): SessionEntry[];
 	/** Consult before compaction work; the owner's hook performs notes-only rollover. */
 	allowsCompaction?(reason: SessionBeforeCompactEvent["reason"]): boolean;
-	canBind?(ctx: ExtensionContext): boolean;
+	allowsWindowRequests?(): boolean;
+	canBind?(ctx: ExtensionContext, entries?: readonly SessionEntry[]): boolean;
 	snapshotNotes?(
 		entries: readonly SessionEntry[],
 		agentName: string,
@@ -136,6 +141,10 @@ export interface BridgeRequest {
 }
 export interface OwnerRequest {
 	protocol: 1;
+	ctx?: ExtensionContext;
+	projection?(
+		owner: Pick<NotesOwner, "projectMessages" | "projectBranch">,
+	): void;
 	reply(owner: NotesOwner): void;
 }
 

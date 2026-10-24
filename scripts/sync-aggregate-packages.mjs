@@ -9,6 +9,7 @@ const packagesDir = join(root, "packages");
 const aggregateDirs = new Set(["pi-stuff", "pi-skills", "pi-extensions"]);
 const bundleExcludedPackages = new Set([
 	"@howaboua/pi-agent-board",
+	"@howaboua/pi-observatory",
 	"@howaboua/pi-notes-compaction",
 	"@howaboua/pi-browser",
 	"@howaboua/pi-chatgpt-sites",
@@ -17,8 +18,6 @@ const bundleExcludedPackages = new Set([
 	"@howaboua/pi-codex-conversion",
 	"@howaboua/pi-codex-guardian",
 	"@howaboua/pi-codex-imagegen",
-	"@howaboua/pi-dynamic-tools",
-	"@howaboua/pi-explore-subagents",
   "@howaboua/pi-skill-omarchy-help",
   "@howaboua/pi-subdir-agents",
 	"@howaboua/pi-codex-web-run",
@@ -103,9 +102,9 @@ function updateAggregate(dir, filter, includeExtensions, includeSkills) {
   );
   if (includeExtensions) {
     pkg.peerDependencies = {
-      ...pi1PeerDependencies(pkg.peerDependencies),
       "@earendil-works/pi-coding-agent": PI_PEER_RANGE,
       "@earendil-works/pi-tui": PI_PEER_RANGE,
+      ...pi1PeerDependencies(pkg.peerDependencies),
     };
   }
   pkg.pi = {};

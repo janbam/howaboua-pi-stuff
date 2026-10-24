@@ -374,6 +374,7 @@ async function createWindow(): Promise<BrowserWindow> {
     ...initialBounds(attention.petSize),
     frame: false,
     transparent: true,
+    roundedCorners: process.platform !== "linux",
     hasShadow: false,
     backgroundColor: "#00000000",
     alwaysOnTop: true,

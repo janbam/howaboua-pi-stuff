@@ -29,6 +29,8 @@ Electron is optional. With no attached device, Pi Pet still publishes its versio
 
 The Electron shell loads the same GipPity-hosted app in a transparent, frameless, always-on-top window. It adds local cursor tracking, size, quiet mode, and snooze without another agent runtime or remote protocol.
 
+The desktop shell uses Electron 44. It requires macOS 13 or newer, or a supported 64-bit Windows or Linux desktop. Linux ARMv7, 32-bit Windows and Linux Unity are no longer supported. The browser miniapp does not require Electron.
+
 Attach the device running Pi directly:
 
 ```text

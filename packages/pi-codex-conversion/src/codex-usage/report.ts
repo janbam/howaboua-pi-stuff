@@ -1,10 +1,9 @@
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { shellQuote } from "../shell/tokenize.ts";
-import { backfillUsage } from "./backfill.ts";
-import { readUsageLedger, recordCodexQuota, usageLedgerPath, usageRecordingError } from "./ledger-store.ts";
+import { backfillUsage, usageSessionRoot } from "./backfill.ts";
+import { runLedgerOperation, recordCodexQuota, usageLedgerPath, usageRecordingError } from "./ledger-store.ts";
 import type { CodexUsageSnapshot } from "./payload.ts";
-import { formatSpendReport, usageReport } from "./spend-report.ts";
 
 export async function startUsageAnalysis(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
 	const session = ctx.sessionManager.getSessionId();
@@ -13,11 +12,11 @@ export async function startUsageAnalysis(pi: ExtensionAPI, ctx: ExtensionCommand
 	const script = shellQuote(fileURLToPath(new URL(`./analyse.${import.meta.url.endsWith(".ts") ? "ts" : "js"}`, import.meta.url)));
 	const ledger = shellQuote(usageLedgerPath());
 	pi.sendUserMessage([
-		"Analyse my Codex spending. Use the bundled read-only report script, starting with its help and summary:",
+		"Analyse my Codex spending within the current working directory and its descendants. Use the bundled read-only report script, starting with its help and summary:",
 		`node ${script} --help`,
 		`node ${script} summary --file ${ledger}`,
-		`Current session directory: ${JSON.stringify(ctx.sessionManager.getSessionDir())}`,
-		"Compare reset windows and month trends; inspect bounded session ranges for model and reasoning breakdowns. Distinguish recorded API-equivalent costs, quota estimates and missing coverage. Suggest useful savings without assuming cheaper settings produce equivalent results.",
+		`Session scans: --root ${shellQuote(usageSessionRoot(ctx.sessionManager.getSessionDir()))} --cwd ${shellQuote(ctx.cwd)}`,
+		"Compare reset windows and month trends; use bounded session ranges for model and reasoning breakdowns. Ledger totals are machine-wide context, not directory totals. Distinguish recorded API-equivalent costs, quota estimates and missing coverage. Suggest specific folders or sessions for deeper analysis and ask before drilling down.",
 	].join("\n"));
 }
 
@@ -29,23 +28,19 @@ export async function captureSpendReport(snapshot: CodexUsageSnapshot, options: 
 	if (!snapshot.accountKey) return [];
 	await recordCodexQuota(snapshot);
 	try {
-		const pending = backfillUsage(snapshot.accountKey, options.sessionDir, options.signal);
-		if (pending) {
-			options.onProgress?.([...readSpendReport(snapshot.accountKey), "", "Loading history…"]);
-			await pending;
-		}
+		options.onProgress?.([...await readSpendReport(snapshot.accountKey), "", "Loading history…"]);
+		await backfillUsage(snapshot.accountKey, options.sessionDir, options.signal);
 	} catch (error) {
-		return [...readSpendReport(snapshot.accountKey), `History unavailable: ${error instanceof Error ? error.message : String(error)}`];
+		return [...await readSpendReport(snapshot.accountKey), `History unavailable: ${error instanceof Error ? error.message : String(error)}`];
 	}
 	return readSpendReport(snapshot.accountKey);
 }
 
-export function readSpendReport(key: string): string[] {
+export async function readSpendReport(key: string): Promise<string[]> {
 	try {
-		const ledger = readUsageLedger();
-		const account = ledger.accounts[key];
-		const lines = account ? formatSpendReport(usageReport(account)) : ["No tracked spend yet."];
-		if (!account?.history && ledger.historyOwner && ledger.historyOwner !== key) lines.push("History linked to another account");
+		const result = await runLedgerOperation(key, Date.now(), { kind: "report" });
+		if (result.kind !== "report") throw new Error("Usage report unavailable.");
+		const { lines } = result;
 		const error = usageRecordingError();
 		return error ? [...lines, error] : lines;
 	} catch (error) { return [`Spend unavailable: ${error instanceof Error ? error.message : String(error)}`]; }

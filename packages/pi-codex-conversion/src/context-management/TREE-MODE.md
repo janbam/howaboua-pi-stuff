@@ -27,7 +27,7 @@ flowchart LR
     D --> F[Pi appends branch summary]
     F --> G[Append hidden archive manifest]
     G --> H[Append purple window marker without triggering]
-    H --> I[Settled user kickoff starts fresh model turn]
+    H --> I[Settled custom kickoff starts fresh model turn]
     F -. indexed by .-> J[history tools]
     E -. exact entries .-> J
     J -. on demand .-> I
@@ -152,7 +152,7 @@ Do not copy raw conversation entries into the snapshot. Bound file sizes using t
 
 ### Window marker
 
-After the archive manifest and note snapshot, append the existing purple context-window custom message without triggering a turn. Once Pi is settled and transport state has been reset, a successor user message starts the continuation through the complete input and `before_agent_start` chain.
+After the archive manifest and note snapshot, append the existing purple context-window custom message without triggering a turn. Once Pi is settled and transport state has been reset, a successor custom message starts the continuation through the complete `before_agent_start` chain.
 
 The marker retains:
 
@@ -273,7 +273,7 @@ Our current generic `session_tree` handler resets Notebook tree epochs and shuts
 - ordinary user navigation keeps the existing Notebook reset behavior
 - internal navigation must not auto-create a boundary before the manifest and note snapshot exist
 
-Pi emits `session_tree` before command-context navigation returns. Its interactive wrapper may then flush input queued during summarization. The coordinator appends the manifest, note snapshot and non-triggering boundary before admitting one successor user kickoff. Manual compaction does not admit that kickoff inside `session_compact`; intercepted input is restored to the editor instead.
+Pi emits `session_tree` before command-context navigation returns. Its interactive wrapper may then flush input queued during summarization. The coordinator appends the manifest, note snapshot and non-triggering boundary before admitting one successor kickoff. Manual compaction does not admit that kickoff inside `session_compact`; intercepted input is restored to the editor instead.
 
 Only the last emitted model-visible entry may trigger a turn.
 
@@ -342,7 +342,7 @@ Likely ownership:
 
 - `adapter/activation/config.ts` and settings UI: expose Tree and Remote
 - `context-management/window-manager.ts`: window identity, projection and compaction
-- `context-management/window-kickoff.ts`: deferred window starts and settled successor user input
+- `context-management/window-kickoff.ts`: deferred window starts and settled successor custom turns or queued user input
 - new `context-management/tree-coordinator.ts`: command capture, abort/settled state machine and internal-navigation guard
 - new `context-management/tree-archive.ts`: manifest validation, bounded traversal and index rebuild
 - `context-management/local-history.ts`: active and archived window sources
@@ -386,7 +386,7 @@ Use focused checks while iterating and the package umbrella gate once after revi
 ## Verified choices
 
 1. The tool aborts only after recording the pending rollover. Pi persists its tool result before emitting `agent_settled`.
-2. Navigation runs directly in the awaited `agent_settled` handler; its final boundary never triggers a custom-message turn. A settled successor user message runs every `before_agent_start` handler.
+2. Navigation runs directly in the awaited `agent_settled` handler; its final boundary never triggers a custom-message turn. A settled successor custom message runs every `before_agent_start` handler. Queued user input retains its ordinary input and expansion path.
 3. Input submitted during navigation is intercepted and merged into that one successor kickoff. Manual compaction restores intercepted input to the editor instead of submitting while Pi's compaction controller is active.
 4. Pi's default branch-summary instructions are sufficient; Tree adds no standing prompt or Tree-specific model tool.
 5. Remote mirrors the native namespace schemas, encrypted sensitive arguments and encrypted output contract. A live enabled account remains the final backend acceptance check.

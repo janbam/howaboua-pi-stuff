@@ -43,7 +43,7 @@ const NOTEBOOK_ACTION_PARAMETERS = Type.Union([
 ]);
 
 export const NOTEBOOK_PARAMETERS = Type.Object({
-	input: Type.Optional(Type.String({ description: "help or JSON action object" })),
+	input: Type.Optional(Type.String({ description: 'help or JSON, e.g. {"action":"status"}; not a bare action name' })),
 }, { additionalProperties: false });
 
 const NOTEBOOK_DISCOVERY_PARAMETERS = Type.Object({
@@ -73,7 +73,9 @@ query uses case-insensitive * and ? globs. prune requires a nonempty query. name
 
 Hooks must be self-contained fn(event), awaited when invoked. startup gets {type:"startup"} once per fresh kernel after restoration, not when pinned; Pi tools cannot run during startup. tool_result gets {type:"tool_result",toolName,input,status:"success"|"error",result?,error?} after nested tool settlement; handlers are awaited in name order and their tool calls do not retrigger hooks. Recreate imports and live handles inside the function. Startup failures block execution; unpin remains available. External side effects are not rolled back.
 
-Run management calls after exec returns. Inside exec, the existing tools.notebook({action,...}) supports status without query, list and diagnostics only. A blocked call returns the top-level retry. release/prune may restart the kernel for lexical bindings, clearing runtime-only handles. Inspect reported cleanup failures and restore notices. For failed state/helpers, diagnose, repair or prune, then verify recovery. restart restores completed state; reset discards only session state.`;
+Run management calls after exec returns. Inside exec, the existing tools.notebook({action,...}) supports status without query, list and diagnostics only. A blocked call returns the top-level retry. release/prune may restart the kernel for lexical bindings, clearing runtime-only handles. Inspect reported cleanup failures and restore notices. For failed state/helpers, diagnose, repair or prune, then verify recovery. restart restores completed state; reset discards only session state.
+
+Reusable-global examples foo/bar are installed when neither name is occupied; inspect their .description and .usage before use.`;
 
 type NotebookToolParameters = {
 	action: string;
@@ -88,6 +90,7 @@ export function registerNotebookTool(pi: ExtensionAPI, runtime: SharedCodeModeRu
 	pi.registerTool({
 		name: "notebook",
 		exposure: "model-only",
+		executionMode: "sequential",
 		label: "Notebook",
 		description: "Manage persistent notebook state",
 		parameters: NOTEBOOK_PARAMETERS,
@@ -124,7 +127,8 @@ export function createNotebookControlProxy(
 ): ProgrammaticCodeModeToolDefinition {
 	return {
 		name: "notebook",
-		usage: "await tools.notebook() // help; or { action, query?, name?, names?, hook? }",
+		usage: "await tools.notebook()",
+		discovery: "help",
 		description: NOTEBOOK_DESCRIPTION,
 		deferLoading: true,
 		kind: "function",

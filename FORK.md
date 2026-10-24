@@ -5,10 +5,16 @@ Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist ups
 - Entry = one feature: commits/PRs, behavior, files touched. Tests and changelogs are omitted; `git show --stat <commit>` has the full list.
 - In-code divergences in shared files may carry `// FORK_MOD: <why>` comments; `rg FORK_MOD packages` lists them. Conflicts on those lines keep the fork side.
 - Upstream status is "not proposed" unless stated.
-- Upstream baseline: `@howaboua/pi-codex-conversion@3.0.52` (`76f20771`). This fork targets Pi 1.2.0 with its TypeBox pin, `1.3.27`.
+- Upstream baseline: `@howaboua/pi-codex-conversion@4.0.4` and `@howaboua/pi-observatory@0.0.1` (`753e79b9`). Development uses Pi 1.4.0. Root, PCC and Vent retain Pi's TypeBox pin, `1.3.27`, because upstream extensions' `1.3.37` pin breaks portable PCC declaration emission. The Observatory Knip entry fix from upstream `3d0faf5a` is also included.
 - Version policy: package versions follow the upstream release being merged. Fork-only changes are documented here, not in Changesets or upstream changelogs. This fork does not create versioning PRs, publish npm packages or create package releases; do not run the retained upstream release commands locally.
 
 ## Repo
+
+### Upstream 4.0.4 integration
+
+- PR: #29
+- Behavior: preserves the fork's adapter switch, prompt appendix, provider scope, shortcuts, status line, Ask notifications and skill catalog overlay alongside upstream's Pi 1.4 transcript API and GPT prompt mode. Pi peer minima retain the fork's 1.2 floor without weakening higher upstream requirements. Other retired upstream packages are removed, while Vent remains fork-owned.
+- Files: `AGENTS.md`, `FORK.md`, `bun.lock`, `knip.jsonc`, package manifests, `scripts/{link-pi-checkout,pi-sdk-policy,sync-aggregate-packages}.mjs`, `packages/pi-ask/ask/tool.ts`, `packages/pi-better-skills-tool/README.md`, `packages/pi-codex-conversion/{README.md,src/adapter/activation,src/extension,src/prompt/build-system-prompt.ts,src/ui/settings}`, `packages/{pi-observatory,pi-suggestions}/biome.json`
 
 ### Upstream-owned versioning and releases
 
@@ -50,6 +56,7 @@ Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist ups
 ### Centralized vent logs
 
 - Commit: `f75e2b8`
+- Ownership: retained as a private fork-owned package after upstream removed Vent in `9c5167e4`. Keep its last upstream version, `0.2.11`, without publishing it. Development dependencies follow Pi 1.4.0 and its TypeBox 1.3.27 pin.
 - Behavior: vent logs live outside project repos, isolated per project via Pi's session-path encoding. A repo-local `VENT.md` is migrated on first use (moved, or appended to existing central history).
 - Fork-only files: `packages/pi-vent/extensions/storage.ts`
 - Shared files: `extensions/vent.ts`, `README.md`, `package.json`
@@ -90,6 +97,7 @@ Paths below are relative to `packages/pi-codex-conversion/`.
 
 - Commits: `407c820`, `5edc924` (`FORK_MOD`)
 - Behavior: status line shows 5-hour usage next to weekly usage from one cached `/wham/usage` read, with shortened labels ("Codex", "Cache", no "left"). The compact v2 indicator and verbosity level are hidden. The usage cache lasts 1 minute instead of 5.
+- Upstream status: five-hour extraction and display are included in 4.0.4. Compact labels, hidden indicators and the one-minute cache remain fork-owned.
 - Files: `src/codex-usage/{client,payload}.ts`, `src/adapter/activation/{state,tool-set}.ts`, `src/extension/{session-lifecycle,turn-lifecycle,ui}.ts`, `src/ui/status.ts`, `src/diagnostics/{runtime.ts,AGENTS.md}`, `README.md`
 
 ### Appended Codex system prompt file

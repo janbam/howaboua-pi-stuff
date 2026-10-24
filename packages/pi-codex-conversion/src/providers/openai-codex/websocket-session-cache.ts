@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import type { AcquiredWebSocket, ProviderEnv, SessionWebSocketCacheEntry } from "./types.ts";
-import { closeWebSocketSilently, connectWebSocket, isWebSocketReusable, resolveWebSocketProxyForTarget } from "./websocket-connection.ts";
+import type { AcquiredWebSocket, CodexDiagnosticsSink, ProviderEnv, SessionWebSocketCacheEntry } from "./types.ts";
+import { closeWebSocketSilently, connectWebSocket, isWebSocketReusable, observeWebSocketDiagnostics, resolveWebSocketProxyForTarget } from "./websocket-connection.ts";
 import { clearCanonicalSessions } from "./session-continuity.ts";
 
 const websocketSessionCache = new Map<string, Map<string, SessionWebSocketCacheEntry>>();
@@ -40,7 +40,7 @@ export function recordWebSocketSseFallback(sessionId: string | undefined): void 
 	if (sessionId) websocketSseFallbackSessions.add(sessionId);
 }
 
-function closeWebSocketSessions(sessionId: string | undefined): void {
+function closeWebSocketSessions(sessionId: string | undefined, cause = "session_shutdown"): void {
 	// A connecting preparation is not yet in the socket cache, but belongs to
 	// the same session teardown boundary as a connected lease.
 	const preparations = sessionId ? [websocketPreparations.get(sessionId)] : [...websocketPreparations.values()];
@@ -48,7 +48,7 @@ function closeWebSocketSessions(sessionId: string | undefined): void {
 		for (const controller of controllers ?? []) controller.abort();
 	}
 	const closeEntry = (entry: SessionWebSocketCacheEntry) => {
-		closeWebSocketSilently(entry.socket, 1000, "session_shutdown");
+		closeWebSocketSilently(entry.socket, 1000, cause);
 	};
 
 	if (sessionId) {
@@ -64,7 +64,7 @@ function closeWebSocketSessions(sessionId: string | undefined): void {
 }
 
 export function resetOpenAICodexWebSocketSessions(sessionId?: string): void {
-	closeWebSocketSessions(sessionId);
+	closeWebSocketSessions(sessionId, "session_reset");
 	clearCanonicalSessions(sessionId);
 }
 
@@ -89,6 +89,7 @@ export function preconnectWebSocket(
 	connectTimeoutMs: number | undefined,
 	env: ProviderEnv | undefined,
 	onFailure: (error: unknown) => void,
+	diagnostics?: CodexDiagnosticsSink,
 ) {
 	const controller = new AbortController();
 	let preparations = websocketPreparations.get(sessionId);
@@ -113,7 +114,7 @@ export function preconnectWebSocket(
 	if (combinedSignal.aborted) release(false);
 	const operation = (async () => {
 		attemptedRoute = await websocketRouteKey(url, headers, accountId, env);
-		lease = await acquireWebSocket(url, headers, sessionId, accountId, combinedSignal, connectTimeoutMs, env);
+		lease = await acquireWebSocket(url, headers, sessionId, accountId, combinedSignal, connectTimeoutMs, env, diagnostics);
 		if (combinedSignal.aborted) release(false);
 	})().catch((error: unknown) => {
 		// Only a failure on the finalized route may influence transport fallback.
@@ -145,19 +146,20 @@ export async function acquireWebSocket(
 	signal: AbortSignal | undefined,
 	connectTimeoutMs?: number,
 	env?: ProviderEnv,
+	diagnostics?: CodexDiagnosticsSink,
 ): Promise<AcquiredWebSocket> {
 	if (!sessionId) {
-		const socket = await connectWebSocket(url, headers, signal, connectTimeoutMs, env);
+		const socket = await connectWebSocket(url, headers, signal, connectTimeoutMs, env, diagnostics);
 		return {
 			socket,
 			reused: false,
 			socketAgeMs: 0,
 			release: ({ keep } = {}) => {
 				if (keep === false) {
-					closeWebSocketSilently(socket);
+					closeWebSocketSilently(socket, 1000, "release");
 					return;
 				}
-				closeWebSocketSilently(socket);
+				closeWebSocketSilently(socket, 1000, "release");
 			},
 		};
 	}
@@ -168,6 +170,7 @@ export async function acquireWebSocket(
 	const cached = routeEntries?.get(routeKey);
 	if (cached) {
 		if (!cached.busy && isWebSocketReusable(cached.socket)) {
+			observeWebSocketDiagnostics(cached.socket, diagnostics);
 			cached.busy = true;
 			return {
 				socket: cached.socket,
@@ -177,7 +180,7 @@ export async function acquireWebSocket(
 				socketAgeMs: Math.max(0, Date.now() - cached.createdAtMs),
 				release: ({ keep } = {}) => {
 					if (!keep || !isWebSocketReusable(cached.socket)) {
-						closeWebSocketSilently(cached.socket);
+						closeWebSocketSilently(cached.socket, 1000, "release");
 						const currentEntries = websocketSessionCache.get(sessionId);
 						if (currentEntries?.get(routeKey) === cached) currentEntries.delete(routeKey);
 						if (currentEntries?.size === 0) websocketSessionCache.delete(sessionId);
@@ -189,28 +192,28 @@ export async function acquireWebSocket(
 		}
 
 		if (cached.busy) {
-			const socket = await connectWebSocket(url, headers, signal, connectTimeoutMs, env);
+			const socket = await connectWebSocket(url, headers, signal, connectTimeoutMs, env, diagnostics);
 			return {
 				socket,
 				routeKey,
 				reused: false,
 				socketAgeMs: 0,
 				release: () => {
-					closeWebSocketSilently(socket);
+					closeWebSocketSilently(socket, 1000, "release");
 				},
 			};
 		}
 
 		if (!isWebSocketReusable(cached.socket)) {
-			closeWebSocketSilently(cached.socket);
+			closeWebSocketSilently(cached.socket, 1000, "stale_socket");
 			routeEntries?.delete(routeKey);
 			if (routeEntries?.size === 0) websocketSessionCache.delete(sessionId);
 		}
 	}
 
-	const socket = await connectWebSocket(url, headers, signal, connectTimeoutMs, env);
+	const socket = await connectWebSocket(url, headers, signal, connectTimeoutMs, env, diagnostics);
 	if (signal?.aborted) {
-		closeWebSocketSilently(socket);
+		closeWebSocketSilently(socket, 1000, "aborted");
 		throw new Error("Request was aborted");
 	}
 	const entry: SessionWebSocketCacheEntry = { socket, busy: true, createdAtMs: Date.now() };
@@ -228,7 +231,7 @@ export async function acquireWebSocket(
 		socketAgeMs: 0,
 		release: ({ keep } = {}) => {
 			if (!keep || !isWebSocketReusable(entry.socket)) {
-				closeWebSocketSilently(entry.socket);
+				closeWebSocketSilently(entry.socket, 1000, "release");
 				const currentEntries = websocketSessionCache.get(sessionId);
 				if (currentEntries?.get(routeKey) === entry) currentEntries.delete(routeKey);
 				if (currentEntries?.size === 0) websocketSessionCache.delete(sessionId);

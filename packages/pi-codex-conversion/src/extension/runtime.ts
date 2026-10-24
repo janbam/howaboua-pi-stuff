@@ -1,4 +1,4 @@
-import { convertToLlm, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { convertToLlm, type ExtensionAPI, type ExtensionContext, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { getCurrentSystemMessage, type Api, type Context, type Model, type TranscriptContext } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { dirname } from "node:path";
@@ -40,6 +40,7 @@ import { projectCodexDeveloperHistory } from "../adapter/developer-history.ts";
 import { createAutoReasoning } from "../adapter/auto-reasoning.ts";
 import { priceGeneratedPrewarm } from "../providers/openai-codex/usage.ts";
 import { projectCodeModeMcpSections } from "../prompt/mcp-server-section.ts";
+import { projectPiCodeModeDeclarations } from "../adapter/code-mode/pi-tools.ts";
 
 export type CodexContext = ExtensionContext;
 
@@ -70,6 +71,7 @@ export interface CodexExtensionRuntime {
 	projectContextMessages(ctx: CodexContext, messages?: readonly AgentMessage[]): AgentMessage[];
 	execEnv(config?: CodexConversionConfig): NodeJS.ProcessEnv;
 	prepareTurn(ctx: CodexContext): void;
+	suspendOrdinaryPrewarm(): void;
 	finishTurn(): void;
 	beforeRequestSend(model: Model<Api>, context: TranscriptContext, body: ResponsesBody, options: OpenAICodexStreamOptions | undefined, responsesLite: boolean): Promise<void>;
 	startCompactionPrewarm(ctx: CodexContext): Promise<CodexPrewarmResult> | undefined;
@@ -80,7 +82,7 @@ export interface CodexExtensionRuntime {
 	resetTransportAfterCompaction(sessionId: string): void;
 	shutdownTransport(sessionId: string): void;
 	configureDiagnostics(ctx: CodexContext, announceLog?: boolean): Promise<void>;
-	diagnosticsSink(): CodexDiagnosticsSink | undefined;
+	diagnosticsSink(sessionId: string | undefined): CodexDiagnosticsSink | undefined;
 	shutdownDiagnostics(): Promise<void>;
 }
 
@@ -306,11 +308,11 @@ export function createCodexExtensionRuntime(pi: ExtensionAPI, recordUsage?: Code
 		return promise;
 	};
 
-	const projectContextMessages = (ctx: CodexContext, messages?: readonly AgentMessage[]) => {
+	const projectContextMessages = (ctx: CodexContext, messages?: readonly AgentMessage[], refreshNotesFrom?: readonly SessionEntry[]) => {
 		if (state.externalNotes) {
 			// Message projection preserves the committed prompt before retiring conversation.
 			const branch = ctx.sessionManager.getBranch();
-			return state.externalNotes.owner.projectMessages(projectCodexDeveloperHistory(branch, messages))
+			return state.externalNotes.owner.projectMessages(projectCodexDeveloperHistory(branch, messages), refreshNotesFrom)
 				.filter(message => !isProviderContextExcludedMessage(message));
 		}
 		const plan = resolveCodexRuntimePlanForState(ctx, state);
@@ -325,15 +327,19 @@ export function createCodexExtensionRuntime(pi: ExtensionAPI, recordUsage?: Code
 			branch,
 			allEntries,
 		);
-		return projectTreeHandoffReads(projected, checkpointBranch)
+		return projectTreeHandoffReads(state.notesProjection?.projectMessages(projected, refreshNotesFrom) ?? projected, checkpointBranch)
 			.filter((message) => !isProviderContextExcludedMessage(message));
 	};
 
 	const currentMessages = (ctx: CodexContext) => {
 		const plan = resolveCodexRuntimePlanForState(ctx, state);
 		const required = plan.kind === "notebook" ? NOTEBOOK_MODE_TOOL_NAMES : CODE_MODE_TOOL_NAMES;
-		const messages = projectCodeModeMcpSections(projectContextMessages(ctx), isCodeModeRuntime(plan)
-			&& required.every(name => pi.getActiveTools().includes(name)));
+		const codeMode = isCodeModeRuntime(plan) && required.every(name => pi.getActiveTools().includes(name));
+		// Reconstructed prewarm can run before Notes' session_compact hook. Do not
+		// refresh during kickoff: its successor boundary may not be persisted yet.
+		const contextMessages = projectContextMessages(ctx, undefined, ctx.sessionManager.getBranch());
+		const messages = projectCodeModeMcpSections(codeMode
+			? projectPiCodeModeDeclarations(pi, contextMessages) : contextMessages, codeMode);
 		return convertToLlm(
 			state.developerMessages.prepare(
 				messages,
@@ -442,12 +448,15 @@ export function createCodexExtensionRuntime(pi: ExtensionAPI, recordUsage?: Code
 			requestContext = ctx;
 			ordinaryPrewarmPending = true;
 		},
+		suspendOrdinaryPrewarm() {
+			ordinaryPrewarmPending = false;
+		},
 		finishTurn() {
 			requestContext = undefined;
 			ordinaryPrewarmPending = false;
 		},
 		async beforeRequestSend(model, context, body, options, responsesLite) {
-			const ctx = options?.remoteDeliveryContext ?? requestContext;
+			const ctx = options?.remoteDeliveryContext ?? (options?.canonicalCompaction ? undefined : requestContext);
 			await validateRemoteRequest(ctx, model, context, body, options, responsesLite);
 			if (!ctx || options?.sessionId !== ctx.sessionManager.getSessionId()
 				|| model.provider !== ctx.model?.provider || model.api !== ctx.model.api || model.id !== ctx.model.id
@@ -541,7 +550,10 @@ export function createCodexExtensionRuntime(pi: ExtensionAPI, recordUsage?: Code
 			} else closeOpenAICodexWebSocketSessions();
 		},
 		resetTransportAfterCompaction(sessionId) {
+			const continuingContext = requestContext;
 			runtime.resetTransport(sessionId);
+			if (continuingContext?.sessionManager.getSessionId() === sessionId)
+				requestContext = continuingContext;
 			closeOpenAICodexWebSocketSessions(sessionId);
 		},
 		shutdownTransport(sessionId) {
@@ -563,8 +575,8 @@ export function createCodexExtensionRuntime(pi: ExtensionAPI, recordUsage?: Code
 				announceLog: announceLog || cacheEnvironment.logName !== undefined,
 			});
 		},
-		diagnosticsSink() {
-			return diagnostics.sink();
+		diagnosticsSink(sessionId) {
+			return diagnostics.sink({ sessionId });
 		},
 		shutdownDiagnostics() {
 			return diagnostics.shutdown();

@@ -1,0 +1,10 @@
+Reference: https://github.com/openai/codex
+Reviewed baseline: rust-v0.163.0
+Bounded local output draining: 89c8759d8c497b30629a2d67a51c163aa9ed3c44 (#52652)
+
+Pi adaptation: local_process.rs owns a shared one-second, monotonic output-drain
+deadline after parent exit. Output activity cannot reset it. Both stream readers
+finish before Closed is emitted; ordinary EOF still closes immediately. The
+TypeScript bridge waits for Closed rather than inferring closure from silence.
+This is a local-only helper, not Codex's remote execution transport. Process
+retention, cancellation and TTY policies remain local and unchanged.

@@ -1,0 +1,61 @@
+{
+	"name": "@howaboua/pi-memories",
+	"private": true,
+	"version": "0.1.5",
+	"description": "Shutdown memory distillation into a manual-review inbox for Pi.",
+	"type": "module",
+	"license": "MIT",
+	"author": "Igor Warzocha",
+	"homepage": "https://github.com/IgorWarzocha/howaboua-pi-stuff/tree/main/packages/pi-memories#readme",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/IgorWarzocha/howaboua-pi-stuff.git",
+		"directory": "packages/pi-memories"
+	},
+	"bugs": {
+		"url": "https://github.com/IgorWarzocha/howaboua-pi-stuff/issues"
+	},
+	"keywords": [
+		"pi-package",
+		"pi-extension",
+		"pi",
+		"memory",
+		"distillation"
+	],
+	"files": [
+		"index.ts",
+		"README.md",
+		"LICENSE",
+		"tsconfig.json",
+		"biome.json",
+		"changelog.ts",
+		"CHANGELOG.md"
+	],
+	"scripts": {
+		"check": "bun run lint && bun run typecheck",
+		"prepack": "bun run check",
+		"typecheck": "tsgo --noEmit",
+		"lint": "biome check .",
+		"format": "biome check --write ."
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.6.3",
+		"@earendil-works/pi-ai": "1.4.0",
+		"@earendil-works/pi-coding-agent": "1.4.0",
+		"@earendil-works/pi-tui": "1.4.0",
+		"@types/node": "^26.6.5",
+		"typescript": "^7.0.2"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-ai": ">=1.2.0",
+		"@earendil-works/pi-coding-agent": ">=1.2.0",
+		"@earendil-works/pi-tui": ">=1.2.0"
+	},
+	"pi": {
+		"extensions": [
+			"./index.ts"
+		]
+	},
+	"main": "index.ts",
+	"exports": "./index.ts"
+}

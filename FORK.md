@@ -12,6 +12,7 @@ Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist ups
 
 ### Upstream 4.0.5 integration
 
+- PR: #30
 - Upstream release: `@howaboua/pi-stuff@0.0.107` (`d67cb69b`), merged with ancestry preserved.
 - Behavior: adopts upstream's independent Notes extension, removal of built-in Notes and legacy Remote mode, and new TS and JS notebooks. The session adapter switch remains PCC-owned; Notes uses its own `/notes` controls. The switch is wired into the refactored settings owner without duplicating upstream's five-mode execution selector. Remaining fork features and upstream package versions are preserved.
 - Compatibility: Pi peer minima retain the fork's 1.2 floor without weakening higher upstream requirements. The root, PCC and private Vent retain Pi's TypeBox pin. Generated changelog exclusions and Vent's Biome schema follow the updated formatter.

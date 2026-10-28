@@ -36,7 +36,7 @@ Set `notifyScript` in `pi-ask.json` to run an executable whenever an ask panel a
 
 ```json
 {
-  "notifyScript": "~/.local/bin/notify-user"
+	"notifyScript": "~/.local/bin/notify-user"
 }
 ```
 
@@ -49,8 +49,8 @@ Both templates are enabled by default. The extension creates `pi-ask.json` under
 
 ```json
 {
-  "grill": true,
-  "fold": true
+	"grill": true,
+	"fold": true
 }
 ```
 
@@ -59,7 +59,6 @@ Set either value to `false`, then run `/reload`, to hide that template. The same
 ## TUI controls
 
 The panel uses Pi's active keybindings. The defaults are:
-
 - `Up` / `Down` — move through choices, free text, and comments
 - `Enter` — choose or edit the focused item, or save an edit
 - `Left` / `Right` — move between prompts and the review tab

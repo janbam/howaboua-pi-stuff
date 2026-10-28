@@ -3,7 +3,6 @@ import {
 	type CodexConversionConfig,
 	normalizeProviderList,
 } from "../../adapter/activation/config.ts";
-import type { ExecutionMode } from "../../adapter/activation/execution-mode.ts";
 import { getCodexAppendSystemPromptPath } from "../../prompt/append-system-prompt.ts";
 import { editorCommand } from "./config-editor.ts";
 import {
@@ -29,19 +28,6 @@ export function buildAdapterSettings(
 			},
 			action: "adapter-enabled",
 		},
-		setting(
-			{
-				id: "executionMode",
-				description: "Structured: standard JSON schemas. Code: JavaScript. Notebook: persistent Deno shell with checkpoints.",
-				label: "Execution mode",
-				currentValue: formatExecutionMode(config.executionMode),
-				values: ["Structured", "Code", "Notebook (recommended)"],
-			},
-			(value, current) => ({
-				...current,
-				executionMode: parseExecutionMode(value),
-			}),
-		),
 		setting(
 			{
 				id: "extensionMode",
@@ -159,20 +145,6 @@ export function buildAdapterSettings(
 			action: "edit-config",
 		},
 	];
-}
-
-/** Formats an execution mode for the General settings selector. */
-function formatExecutionMode(mode: ExecutionMode): string {
-	if (mode === "code") return "Code";
-	if (mode === "notebook") return "Notebook (recommended)";
-	return "Structured";
-}
-
-/** Parses the General settings selector value into the persisted execution mode. */
-function parseExecutionMode(value: string): ExecutionMode {
-	if (value === "Code") return "code";
-	if (value === "Notebook (recommended)") return "notebook";
-	return "normal";
 }
 
 function formatAllProvidersMode(

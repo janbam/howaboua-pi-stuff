@@ -73,6 +73,11 @@ function verifyLoaderImports(packageRoot) {
 		throw error;
 	}
 	const failures = [];
+	const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
+	// pi-codemode is an ordinary runtime package, not a Pi loader singleton.
+	// Require a direct dependency so packed extensions do not borrow Pi's copy.
+	const runtimeModules = new Set(Object.hasOwn(manifest.dependencies ?? {}, "@earendil-works/pi-codemode")
+		? ["@earendil-works/pi-codemode"] : []);
 	const sources = new Map(files.map((path) => [path, readFileSync(path, "utf8")]));
 	const peerSpecifierPattern = /["'](@earendil-works\/pi-[^"']+|typebox(?:\/[^"']+)?)["']/g;
 	const staticSpecifierPattern = /^\s*(?:import|export)\s+(?:[^"'\n]*?\sfrom\s*)?["']([^"']+)["']/gm;
@@ -88,7 +93,10 @@ function verifyLoaderImports(packageRoot) {
 	for (const path of files) {
 		const source = sources.get(path) ?? "";
 		for (const specifier of peerSpecifiers(source)) {
-			if (specifier && !allowedLoaderModules.has(specifier)) failures.push({ path, specifier });
+			// A pinned on-demand package name is not an import through Pi's loader.
+			// Actual bare codemode imports still require a direct runtime dependency.
+			if (specifier === "@earendil-works/pi-codemode" && !staticSpecifiers(source).includes(specifier) && !dynamicSpecifiers(source).includes(specifier)) continue;
+			if (specifier && !allowedLoaderModules.has(specifier) && !runtimeModules.has(specifier)) failures.push({ path, specifier });
 		}
 		for (const specifier of dynamicSpecifiers(source)) {
 			if (allowedLoaderModules.has(specifier)) {
@@ -141,6 +149,16 @@ function runtimeModuleFiles(packageRoot) {
 	return files;
 }
 
+/** Resolve a single package's filename from npm's array or name-keyed JSON output. */
+function packedFilename(output, packageName) {
+	const packed = JSON.parse(output);
+	// npm versions expose the same artifact under different outer containers.
+	const artifact = Array.isArray(packed) ? packed[0] : packed[packageName];
+	if (typeof artifact?.filename !== "string" || artifact.filename.length === 0)
+		throw new Error(`npm pack did not report an artifact for ${packageName}`);
+	return artifact.filename;
+}
+
 function packPackage(packageRoot, tempRoot) {
 	const output = run(
 		"npm",
@@ -151,11 +169,8 @@ function packPackage(packageRoot, tempRoot) {
 			env: { npm_config_dry_run: "false", NPM_CONFIG_DRY_RUN: "false" },
 		},
 	);
-	const packed = JSON.parse(output);
-	const filename = Array.isArray(packed) && typeof packed[0]?.filename === "string"
-		? packed[0].filename
-		: undefined;
-	if (!filename) throw new Error(`npm pack did not report an artifact for ${packageRoot}`);
+	const packageName = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")).name;
+	const filename = packedFilename(output, packageName);
 	const unpacked = join(tempRoot, "unpacked");
 	mkdirSync(unpacked);
 	run("tar", ["-xzf", join(tempRoot, filename), "-C", unpacked]);
@@ -238,11 +253,7 @@ function stageWorkspaceDependencies(names, isolatedRoot) {
 				env: { npm_config_dry_run: "false", NPM_CONFIG_DRY_RUN: "false" },
 			},
 		);
-		const packed = JSON.parse(output);
-		const filename = Array.isArray(packed) && typeof packed[0]?.filename === "string"
-			? packed[0].filename
-			: undefined;
-		if (!filename) throw new Error(`npm pack did not report an artifact for ${name}`);
+		const filename = packedFilename(output, name);
 		const staged = join(isolatedRoot, "node_modules", ...name.split("/"));
 		rmSync(staged, { recursive: true, force: true });
 		mkdirSync(staged, { recursive: true });

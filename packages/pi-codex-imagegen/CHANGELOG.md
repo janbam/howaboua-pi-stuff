@@ -1,5 +1,10 @@
 # @howaboua/pi-codex-imagegen
 
+## 0.0.12
+
+- - Report invalid or unreadable tool configuration without parser or filesystem diagnostics.
+  - GPT mode uses note-style image-generation guidance in Code and Notebook.
+
 ## 0.0.11
 
 - - Added compact tool guidance for PCC GPT prompt mode. Other modes are unchanged.
@@ -26,7 +31,6 @@
 - Adapt Codex, Imagegen, review, and GipPity to Pi 0.87.
 
   Codex Conversion, Imagegen, and Subagent Review require Pi 0.87.0 or newer.
-
   - Fixed Codex prompt and tool updates rewriting the cached conversation prefix.
   - Context reminders no longer start an extra checkpoint turn if the current run already saved a note in the current window.
   - Fixed Imagegen recent-image selection ignoring context removals and replacements.
@@ -52,7 +56,6 @@
 ## 0.0.2
 
 - Fix worker settlement, custom model preservation, and prompt-only image generation.
-
   - Settle Shepherdr workers after Pi expands skill or prompt-template invocations.
   - Preserve custom Codex models and `models.json` overrides, including after refresh.
   - Keep optional tool arguments optional in Codex Responses requests while preserving explicit strict sampling.
@@ -63,6 +66,5 @@
 ## 0.0.1
 
 - Initial release of Imagegen for Codex image generation and editing in normal Pi, Code Mode, and Notebook Mode.
-
   - Generate new images or edit recent and workspace-local PNG, JPEG, GIF, or WebP files.
   - Save outputs beneath the workspace and use stock, renamed, or proxied Codex providers.

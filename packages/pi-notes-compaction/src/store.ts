@@ -1,9 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
-import Database from "better-sqlite3";
 import type { CachedResponse, LookupQuery } from "./bridge.js";
 import { queryKey } from "./bridge.js";
+import {
+	PRUNING_OFF,
+	pruningPolicy,
+	type SessionPruningPolicy,
+} from "./session-pruning-policy.js";
+import { type Database, openDatabase } from "./sqlite.mjs";
 
 export interface SessionRef {
 	id: string;
@@ -19,7 +24,7 @@ export interface NoteRevision {
 }
 interface CacheRow {
 	query_json: string;
-	bytes: Buffer;
+	bytes: Uint8Array;
 	source: string;
 	encoding: string;
 	fetched_at: number;
@@ -28,26 +33,29 @@ interface CacheRow {
 
 /** One connection per extension process. Read-only access never creates a database or session. */
 export class NotesStore {
-	private db: Database.Database | undefined;
+	private db: Database | undefined;
 	readonly path: string;
 	constructor(path: string) {
 		this.path = path;
 	}
-	private open(write = false): Database.Database | undefined {
+	private open(write = false): Database | undefined {
 		if (this.db) return this.db;
 		if (!write && !existsSync(this.path)) return undefined;
 		if (write) mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
-		const db = new Database(this.path);
+		const db = openDatabase(this.path);
 		try {
-			db.pragma("busy_timeout = 5000");
-			db.pragma("journal_mode = WAL");
-			db.pragma("foreign_keys = ON");
-			const version = db.pragma("user_version", { simple: true });
+			db.exec("PRAGMA busy_timeout = 5000");
+			db.exec("PRAGMA journal_mode = WAL");
+			db.exec("PRAGMA foreign_keys = ON");
+			const version = db
+				.prepare<[], { user_version: number }>("PRAGMA user_version")
+				.get()?.user_version;
 			if (version !== 0 && version !== 1) {
 				throw new Error("Notes database version is not supported");
 			}
 			db.exec(`
 			CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, file_path TEXT, updated_at INTEGER NOT NULL);
+			CREATE TABLE IF NOT EXISTS session_pruning (session_id TEXT PRIMARY KEY, windows INTEGER NOT NULL, days INTEGER NOT NULL);
 			CREATE TABLE IF NOT EXISTS notes (
 				id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
 				path TEXT NOT NULL, text TEXT NOT NULL, mode TEXT NOT NULL,
@@ -71,10 +79,26 @@ export class NotesStore {
 			);
 		}
 	}
-	private record(db: Database.Database, session: SessionRef): void {
+	private record(db: Database, session: SessionRef): void {
 		db.prepare(
 			"INSERT INTO sessions VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET file_path = COALESCE(excluded.file_path, sessions.file_path), updated_at = excluded.updated_at",
 		).run(session.id, session.file ?? null, Date.now());
+	}
+	pruningPolicy(sessionId: string): SessionPruningPolicy {
+		const row = this.open()
+			?.prepare(
+				"SELECT windows, days FROM session_pruning WHERE session_id = ?",
+			)
+			.get(sessionId);
+		return row ? pruningPolicy(row) : { ...PRUNING_OFF };
+	}
+	setPruningPolicy(sessionId: string, value: SessionPruningPolicy): void {
+		const policy = pruningPolicy(value);
+		this.open(true)!
+			.prepare(
+				"INSERT INTO session_pruning VALUES (?, ?, ?) ON CONFLICT(session_id) DO UPDATE SET windows = excluded.windows, days = excluded.days",
+			)
+			.run(sessionId, policy.windows, policy.days);
 	}
 	/** Persist only after a real mutation. Snapshot revisions remain immutable for branch navigation. */
 	write(session: SessionRef, note: Omit<NoteRevision, "id">): NoteRevision {
@@ -96,11 +120,11 @@ export class NotesStore {
 	}
 	read(id: string): NoteRevision | undefined {
 		const row = this.open()
-			?.prepare(
+			?.prepare<[string], NoteRevision>(
 				"SELECT id, path, text, mode, created_at AS createdAt, updated_at AS updatedAt FROM notes WHERE id = ?",
 			)
-			.get(id) as NoteRevision | undefined;
-		return row;
+			.get(id);
+		return row ?? undefined;
 	}
 	updateFile(session: SessionRef): void {
 		if (!session.file) return;
@@ -202,6 +226,15 @@ export class NotesStore {
 			revisions: count("notes"),
 			cachedResponses: count("remote_cache"),
 		};
+	}
+	sessionFiles(): Record<string, string | null> {
+		const rows =
+			this.open()
+				?.prepare<[], { id: string; file_path: string | null }>(
+					"SELECT id, file_path FROM sessions",
+				)
+				.all() ?? [];
+		return Object.fromEntries(rows.map((row) => [row.id, row.file_path]));
 	}
 	prune(activeSessionId: string): {
 		removed: number;

@@ -10,6 +10,8 @@ Distillation runs only for a real Pi shutdown (`session_shutdown` with reason `q
 
 The extension makes one tool-free request through Pi's configured model registry. The distillation contract lives in the system prompt, so there is no child process, provider-payload rewriting, or temporary bridge extension.
 
+Native-only Codex compactions store an opaque checkpoint rather than readable text. For those sessions only the retained tail is available; choose a portable Pi summary if pre-compaction context should be reviewable.
+
 Candidates are appended to `~/.pi/agent/memory-inbox.md`. Short sessions without compaction are skipped by default, and output equal to `No durable memories.` is not written.
 
 Failures go to `~/.pi/agent/pi-memories.log` instead of the inbox, so a broken model or missing credential cannot masquerade as a memory candidate.

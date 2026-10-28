@@ -30,7 +30,7 @@ const THINKING_LEVELS = new Set<ModelThinkingLevel>([
 	"max",
 ]);
 
-const DEFAULT_OUTPUT_TOKENS = 4096;
+const DEFAULT_OUTPUT_TOKENS = 8192;
 const CONTEXT_MARGIN_TOKENS = 2048;
 
 type Config = {
@@ -245,7 +245,10 @@ function buildSessionContext(
 	const tailEntries = latest
 		? branch.slice(latest.index + 1)
 		: (branch as readonly SessionEntry[]);
-	const summary = latest?.entry.summary.trim() ?? "";
+	const summary =
+		latest && typeof latest.entry.summary === "string"
+			? latest.entry.summary.trim()
+			: "";
 	const tail = serializeMessages(tailEntries);
 	if (!summary && !tail) return undefined;
 
@@ -382,22 +385,37 @@ async function distill(args: {
 		)
 		.result();
 
-	if (response.stopReason !== "stop")
-		throw new Error(
-			response.errorMessage ||
-				`Memory model stopped without a result (${response.stopReason}).`,
-		);
 	if (response.content.some((part) => part.type === "toolCall"))
 		throw new Error(
 			"Memory model requested a tool instead of returning candidates.",
 		);
 
-	return normalizeCandidates(
+	const text = normalizeCandidates(
 		response.content
 			.filter((part) => part.type === "text")
 			.map((part) => part.text)
 			.join("\n"),
 	);
+	// A truncated block is still reviewable; losing every candidate because the
+	// model hit its output cap is worse than accepting the partial set.
+	if (response.stopReason === "length") {
+		if (!text)
+			throw new Error(
+				"Memory model hit its output cap before writing candidates.",
+			);
+		appendLog(
+			args.config,
+			"Memory output hit the token cap; appended partial candidates.",
+		);
+		return text;
+	}
+	if (response.stopReason !== "stop")
+		throw new Error(
+			response.errorMessage ||
+				`Memory model stopped without a result (${response.stopReason}).`,
+		);
+
+	return text;
 }
 
 export default function piMemories(pi: ExtensionAPI): void {
@@ -409,17 +427,16 @@ export default function piMemories(pi: ExtensionAPI): void {
 		const config = loadConfig();
 		if (!config.enabled) return;
 
-		const contextText = buildSessionContext(
-			ctx.sessionManager.getBranch(),
-			config,
-		);
-		if (!contextText) return;
-
-		// Capture UI facts before awaiting so no extension context is touched after
-		// the shutdown handler yields to the runtime.
+		// Capture the working directory before awaiting so no extension context is
+		// touched after the shutdown handler yields to the runtime.
 		const cwd = ctx.cwd;
-		const hasUI = ctx.hasUI;
 		try {
+			const contextText = buildSessionContext(
+				ctx.sessionManager.getBranch(),
+				config,
+			);
+			if (!contextText) return;
+
 			const model = resolveModel(ctx, config);
 			const candidates = await distill({
 				ctx,
@@ -431,11 +448,6 @@ export default function piMemories(pi: ExtensionAPI): void {
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			appendLog(config, message);
-			if (hasUI)
-				ctx.ui.notify(
-					`Memory distillation failed: ${message} See ${config.logPath}.`,
-					"warning",
-				);
 		}
 	});
 

@@ -222,8 +222,7 @@ function findLatestCompaction(
 ): { entry: CompactionEntry; index: number } | undefined {
 	for (let index = branch.length - 1; index >= 0; index--) {
 		const entry = branch[index];
-		if (entry?.type === "compaction" && entry.summary.trim())
-			return { entry, index };
+		if (entry?.type === "compaction") return { entry, index };
 	}
 	return undefined;
 }

@@ -7,9 +7,6 @@ import { ALL_CODEX_ADAPTER_TOOL_NAMES, resolveCodexRuntimePlan } from "../src/ad
 import type { AdapterState } from "../src/adapter/activation/state.ts";
 import { readSessionAdapterEnabled, writeSessionAdapterEnabled } from "../src/adapter/activation/session-state.ts";
 import { CodexDeveloperMessageBridge } from "../src/adapter/developer-messages.ts";
-import { CodexContextWindowManager } from "../src/context-management/window-manager.ts";
-import { CodexContextWindowKickoff } from "../src/context-management/window-kickoff.ts";
-import { CodexContextTreeCoordinator } from "../src/context-management/tree-coordinator.ts";
 import { createCodexTurnState } from "../src/providers/openai-codex/turn-state.ts";
 
 test("session adapter preferences restore the exact builtin tool surface across branch switches", () => {
@@ -24,8 +21,6 @@ test("session adapter preferences restore the exact builtin tool surface across 
 		setActiveTools: (names: string[]) => { activeTools = names; },
 		appendEntry: (customType: string, data: unknown) => sessionManager.appendCustomEntry(customType, data),
 	};
-	const contextWindows = new CodexContextWindowManager();
-	const contextKickoff = new CodexContextWindowKickoff(contextWindows);
 	const state: AdapterState = {
 		adapterEnabled: true,
 		enabled: false,
@@ -34,9 +29,6 @@ test("session adapter preferences restore the exact builtin tool surface across 
 		executionMode: "code",
 		codexTurnState: createCodexTurnState(),
 		developerMessages: new CodexDeveloperMessageBridge(),
-		contextWindows,
-		contextKickoff,
-		contextTree: new CodexContextTreeCoordinator(contextWindows, contextKickoff),
 		config: {
 			...structuredClone(DEFAULT_CODEX_CONVERSION_CONFIG),
 			executionMode: "code",

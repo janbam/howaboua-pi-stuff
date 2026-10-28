@@ -24,7 +24,7 @@ import { createCodexVoiceControls } from "../../voice/controls.ts";
 import type { CodexLanVoiceServerController } from "../../voice/lan/controller.ts";
 import { ROUTABLE_SETTINGS_TABS, parseSettingsTab, type SettingsTab } from "./tabs.ts";
 import { openCodexSettingsScreen } from "./screen.ts";
-import { COMPACTION_METHOD_LABELS, CONTINUITY_LABELS } from "./config-items-context.ts";
+import { COMPACTION_METHOD_LABELS } from "./config-items-context.ts";
 import { captureSpendReport } from "../../codex-usage/report.ts";
 import { startUsageAnalysis } from "../../codex-usage/report.ts";
 import { isStandardCodexSubscriptionModel } from "../../adapter/prompt/codex-model.ts";
@@ -136,7 +136,7 @@ export function registerCodexCommand(
 				}
 				return;
 			}
-			ctx.ui.notify(formatCodexSettings(state.config, state.adapterEnabled) + (state.externalNotes ? "\nNotes continuity is externally managed; saved PCC continuity settings are inactive." : ""), "info");
+			ctx.ui.notify(formatCodexSettings(state.config, state.adapterEnabled), "info");
 			return;
 		}
 		let configScope: CodexConversionConfigScope = hasFolderCodexConversionConfig(
@@ -169,7 +169,6 @@ export function registerCodexCommand(
 		await openCodexSettingsScreen(ctx, {
 			setModel: model => pi.setModel(model),
 			waitForIdle: async () => { do { await ctx.waitForIdle(); } while (!ctx.isIdle()); },
-			externalNotes: Boolean(state.externalNotes),
 			initialConfig: readSelectedConfig(),
 			initialTab: tab,
 			adapterEnabled: {
@@ -316,5 +315,5 @@ function formatCodexSettings(config: CodexConversionConfig, adapterEnabled: bool
 		...FAST_MODE_FAMILIES.map((family) => `${family} ${config.openai.fast[family] === "ultrafast" ? "ultrafast" : config.openai.fast[family] ? "on" : "off"}`)].join(", ");
 	const accessProgram = config.openai.daybreak ? "on" : "off";
 	const promptOverwrite = config.prompt.heavySystemPromptOverwrite === "gpt" ? "GPT" : config.prompt.heavySystemPromptOverwrite ? "on" : "off";
-	return `Codex settings: adapter ${adapterEnabled ? "enabled" : "disabled"}, extension ${config.voiceFeaturesOnly ? "voice only" : "adapter and voice"}, execution ${config.executionMode}, providers ${formatAllProvidersMode(config.scope.allProviders)}, Rust binaries ${config.tools.customRustBinariesDir || "bundled"}, heavy prompt overwrite ${promptOverwrite}, Codex prompt appendix ${config.prompt.appendSystemPromptFile ? "on" : "off"}, harness identifier ${config.openai.harnessIdentifierHeader ? "on" : "off"}, Proxy Responses Lite ${config.openai.proxyResponsesLite ? "on" : "off"}, continuity ${CONTINUITY_LABELS[config.compaction.continuity]}, history and notes storage ${config.compaction.historyStorage}, share subagent context ${config.compaction.shareSubagentContext ? "on" : "off"}, compaction method ${COMPACTION_METHOD_LABELS[config.compaction.method]}, preserved user messages (V2 only) ${config.compaction.v2UserMessageRetention}k, Luna cache keepalive ${config.openai.lunaCacheKeepaliveMinutes === 0 ? "off" : `${config.openai.lunaCacheKeepaliveMinutes} mins duration, ${config.openai.lunaCacheKeepaliveIntervalMinutes} mins request interval`}, Astra/Sol/Terra cache keepalive ${config.openai.cacheKeepalive ? `${config.openai.cacheKeepaliveIntervalMinutes} mins request interval` : "off"}, cache diagnostics ${config.openai.cacheDiagnostics}, Daybreak ${accessProgram}, Fast Mode ${fast}, verbosity ${config.openai.verbosity}`;
+	return `Codex settings: adapter ${adapterEnabled ? "enabled" : "disabled"}, extension ${config.voiceFeaturesOnly ? "voice only" : "adapter and voice"}, execution ${config.executionMode}, providers ${formatAllProvidersMode(config.scope.allProviders)}, Rust binaries ${config.tools.customRustBinariesDir || "bundled"}, heavy prompt overwrite ${promptOverwrite}, Codex prompt appendix ${config.prompt.appendSystemPromptFile ? "on" : "off"}, harness identifier ${config.openai.harnessIdentifierHeader ? "on" : "off"}, Proxy Responses Lite ${config.openai.proxyResponsesLite ? "on" : "off"}, compaction method ${COMPACTION_METHOD_LABELS[config.compaction.method]}, preserved user messages (V2 only) ${config.compaction.v2UserMessageRetention}k, Luna cache keepalive ${config.openai.lunaCacheKeepaliveMinutes === 0 ? "off" : `${config.openai.lunaCacheKeepaliveMinutes} mins duration, ${config.openai.lunaCacheKeepaliveIntervalMinutes} mins request interval`}, Astra/Sol/Terra cache keepalive ${config.openai.cacheKeepalive ? `${config.openai.cacheKeepaliveIntervalMinutes} mins request interval` : "off"}, cache diagnostics ${config.openai.cacheDiagnostics}, Daybreak ${accessProgram}, Fast Mode ${fast}, verbosity ${config.openai.verbosity}`;
 }

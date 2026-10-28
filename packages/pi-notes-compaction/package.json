@@ -1,6 +1,6 @@
 {
 	"name": "@howaboua/pi-notes-compaction",
-	"version": "0.0.9",
+	"version": "0.0.10",
 	"publishConfig": {
 		"access": "public"
 	},
@@ -39,7 +39,7 @@
 		"better-sqlite3": "13.0.3"
 	},
 	"devDependencies": {
-		"@howaboua/pi-codex-conversion": "4.0.4",
+		"@howaboua/pi-codex-conversion": "4.0.5",
 		"@types/better-sqlite3": "9.6.0"
 	},
 	"peerDependencies": {
@@ -47,12 +47,16 @@
 		"@earendil-works/pi-agent-core": ">=1.2.0",
 		"@earendil-works/pi-ai": ">=1.2.0",
 		"@earendil-works/pi-tui": ">=1.2.0",
-		"@howaboua/pi-codex-conversion": ">=4.0.4",
+		"@howaboua/pi-codex-conversion": ">=4.0.5",
 		"typebox": "*"
 	},
 	"peerDependenciesMeta": {
 		"@howaboua/pi-codex-conversion": {
 			"optional": true
 		}
+	},
+	"exports": {
+		".": "./src/index.ts",
+		"./context-sharing": "./src/context-sharing.ts"
 	}
 }

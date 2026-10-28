@@ -21,12 +21,14 @@ Remove `--no-skills` from an existing wrapper or alias. An additional catalog-cl
 Normal Pi uses one structured `command` parameter. Code Mode and Notebook Mode use the compact string surface:
 
 ```js
-await tools.skills("list")
-await tools.skills("list code session")
-await tools.skills("read code-review")
-await tools.skills("read communication codebase-hygiene")
-await tools.skills("read codebase-hygiene testing js-ts")
-await tools.skills("read communication conversation writing; read codebase-hygiene testing")
+await tools.skills("list");
+await tools.skills("list code session");
+await tools.skills("read code-review");
+await tools.skills("read communication codebase-hygiene");
+await tools.skills("read codebase-hygiene testing js-ts");
+await tools.skills(
+	"read communication conversation writing; read codebase-hygiene testing",
+);
 ```
 
 The tool scans the standard global `skills/` directory under Pi's agent directory and `$PWD/.pi/skills/`, then overlays Pi's loaded catalog. Loaded skills win name collisions without hiding filesystem skills when Pi loads only part of the catalog, including `--no-skills` sessions. A loaded skill with `disable-model-invocation` removes that name. Skill reads include absolute package paths for later reference, script, or asset access.

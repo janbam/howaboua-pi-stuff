@@ -1,5 +1,11 @@
 # @howaboua/pi-codex-web-run
 
+## 0.0.9
+
+- - Keep provider bookkeeping out of structured search results while preserving result references and content.
+  - Report unreadable responses and invalid tool configuration without parser or filesystem diagnostics.
+  - GPT mode uses note-style search-reference guidance.
+
 ## 0.0.8
 
 - - Added compact tool guidance for PCC GPT prompt mode. Other modes are unchanged.
@@ -22,7 +28,6 @@
 ## 0.0.4
 
 - GPT-6 Sol and Luna now share Astra's Codex support.
-
   - Removed `/terra`; use `/luna` instead.
   - Added Responses Lite, non-destructive reasoning changes and terse context guidance for GPT-6 Sol and Luna.
   - Image descriptions now use GPT-6 Luna directly instead of preferring older mini models.
@@ -40,6 +45,5 @@
 ## 0.0.1
 
 - Initial release of Web Run for Codex web search and page navigation in normal Pi, Code Mode, and Notebook Mode.
-
   - Search the web or images, open results, follow links, and find text while retaining reusable source references.
   - Use stock, renamed, or proxied Codex providers through a small JSON route file.

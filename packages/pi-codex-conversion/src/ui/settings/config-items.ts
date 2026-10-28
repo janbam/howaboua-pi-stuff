@@ -21,10 +21,9 @@ export function buildConfigSettings(
 	availableContextModels: VoiceContextModel[] = [],
 	ctx: Pick<ExtensionContext, "model"> = { model: undefined },
 	adapterEnabled = true,
-	externalNotes = false,
 ): ConfigSetting[] {
 	if (tab === "adapter") return buildAdapterSettings(config, theme, adapterEnabled);
-	if (tab === "context") return buildContextSettings(config, ctx, externalNotes);
+	if (tab === "context") return buildContextSettings(config, ctx);
 	if (tab === "tools") return buildToolsSettings(config);
 	if (tab === "openai") return buildOpenAISettings(config);
 	if (tab === "display") return buildDisplaySettings(config);

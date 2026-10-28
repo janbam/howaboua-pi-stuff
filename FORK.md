@@ -5,10 +5,18 @@ Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist ups
 - Entry = one feature: commits/PRs, behavior, files touched. Tests and changelogs are omitted; `git show --stat <commit>` has the full list.
 - In-code divergences in shared files may carry `// FORK_MOD: <why>` comments; `rg FORK_MOD packages` lists them. Conflicts on those lines keep the fork side.
 - Upstream status is "not proposed" unless stated.
-- Upstream baseline: `@howaboua/pi-codex-conversion@4.0.4` and `@howaboua/pi-observatory@0.0.1` (`753e79b9`). Development uses Pi 1.4.0. Root, PCC and Vent retain Pi's TypeBox pin, `1.3.27`, because upstream extensions' `1.3.37` pin breaks portable PCC declaration emission. The Observatory Knip entry fix from upstream `3d0faf5a` is also included.
+- Upstream baseline: `@howaboua/pi-stuff@0.0.107` (`d67cb69b`), including `@howaboua/pi-codex-conversion@4.0.5`, `@howaboua/pi-notes-compaction@0.0.10` and `@howaboua/pi-observatory@0.0.2`. Development uses released Pi 1.4.0. Root, PCC and Vent retain Pi's TypeBox pin, `1.3.27`, rather than upstream extensions' `1.4.3`, so PCC declarations share Pi's schema identity.
 - Version policy: package versions follow the upstream release being merged. Fork-only changes are documented here, not in Changesets or upstream changelogs. This fork does not create versioning PRs, publish npm packages or create package releases; do not run the retained upstream release commands locally.
 
 ## Repo
+
+### Upstream 4.0.5 integration
+
+- Upstream release: `@howaboua/pi-stuff@0.0.107` (`d67cb69b`), merged with ancestry preserved.
+- Behavior: adopts upstream's independent Notes extension, removal of built-in Notes and legacy Remote mode, and new TS and JS notebooks. The session adapter switch remains PCC-owned; Notes uses its own `/notes` controls. The switch is wired into the refactored settings owner without duplicating upstream's five-mode execution selector. Remaining fork features and upstream package versions are preserved.
+- Compatibility: Pi peer minima retain the fork's 1.2 floor without weakening higher upstream requirements. The root, PCC and private Vent retain Pi's TypeBox pin. Generated changelog exclusions and Vent's Biome schema follow the updated formatter.
+- Tooling: isolated artifact verification accepts both array and package-name-keyed `npm pack --json` results.
+- Files: `AGENTS.md`, `FORK.md`, `bun.lock`, package manifests, `scripts/verify-pi-extension-artifact.mjs`, `packages/pi-ask/README.md`, `packages/pi-codex-conversion/{README.md,src/adapter/activation,src/extension,src/providers/code-mode-proxy-provider.ts,src/ui/settings,tests/adapter-tool-activation.test.ts}`, `packages/{pi-grok-realtime,pi-sandbox,pi-vent}/biome.json`.
 
 ### Upstream 4.0.4 integration
 
@@ -128,6 +136,7 @@ Paths below are relative to `packages/pi-codex-conversion/`.
 ### Session adapter switch and `apply_patch` failure diagnostics
 
 - Commits: `352af15` (PR #15), `a563eca` (changeset restore); `FORK_MOD` in tests
-- Behavior: a session-local "Adapter enabled" toggle at the top of `/codex` General settings. When off, all adapter overlays and tools are suppressed and the adapter's Codex provider is unregistered so stock Pi takes over; the setting is stored as a session entry and restored on branch navigation. Failed `apply_patch` results render the exact model-visible error and the full rejected patch, also in resumed sessions.
+- Behavior: a session-local "Adapter enabled" toggle under `/codex` General settings. When off, all adapter overlays and tools are suppressed and the adapter's Codex provider is unregistered so stock Pi takes over; the setting is stored as a session entry and restored on branch navigation. Failed `apply_patch` results render the exact model-visible error and the full rejected patch, also in resumed sessions.
+- Historical: live-toggle guards for protected local and routed Remote Notes delivery were removed with upstream's legacy Remote mode in 4.0.5. The independent Notes extension is not disabled by PCC's session switch.
 - Fork-only files: `src/adapter/activation/session-state.ts`
-- Shared files: `src/adapter/activation/{runtime-plan,state}.ts`, `src/adapter/provider-request.ts`, `src/context-management/{external-notes-remote,notes-response-projection}.ts` (direct and routed protected delivery follow the live toggle), `src/extension/{events,register,runtime,session-lifecycle,turn-lifecycle,ui}.ts`, `src/providers/{code-mode-proxy-provider,openai-codex-custom-provider}.ts`, `src/tools/apply-patch/{render-state,tool}.ts`, `src/ui/settings/command.ts`, `README.md`
+- Shared files: `src/adapter/activation/{runtime-plan,state}.ts`, `src/adapter/provider-request.ts`, `src/extension/{events,register,runtime,session-lifecycle,turn-lifecycle,ui}.ts`, `src/providers/{code-mode-proxy-provider,openai-codex-custom-provider}.ts`, `src/tools/apply-patch/{render-state,tool}.ts`, `src/ui/settings/{command,screen,screen/configuration}.ts`, `README.md`. Historical files: `src/context-management/{external-notes-remote,notes-response-projection}.ts`.

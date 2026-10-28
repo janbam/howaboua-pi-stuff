@@ -230,6 +230,22 @@ function findLatestCompaction(
 }
 
 /**
+ * Returns the unsummarised window Pi kept between `firstKeptEntryId` and the
+ * compaction entry. This content is neither in the summary nor after the
+ * boundary, so skipping it loses real conversation.
+ */
+function retainedBeforeCompaction(
+	branch: readonly SessionEntry[],
+	latest: { entry: CompactionEntry; index: number },
+): SessionEntry[] {
+	const firstKeptId = latest.entry.firstKeptEntryId;
+	if (typeof firstKeptId !== "string") return [];
+	const firstKeptIndex = branch.findIndex((entry) => entry.id === firstKeptId);
+	if (firstKeptIndex < 0 || firstKeptIndex >= latest.index) return [];
+	return branch.slice(firstKeptIndex, latest.index);
+}
+
+/**
  * Builds the material handed to the distiller: the newest compaction summary plus
  * everything after it, or the recent branch when no compaction exists. Returns
  * `undefined` when the session is too thin to justify a model call.
@@ -243,7 +259,10 @@ function buildSessionContext(
 		return undefined;
 
 	const tailEntries = latest
-		? branch.slice(latest.index + 1)
+		? [
+				...retainedBeforeCompaction(branch, latest),
+				...branch.slice(latest.index + 1),
+			]
 		: (branch as readonly SessionEntry[]);
 	const summary =
 		latest && typeof latest.entry.summary === "string"
@@ -405,7 +424,7 @@ async function distill(args: {
 			);
 		appendLog(
 			args.config,
-			"Memory output hit the token cap; appended partial candidates.",
+			"Memory output hit the token cap; accepted partial candidates.",
 		);
 		return text;
 	}

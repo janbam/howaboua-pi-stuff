@@ -1,0 +1,2 @@
+- Fork-owned after upstream retirement. Keep this package private at its last upstream version, preserve the inbox/review contract, and never publish it.
+- Distillation uses `ctx.modelRegistry.completeSimple` directly. Do not reintroduce the retired child-process provider-payload bridge.

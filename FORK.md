@@ -71,6 +71,17 @@ Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist ups
 - Shared files: `extensions/vent.ts`, `README.md`, `package.json`
 - Dropping it: logs already migrated stay in central storage; move them back manually if needed.
 
+## pi-memories
+
+### Fork-owned shutdown memory distiller
+
+- Commit: `01825058`
+- Ownership: retained as a private fork-owned package after upstream removed Memories in `9c5167e4`. Keep its last upstream version, `0.1.5`, without publishing it. Development dependencies follow Pi 1.4.0.
+- Behavior: on `quit`, distil the newest compaction summary plus the following conversation through `ctx.modelRegistry.streamSimple` and append candidates to `memory-inbox.md`. `/memory-review` remains the manual promotion step. Failures go to `pi-memories.log`, not the inbox. The retired `includeProjectContext` option is ignored.
+- Rationale: the retired child-process bridge stopped injecting the distillation prompt, so agent replies to the trigger sentence were written into the inbox. The direct request removes both the provider-payload rewrite and the child Pi process.
+- Files: `packages/pi-memories/{index.ts,package.json,README.md,AGENTS.md}`, `bun.lock`
+- Dropping it: remove the package and the local `~/.pi/agent/pi-memories.json`, `memory-inbox.md`, and `pi-memories.log`; existing candidate text stays until deleted.
+
 ## pi-better-skills-tool
 
 ### Loaded skills overlay the filesystem catalog

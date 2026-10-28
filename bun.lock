@@ -401,6 +401,23 @@
         "@earendil-works/pi-tui": ">=1.2.0",
       },
     },
+    "packages/pi-memories": {
+      "name": "@howaboua/pi-memories",
+      "version": "0.1.5",
+      "devDependencies": {
+        "@biomejs/biome": "^2.6.3",
+        "@earendil-works/pi-ai": "1.4.0",
+        "@earendil-works/pi-coding-agent": "1.4.0",
+        "@earendil-works/pi-tui": "1.4.0",
+        "@types/node": "^26.6.5",
+        "typescript": "^7.0.2",
+      },
+      "peerDependencies": {
+        "@earendil-works/pi-ai": ">=1.2.0",
+        "@earendil-works/pi-coding-agent": ">=1.2.0",
+        "@earendil-works/pi-tui": ">=1.2.0",
+      },
+    },
     "packages/pi-notes-compaction": {
       "name": "@howaboua/pi-notes-compaction",
       "version": "0.0.11",
@@ -925,6 +942,8 @@
     "@howaboua/pi-gpt-switcher": ["@howaboua/pi-gpt-switcher@workspace:packages/pi-gpt-switcher"],
 
     "@howaboua/pi-grok-realtime": ["@howaboua/pi-grok-realtime@workspace:packages/pi-grok-realtime"],
+
+    "@howaboua/pi-memories": ["@howaboua/pi-memories@workspace:packages/pi-memories"],
 
     "@howaboua/pi-notes-compaction": ["@howaboua/pi-notes-compaction@workspace:packages/pi-notes-compaction"],
 

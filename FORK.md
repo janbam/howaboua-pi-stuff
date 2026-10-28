@@ -5,7 +5,7 @@ Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist ups
 - Entry = one feature: commits/PRs, behavior, files touched. Tests and changelogs are omitted; `git show --stat <commit>` has the full list.
 - In-code divergences in shared files may carry `// FORK_MOD: <why>` comments; `rg FORK_MOD packages` lists them. Conflicts on those lines keep the fork side.
 - Upstream status is "not proposed" unless stated.
-- Upstream baseline: `@howaboua/pi-stuff@0.0.107` (`d67cb69b`), including `@howaboua/pi-codex-conversion@4.0.5`, `@howaboua/pi-notes-compaction@0.0.10` and `@howaboua/pi-observatory@0.0.2`. Development uses released Pi 1.4.0. Root, PCC and Vent retain Pi's TypeBox pin, `1.3.27`, rather than upstream extensions' `1.4.3`, so PCC declarations share Pi's schema identity.
+- Upstream baseline: `@howaboua/pi-stuff@0.0.108` (`c8afcba3`), including `@howaboua/pi-codex-conversion@4.0.5`, `@howaboua/pi-notes-compaction@0.0.11` and `@howaboua/pi-observatory@0.0.2`. Development uses released Pi 1.4.0. Root, PCC and Vent retain Pi's TypeBox pin, `1.3.27`, rather than upstream extensions' `1.4.3`, so PCC declarations share Pi's schema identity.
 - Version policy: package versions follow the upstream release being merged. Fork-only changes are documented here, not in Changesets or upstream changelogs. This fork does not create versioning PRs, publish npm packages or create package releases; do not run the retained upstream release commands locally.
 
 ## Repo
@@ -13,7 +13,7 @@ Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist ups
 ### Upstream 4.0.5 integration
 
 - PR: #30
-- Upstream release: `@howaboua/pi-stuff@0.0.107` (`d67cb69b`), merged with ancestry preserved.
+- Upstream releases: `@howaboua/pi-stuff@0.0.107` (`d67cb69b`) and `0.0.108` (`c8afcba3`), merged with ancestry preserved. The follow-up includes upstream's LAN voice handoff, Notes SQLite runtime and pruning-menu fixes without additional fork behavior.
 - Behavior: adopts upstream's independent Notes extension, removal of built-in Notes and legacy Remote mode, and new TS and JS notebooks. The session adapter switch remains PCC-owned; Notes uses its own `/notes` controls. The switch is wired into the refactored settings owner without duplicating upstream's five-mode execution selector. Remaining fork features and upstream package versions are preserved.
 - Compatibility: Pi peer minima retain the fork's 1.2 floor without weakening higher upstream requirements. The root, PCC and private Vent retain Pi's TypeBox pin. Generated changelog exclusions and Vent's Biome schema follow the updated formatter.
 - Tooling: isolated artifact verification accepts both array and package-name-keyed `npm pack --json` results.

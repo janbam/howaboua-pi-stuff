@@ -294,13 +294,13 @@
     },
     "packages/pi-extensions": {
       "name": "@howaboua/pi-extensions",
-      "version": "0.0.99",
+      "version": "0.0.100",
       "dependencies": {
         "@howaboua/pi-ask": "0.0.17",
         "@howaboua/pi-auto-trees": "0.1.19",
         "@howaboua/pi-better-skills-tool": "0.0.12",
         "@howaboua/pi-cache-hit-predictor": "0.0.1",
-        "@howaboua/pi-gippity-control": "0.0.27",
+        "@howaboua/pi-gippity-control": "0.0.28",
         "@howaboua/pi-github-watch": "0.0.4",
         "@howaboua/pi-gpt-switcher": "0.1.5",
         "@howaboua/pi-grok-realtime": "0.0.2",
@@ -321,7 +321,7 @@
     },
     "packages/pi-gippity-control": {
       "name": "@howaboua/pi-gippity-control",
-      "version": "0.0.27",
+      "version": "0.0.28",
       "dependencies": {
         "proxy-from-env": "2.1.0",
         "selfsigned": "^5.5.0",
@@ -403,7 +403,7 @@
     },
     "packages/pi-notes-compaction": {
       "name": "@howaboua/pi-notes-compaction",
-      "version": "0.0.10",
+      "version": "0.0.11",
       "dependencies": {
         "better-sqlite3": "13.0.3",
       },
@@ -518,7 +518,7 @@
         "@earendil-works/pi-coding-agent": "1.4.0",
         "@earendil-works/pi-tui": "1.4.0",
         "@howaboua/pi-codex-conversion": "4.0.5",
-        "@howaboua/pi-notes-compaction": "0.0.10",
+        "@howaboua/pi-notes-compaction": "0.0.11",
         "@types/node": "^26.6.5",
         "typebox": "1.4.3",
         "typescript": "^7.0.2",
@@ -528,7 +528,7 @@
         "@earendil-works/pi-coding-agent": ">=1.2.0",
         "@earendil-works/pi-tui": ">=1.2.0",
         "@howaboua/pi-codex-conversion": ">=4.0.5",
-        "@howaboua/pi-notes-compaction": ">=0.0.10",
+        "@howaboua/pi-notes-compaction": ">=0.0.11",
         "typebox": "*",
       },
       "optionalPeers": [
@@ -587,13 +587,13 @@
     },
     "packages/pi-stuff": {
       "name": "@howaboua/pi-stuff",
-      "version": "0.0.107",
+      "version": "0.0.108",
       "dependencies": {
         "@howaboua/pi-ask": "0.0.17",
         "@howaboua/pi-auto-trees": "0.1.19",
         "@howaboua/pi-better-skills-tool": "0.0.12",
         "@howaboua/pi-cache-hit-predictor": "0.0.1",
-        "@howaboua/pi-gippity-control": "0.0.27",
+        "@howaboua/pi-gippity-control": "0.0.28",
         "@howaboua/pi-github-watch": "0.0.4",
         "@howaboua/pi-gpt-switcher": "0.1.5",
         "@howaboua/pi-grok-realtime": "0.0.2",

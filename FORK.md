@@ -114,6 +114,12 @@ Paths below are relative to `packages/pi-codex-conversion/`.
 - Behavior: expanded Task for Pi cards show the exact complete message submitted to Pi, including attached transcript context. Codex Live cards also retain and label the original delegation text before rewriting as UI-only audit data. Collapsed cards keep the prepared task. The same captured outgoing string is sent and saved with the card; older cards retain their recorded display.
 - Files: `src/voice/{ui,turns,session-messages}.ts`, `src/voice/conversation/turn-events.ts`, `README.md`
 
+### Direct voice/Pi communication in expanded cards
+
+- PR: #35
+- Behavior: expanded Voice Context includes the exact startup text and refresh carryover. Compact Sent to Codex Live entries expose submitted Pi updates and control messages; voice-session cards expose instructions sent to Pi, and Sent to Pi entries reveal leftover transcript context. Audit entries are display-only, do not invalidate context refresh and omit the Live system prompt, model metadata and rewrite internals. Existing task and speech-transcript displays remain unchanged.
+- Files: `src/voice/{message-types,ui,session-messages}.ts`, `src/voice/controller/{context,sessions,start}.ts`, `src/voice/conversation/{session,turn-events}.ts`, `README.md`
+
 ### Leading system message ordering
 
 - Commit: `ecd31dbd` (PR #17)

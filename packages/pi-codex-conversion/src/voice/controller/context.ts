@@ -16,6 +16,7 @@ import {
 	REALTIME_EVENT_ENTRY_TYPE,
 	REALTIME_USER_TRANSCRIPT_MESSAGE_TYPE,
 	REALTIME_VOICE_MESSAGE_TYPE,
+	VOICE_COMMUNICATION_ENTRY_TYPE,
 } from "../message-types.ts";
 
 export interface RealtimeContextRefreshOptions {
@@ -166,7 +167,7 @@ export class RealtimeContextRefresh {
 }
 
 function conversationLeafId(ctx: ExtensionContext): string | undefined {
-	// Voice arrivals are carried after the summary, not grounds to discard it.
+	// Voice arrivals are carried separately; UI-only communication records cannot invalidate a summary.
 	return ctx.sessionManager
 		.getBranch()
 		.findLast(
@@ -174,7 +175,8 @@ function conversationLeafId(ctx: ExtensionContext): string | undefined {
 				entry.type !== "custom" ||
 				(entry.customType !== REALTIME_EVENT_ENTRY_TYPE &&
 					entry.customType !== REALTIME_USER_TRANSCRIPT_MESSAGE_TYPE &&
-					entry.customType !== REALTIME_VOICE_MESSAGE_TYPE),
+					entry.customType !== REALTIME_VOICE_MESSAGE_TYPE &&
+					entry.customType !== VOICE_COMMUNICATION_ENTRY_TYPE),
 		)?.id;
 }
 

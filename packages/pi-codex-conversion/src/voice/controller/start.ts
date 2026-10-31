@@ -191,8 +191,8 @@ export async function startControllerMode(options: {
 			if (activeState.type !== "conversation") {
 				return;
 			}
-			if (realtimeContext?.summary)
-				options.messages.contextSummary(realtimeContext.summary);
+			if (realtimeContext?.summary || realtimeContext?.initialItems?.length)
+				options.messages.contextSummary(realtimeContext.summary, realtimeContext.initialItems);
 			if (runtime.announcedMode !== options.mode) {
 				runtime.announcedMode = options.mode;
 				options.messages.modeStarted(options.mode);
@@ -286,6 +286,7 @@ async function startConversation(
 			onEndCall: options.onEndCall,
 			onTurn: (session, turn) => { void options.messages.voiceTurn(turn, session); },
 			onEvent: (event) => options.messages.realtimeEvent(event),
+			onContextSubmitted: (content) => options.messages.submittedContext("codex-live", content),
 			onUserTranscript: (transcript) =>
 				options.messages.userTranscript(transcript),
 			onTranscriptTail: (transcript) =>

@@ -25,6 +25,8 @@ interface RealtimeSessionLifecycle extends SessionLifecycle<CodexRealtimeConvers
 	onUserTranscript(transcript: string): void;
 	onTranscriptTail(transcript: string): void;
 	onEvent(event: RealtimeVoiceEventDetails): void;
+	/** Retain context text submitted to Codex Live as a UI-only communication record. */
+	onContextSubmitted(content: string): void;
 }
 
 interface DictationSessionLifecycle extends SessionLifecycle<CodexDictationSession> {
@@ -60,6 +62,7 @@ export async function startControllerConversation(options: {
 		rewriteDelegation: (turn, signal) => rewriteTaskDelegation(options.ctx, options.config.voice, turn, signal),
 		onDelegationError: (error) => options.ctx.ui.notify(error.message, "error"),
 		onEvent: options.lifecycle.onEvent,
+		onContextSubmitted: options.lifecycle.onContextSubmitted,
 	}, realtimePeer, options.config.voice.model !== "codex-live-1.1");
 	options.lifecycle.onCreated(session);
 	if (options.signal?.aborted) { await session.close(); return; }

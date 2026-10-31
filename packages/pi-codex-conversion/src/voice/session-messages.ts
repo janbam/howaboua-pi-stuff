@@ -7,9 +7,10 @@ import type {
 import { trySendCodexDeveloperCustomMessage } from "../developer-messages.ts";
 import { CANCELLED, interruptible } from "./cancellation.ts";
 import { isVoiceContextExcludedMessage } from "./context-visibility.ts";
+import type { RealtimeInitialMessageItem } from "./context.ts";
 import type { CodexRealtimeConversation } from "./conversation/session.ts";
 import type { RealtimeVoiceEventDetails } from "./conversation/wire.ts";
-import { REALTIME_EVENT_ENTRY_TYPE } from "./message-types.ts";
+import { REALTIME_EVENT_ENTRY_TYPE, VOICE_COMMUNICATION_ENTRY_TYPE } from "./message-types.ts";
 import { renderRealtimeTranscriptTail, renderRealtimeUserInput } from "./prompts.ts";
 import type { RealtimeVoiceTurn } from "./turns.ts";
 import {
@@ -23,6 +24,7 @@ import {
 	REALTIME_VOICE_MESSAGE_TYPE,
 	type RealtimeUserTranscriptMessageDetails,
 	type RealtimeVoiceMessageDetails,
+	type VoiceCommunicationDetails,
 	VOICE_CONTEXT_MESSAGE_TYPE,
 } from "./ui.ts";
 
@@ -61,8 +63,20 @@ export class CodexVoiceSessionMessages {
 		this.piTurnActive = !ctx.isIdle();
 	}
 
-	contextSummary(summary: string): void {
-		this.pi.appendEntry(VOICE_CONTEXT_MESSAGE_TYPE, { summary });
+	/** Retain submitted startup text and any generated summary preview. */
+	contextSummary(summary: string | undefined, initialItems?: readonly RealtimeInitialMessageItem[]): void {
+		// Preserve the actual startup items, including text added during a refresh.
+		const input = initialItems?.flatMap((item) => item.content.map((part) => part.text)).join("\n\n");
+		this.pi.appendEntry(VOICE_CONTEXT_MESSAGE_TYPE, {
+			...(summary ? { summary } : {}),
+			...(input ? { input } : {}),
+		});
+	}
+
+	/** Record submitted text as a UI-only entry, never another model-context message. */
+	submittedContext(recipient: VoiceCommunicationDetails["recipient"], content: string): void {
+		// Keep the audit out of model history.
+		this.pi.appendEntry<VoiceCommunicationDetails>(VOICE_COMMUNICATION_ENTRY_TYPE, { recipient, content });
 	}
 
 	realtimeEvent(event: RealtimeVoiceEventDetails): void {
@@ -153,10 +167,12 @@ export class CodexVoiceSessionMessages {
 	retainTranscriptTail(transcriptDelta: string): void {
 		const piTurnActive =
 			this.piTurnActive || (this.context ? !this.context.isIdle() : false);
+		// Use the delivered string itself for the audit, including its transcript wrapper.
+		const content = renderRealtimeTranscriptTail(transcriptDelta);
 		this.pi.sendMessage(
 			{
 				customType: REALTIME_VOICE_TAIL_CONTEXT_TYPE,
-				content: renderRealtimeTranscriptTail(transcriptDelta),
+				content,
 				display: false,
 				details: {},
 			},
@@ -165,6 +181,7 @@ export class CodexVoiceSessionMessages {
 				deliverAs: piTurnActive ? "nextTurn" : "steer",
 			},
 		);
+		this.submittedContext("pi", content);
 	}
 
 	filterContext(messages: ContextEvent["messages"]): ContextEvent["messages"] {

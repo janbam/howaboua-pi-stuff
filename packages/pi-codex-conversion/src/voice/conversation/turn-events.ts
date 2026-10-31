@@ -247,21 +247,28 @@ export class ConversationTurns {
 				this.speakableResponsePending = true;
 				this.callbacks.onStatus("speaking");
 			}
-			for (const text of utf8Chunks(content, CONTEXT_APPEND_CHUNK_BYTES)) {
-				this.peer.sendData(
-					target.type === "delegation"
-						? {
-								type: "delegation.context.append",
-								delegation_item_id: target.id,
-								channel,
-								content: [{ type: "input_text", text }],
-							}
-						: {
-								type: "session.context.append",
-								channel,
-								content: [{ type: "input_text", text }],
-							},
-				);
+			const submitted: string[] = [];
+			try {
+				for (const text of utf8Chunks(content, CONTEXT_APPEND_CHUNK_BYTES)) {
+					this.peer.sendData(
+						target.type === "delegation"
+							? {
+									type: "delegation.context.append",
+									delegation_item_id: target.id,
+									channel,
+									content: [{ type: "input_text", text }],
+								}
+							: {
+									type: "session.context.append",
+									channel,
+									content: [{ type: "input_text", text }],
+								},
+					);
+					submitted.push(text);
+				}
+			} finally {
+				// Audit logical updates, retaining only the prefix submitted if transport fails mid-update.
+				if (submitted.length) this.callbacks.onContextSubmitted?.(submitted.join(""));
 			}
 		} catch (error) {
 			this.onFailure(error instanceof Error ? error : new Error(String(error)));

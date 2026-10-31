@@ -10,6 +10,7 @@ import { registerNotesSharing } from "./extension-sharing.js";
 import { HistorySearch } from "./history-search.js";
 import { registerNotesToolIntegrations } from "./integrations.js";
 import { NotesLifecycle } from "./lifecycle.js";
+import { createModelRoles } from "./model-roles.js";
 import { registerNoteSaveMarkers } from "./note-save-marker.js";
 import { SessionPruning } from "./session-pruning.js";
 import { registerNotesSettingsCommand } from "./settings-command.js";
@@ -55,8 +56,14 @@ export default async function notesCompaction(pi: ExtensionAPI): Promise<void> {
 			}
 		},
 	);
-	const tools = createTools(pi, store, lifecycle, search);
-	refreshNested = await registerNotesToolIntegrations(pi, lifecycle, tools);
+	const roles = createModelRoles(pi, activation, lifecycle);
+	const tools = createTools(pi, store, lifecycle, search, roles);
+	refreshNested = await registerNotesToolIntegrations(
+		pi,
+		lifecycle,
+		activation,
+		tools,
+	);
 	for (const tool of tools) pi.registerTool(tool);
 	const owner = createNotesContextOwner(pi, store, lifecycle, search);
 	const { family, stopOwner } = await registerNotesSharing(
@@ -101,5 +108,6 @@ export default async function notesCompaction(pi: ExtensionAPI): Promise<void> {
 		search,
 		settingsPath,
 		sessionPruning,
+		roles,
 	);
 }

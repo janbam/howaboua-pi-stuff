@@ -157,6 +157,9 @@ export function createCodexSessionLifecycle(
 			proxyProvider.applyConfig(state.config, ctx.modelRegistry);
 			await runtime.configureDiagnostics(ctx);
 			ui.applyAdapterEnabled(ctx);
+			// Pi restored the branch's tool loadout, not its execution-mode setting.
+			// Reapply the current mode while retaining non-adapter tool selections.
+			delete state.appliedRuntimeKind;
 			syncAdapter(pi, ctx, state);
 			if (state.adapterEnabled && !state.config.voiceFeaturesOnly)
 				prepareCodeModeHost(codeMode, ctx);

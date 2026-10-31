@@ -6,7 +6,7 @@
     "inputsSha256": "ede72d11ead3f92ebec40931a5019d424875fdf446850f39ae19eee741b822b7"
   },
   "binary": {
-    "sha256": "67b4c4ddfa4b48740e3723cd5e60c86123b2d55e1d94fe27a8e05ef123441742"
+    "sha256": "f23bb489890db5a7aad3cc762942a7e07a6f95f60a817d8ddb5b12c76ec4b051"
   },
   "build": {
     "target": "aarch64-pc-windows-msvc",

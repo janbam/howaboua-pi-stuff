@@ -21,6 +21,7 @@ export function buildConfigSettings(
 	availableContextModels: VoiceContextModel[] = [],
 	ctx: Pick<ExtensionContext, "model"> = { model: undefined },
 	adapterEnabled = true,
+	webSearchAvailable?: boolean,
 ): ConfigSetting[] {
 	if (tab === "adapter") return buildAdapterSettings(config, theme, adapterEnabled);
 	if (tab === "context") return buildContextSettings(config, ctx);
@@ -28,6 +29,6 @@ export function buildConfigSettings(
 	if (tab === "openai") return buildOpenAISettings(config);
 	if (tab === "display") return buildDisplaySettings(config);
 	if (tab === "voice")
-		return buildVoiceSettings(config, availableContextModels);
+		return buildVoiceSettings(config, availableContextModels, webSearchAvailable);
 	return [];
 }

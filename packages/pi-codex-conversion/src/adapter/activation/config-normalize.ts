@@ -1,3 +1,4 @@
+import { normalizeVoiceApiProvider, normalizeGippityVoiceModel, normalizeOpenAIRealtimeVoice } from "./config-contract.ts";
 import {
 	type CodexConversionConfig,
 	DEFAULT_CODEX_CONVERSION_CONFIG,
@@ -25,6 +26,7 @@ import {
 	normalizeNotebookProfile,
 	normalizeOptionalString,
 	normalizeShortcutString,
+	normalizeString,
 	normalizeVoiceContextModel,
 } from "./config-values.ts";
 import { normalizeExecutionMode } from "./execution-mode.ts";
@@ -152,7 +154,12 @@ export function normalizeCodexConversionConfig(
 			...(notebookProfile ? { profile: notebookProfile } : {}),
 		},
 		voice: {
-			v3Voice:
+			model: normalizeGippityVoiceModel(voice["model"]) ?? "codex-live-1.1",
+			apiProvider: voice["apiProvider"] === undefined ? "openai" : normalizeVoiceApiProvider(voice["apiProvider"]) ?? "",
+ realtimeVoice: normalizeOpenAIRealtimeVoice(voice["realtimeVoice"]) ?? "marin",
+ realtimeAlternateVoice: normalizeOpenAIRealtimeVoice(voice["realtimeAlternateVoice"]) ?? "cedar",
+ webSearch: voice["webSearch"] === true,
+ v3Voice:
 				normalizeRealtimeV3Voice(voice["v3Voice"]) ??
 				DEFAULT_CODEX_CONVERSION_CONFIG.voice.v3Voice,
 			v3AlternateVoice:
@@ -198,6 +205,8 @@ export function normalizeCodexConversionConfig(
 				normalizeDictationShortcutMode(voice["dictationShortcutMode"]) ??
 				DEFAULT_CODEX_CONVERSION_CONFIG.voice.dictationShortcutMode,
 			...(contextModel ? { contextModel } : {}),
+			taskDelegationModel: normalizeString(voice["taskDelegationModel"], DEFAULT_CODEX_CONVERSION_CONFIG.voice.taskDelegationModel),
+			taskDelegationReasoning: normalizeVoiceContextReasoning(voice["taskDelegationReasoning"], "low"),
 			contextReasoning: normalizeVoiceContextReasoning(
 				voice["contextReasoning"],
 			),

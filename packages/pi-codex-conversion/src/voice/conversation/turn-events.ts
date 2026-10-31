@@ -170,8 +170,9 @@ export class ConversationTurns {
 						this.callbacks.onEndCall?.(this.completedOutputs > outputsAtDelegation, input ? turn.delegationId : undefined);
 					if (!input && turn.delegationId) this.turnTracker.delegationSettled(turn.delegationId);
 					if (!signal.aborted && (this.isActive() || this.finishing) && input) {
+						// Retain the original delegation for display; Pi receives only the prepared task.
 						const { transcriptDelta: _transcriptDelta, ...delegation } = turn;
-						this.callbacks.onTurn({ ...delegation, input });
+						this.callbacks.onTurn({ ...delegation, input, originalDelegation: turn.input });
 					}
 				} catch (error) {
 					if (signal.aborted || (!this.isActive() && !this.finishing)) return;

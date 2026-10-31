@@ -111,8 +111,8 @@ Paths below are relative to `packages/pi-codex-conversion/`.
 ### Exact realtime voice delegation in expanded cards
 
 - PR: #33
-- Behavior: expanded Task for Pi cards show the exact complete message submitted to Pi, including attached transcript context. Collapsed cards keep the prepared task. The same captured string is sent and saved with the card; older cards retain their recorded display.
-- Files: `src/voice/{ui,session-messages}.ts`, `README.md`
+- Behavior: expanded Task for Pi cards show the exact complete message submitted to Pi, including attached transcript context. Codex Live cards also retain and label the original delegation text before rewriting as UI-only audit data. Collapsed cards keep the prepared task. The same captured outgoing string is sent and saved with the card; older cards retain their recorded display.
+- Files: `src/voice/{ui,turns,session-messages}.ts`, `src/voice/conversation/turn-events.ts`, `README.md`
 
 ### Leading system message ordering
 

@@ -1,7 +1,10 @@
+/** A voice output or delegated request, with optional rewrite provenance for display. */
 export interface RealtimeVoiceTurn {
 	input: string;
 	transcriptDelta?: string;
 	delegationId?: string;
+	/** Codex Live's delegation text before task rewriting; never additional agent input. */
+	originalDelegation?: string;
 }
 
 export interface TrackedRealtimeDelegation {

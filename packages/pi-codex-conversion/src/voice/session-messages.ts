@@ -320,7 +320,14 @@ export class CodexVoiceSessionMessages {
 		}
 		this.pi.appendEntry<RealtimeVoiceMessageDetails>(
 			REALTIME_DELEGATION_MESSAGE_TYPE,
-			{ input: turn.input, route: "delegation", agentInput },
+			{
+				input: turn.input,
+				route: "delegation",
+				agentInput,
+				...(turn.originalDelegation !== undefined
+					? { originalDelegation: turn.originalDelegation }
+					: {}),
+			},
 		);
 	}
 }

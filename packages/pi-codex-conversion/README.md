@@ -229,6 +229,8 @@ Codex Live rewrites the current voice conversation interval into a self-containe
 
 Realtime models use `send_task` to send Pi a self-contained task with relevant voice-discussion decisions and constraints. Busy Pi sessions receive it as steering, with existing tools and confirmations preserved. Realtime models can also use developer-registered voice tools. For optional search, load `@howaboua/pi-codex-web-run`, configure its access and enable **Realtime web search**. Search uses Web Run's configured provider and credentials.
 
+Expand a **Task for Pi** card with **Ctrl+O** to see the complete message submitted to Pi, including any attached transcript context. The collapsed card keeps the prepared task text. Older cards without the saved complete message keep their original display.
+
 | Shortcut | Action |
 | --- | --- |
 | `Ctrl+Alt+Space` | Toggle realtime voice |

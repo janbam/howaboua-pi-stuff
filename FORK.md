@@ -108,6 +108,12 @@ Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist ups
 
 Paths below are relative to `packages/pi-codex-conversion/`.
 
+### Exact realtime voice delegation in expanded cards
+
+- PR: #33
+- Behavior: expanded Task for Pi cards show the exact complete message submitted to Pi, including attached transcript context. Collapsed cards keep the prepared task. The same captured string is sent and saved with the card; older cards retain their recorded display.
+- Files: `src/voice/{ui,session-messages}.ts`, `README.md`
+
 ### Leading system message ordering
 
 - Commit: `ecd31dbd` (PR #17)

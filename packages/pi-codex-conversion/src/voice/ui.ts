@@ -20,10 +20,13 @@ export {
 export type CodexVoiceMode = "realtime" | "dictation";
 export type CodexVoiceModeState = "started" | "ended";
 
+/** Voice request display data, with the complete submitted message when available. */
 export interface RealtimeVoiceMessageDetails {
 	input: string;
 	route: "conversation" | "delegation";
 	error?: string | undefined;
+	/** Exact Pi message content, including any attached transcript context. */
+	agentInput?: string;
 }
 
 export interface CodexVoiceModeMessageDetails {
@@ -99,11 +102,14 @@ export function registerCodexVoiceRenderer(pi: ExtensionAPI): void {
 	);
 	pi.registerEntryRenderer<RealtimeVoiceMessageDetails>(
 		REALTIME_DELEGATION_MESSAGE_TYPE,
-		(entry, _options, theme) => {
+		(entry, options, theme) => {
+			// Expansion reveals the submitted payload; older cards retain their recorded input.
 			const input =
-				typeof entry.data?.input === "string"
-					? entry.data.input
-					: "Voice delegation unavailable.";
+				options.expanded && typeof entry.data?.agentInput === "string"
+					? entry.data.agentInput
+					: typeof entry.data?.input === "string"
+						? entry.data.input
+						: "Voice delegation unavailable.";
 			const error = typeof entry.data?.error === "string"
 				? `\n\nNot sent: ${entry.data.error}`
 				: "";

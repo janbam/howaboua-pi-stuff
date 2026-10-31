@@ -231,6 +231,8 @@ Realtime models use `send_task` to send Pi a self-contained task with relevant v
 
 Expand a **Task for Pi** card with **Ctrl+O** to see the complete message submitted to Pi, including any attached transcript context. Codex Live cards also show the original delegation text before rewriting in a separately labelled section. That original text is for inspection, not additional input to Pi. The collapsed card keeps the prepared task text. Older cards show only the information saved with them.
 
+Expanded **Voice Context** shows the exact starting context sent to voice, including its summary wrapper and any refresh carryover. **Sent to Codex Live** entries reveal later Pi updates and control instructions when expanded. Expand realtime voice-session cards to inspect their instructions to Pi; **Sent to Pi** entries show any leftover transcript context. These display-only records preserve the submitted text without exposing Codex Live's system prompt, model metadata or the rewriting process.
+
 | Shortcut | Action |
 | --- | --- |
 | `Ctrl+Alt+Space` | Toggle realtime voice |

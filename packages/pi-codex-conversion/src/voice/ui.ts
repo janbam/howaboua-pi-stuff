@@ -6,6 +6,7 @@ import {
 	REALTIME_DELEGATION_MESSAGE_TYPE,
 	REALTIME_USER_TRANSCRIPT_MESSAGE_TYPE,
 	REALTIME_VOICE_MESSAGE_TYPE,
+	VOICE_COMMUNICATION_ENTRY_TYPE,
 	VOICE_CONTEXT_MESSAGE_TYPE,
 } from "./message-types.ts";
 
@@ -40,8 +41,16 @@ interface CodexVoiceSetupMessageDetails {
 	instructions: string;
 }
 
+/** Startup summary and the complete text items submitted to voice, when recorded. */
 interface VoiceContextMessageDetails {
 	summary: string;
+	input?: string;
+}
+
+/** Submitted text retained for inspection without adding another model message. */
+export interface VoiceCommunicationDetails {
+	recipient: "codex-live" | "pi";
+	content: string;
 }
 
 export interface RealtimeUserTranscriptMessageDetails {
@@ -138,20 +147,36 @@ export function registerCodexVoiceRenderer(pi: ExtensionAPI): void {
 	);
 	pi.registerEntryRenderer<VoiceContextMessageDetails>(
 		VOICE_CONTEXT_MESSAGE_TYPE,
-		(entry, _options, theme) => {
+		(entry, options, theme) => {
 			const summary =
 				typeof entry.data?.summary === "string"
 					? entry.data.summary
 					: "No voice context summary.";
-			return voiceBox(theme, "Voice Context", summary);
+			// Include startup wrappers and refresh carryover without changing the summary preview.
+			const input = options.expanded && typeof entry.data?.input === "string"
+				? entry.data.input
+				: summary;
+			return voiceBox(theme, options.expanded ? "Sent to voice · Starting context" : "Voice Context", input);
+		},
+	);
+	pi.registerEntryRenderer<VoiceCommunicationDetails>(
+		VOICE_COMMUNICATION_ENTRY_TYPE,
+		(entry, options, theme) => {
+			// Keep the transcript compact; expansion reveals the complete submitted text.
+			const recipient = entry.data?.recipient === "pi" ? "Pi" : "Codex Live";
+			const content = typeof entry.data?.content === "string" ? entry.data.content : "Context unavailable.";
+			return voiceBox(theme, `Sent to ${recipient}`, options.expanded ? content : "");
 		},
 	);
 	pi.registerMessageRenderer<CodexVoiceModeMessageDetails>(
 		CODEX_VOICE_MODE_MESSAGE_TYPE,
-		(message, _options, theme) => {
+		(message, options, theme) => {
 			const mode =
 				message.details?.mode === "dictation" ? "dictation" : "realtime";
 			const state = message.details?.state === "ended" ? "ended" : "started";
+			// Realtime lifecycle messages also deliver instructions to Pi; dictation entries do not.
+			if (mode === "realtime" && options.expanded && typeof message.content === "string")
+				return voiceBox(theme, "Sent to Pi · Voice session", message.content);
 			return voiceBox(
 				theme,
 				mode === "dictation" ? "Codex Dictation" : "Realtime Voice",

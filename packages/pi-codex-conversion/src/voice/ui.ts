@@ -27,6 +27,8 @@ export interface RealtimeVoiceMessageDetails {
 	error?: string | undefined;
 	/** Exact Pi message content, including any attached transcript context. */
 	agentInput?: string;
+	/** Codex Live's original delegation before rewriting, retained only for inspection. */
+	originalDelegation?: string;
 }
 
 export interface CodexVoiceModeMessageDetails {
@@ -113,10 +115,14 @@ export function registerCodexVoiceRenderer(pi: ExtensionAPI): void {
 			const error = typeof entry.data?.error === "string"
 				? `\n\nNot sent: ${entry.data.error}`
 				: "";
+			// Distinguish the backend's request from the rewritten message actually submitted to Pi.
+			const body = options.expanded && typeof entry.data?.originalDelegation === "string"
+				? `Original Codex Live delegation\n${entry.data.originalDelegation}\n\nMessage sent to Pi\n${input}`
+				: input;
 			return voiceBox(
 				theme,
 				error ? "Voice delegation" : "Task for Pi",
-				`${input}${error}`,
+				`${body}${error}`,
 			);
 		},
 	);

@@ -43,7 +43,7 @@ interface CodexVoiceSetupMessageDetails {
 
 /** Startup summary and the complete text items submitted to voice, when recorded. */
 interface VoiceContextMessageDetails {
-	summary: string;
+	summary?: string;
 	input?: string;
 }
 
@@ -151,7 +151,9 @@ export function registerCodexVoiceRenderer(pi: ExtensionAPI): void {
 			const summary =
 				typeof entry.data?.summary === "string"
 					? entry.data.summary
-					: "No voice context summary.";
+					: typeof entry.data?.input === "string"
+						? "Starting context provided. Expand to inspect."
+						: "No voice context summary.";
 			// Include startup wrappers and refresh carryover without changing the summary preview.
 			const input = options.expanded && typeof entry.data?.input === "string"
 				? entry.data.input

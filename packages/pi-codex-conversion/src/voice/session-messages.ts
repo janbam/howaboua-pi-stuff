@@ -63,12 +63,12 @@ export class CodexVoiceSessionMessages {
 		this.piTurnActive = !ctx.isIdle();
 	}
 
-	/** Retain the exact startup text alongside its existing summary preview. */
-	contextSummary(summary: string, initialItems?: readonly RealtimeInitialMessageItem[]): void {
+	/** Retain submitted startup text and any generated summary preview. */
+	contextSummary(summary: string | undefined, initialItems?: readonly RealtimeInitialMessageItem[]): void {
 		// Preserve the actual startup items, including text added during a refresh.
 		const input = initialItems?.flatMap((item) => item.content.map((part) => part.text)).join("\n\n");
 		this.pi.appendEntry(VOICE_CONTEXT_MESSAGE_TYPE, {
-			summary,
+			...(summary ? { summary } : {}),
 			...(input ? { input } : {}),
 		});
 	}

@@ -191,7 +191,7 @@ export async function startControllerMode(options: {
 			if (activeState.type !== "conversation") {
 				return;
 			}
-			if (realtimeContext?.summary)
+			if (realtimeContext?.summary || realtimeContext?.initialItems?.length)
 				options.messages.contextSummary(realtimeContext.summary, realtimeContext.initialItems);
 			if (runtime.announcedMode !== options.mode) {
 				runtime.announcedMode = options.mode;

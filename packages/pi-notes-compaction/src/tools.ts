@@ -8,13 +8,17 @@ import { Type } from "typebox";
 import type { LookupQuery, SharedNotesDetails } from "./bridge.js";
 import type { HistorySearch } from "./history-search.js";
 import type { NotesLifecycle } from "./lifecycle.js";
+import type { createModelRoles } from "./model-roles.js";
 import { createQueryExecutor } from "./query-executor.js";
 import type { NotesStore } from "./store.js";
 import {
 	HISTORY_SCHEMA,
 	NEW_CONTEXT_DESCRIPTION,
+	NEW_CONTEXT_SCHEMA,
 	NOTES_DESCRIPTION,
 	NOTES_SCHEMA,
+	prepareHistoryArguments,
+	prepareNewContextArguments,
 	prepareNotesArguments,
 	result,
 } from "./tool-contracts.js";
@@ -50,6 +54,7 @@ export function createTools(
 	store: NotesStore,
 	lifecycle: NotesLifecycle,
 	search: HistorySearch,
+	roles: ReturnType<typeof createModelRoles>,
 ): ToolDefinition[] {
 	const assertActive = () => {
 		if (!lifecycle.active)
@@ -75,7 +80,7 @@ export function createTools(
 			description: "Search earlier conversation",
 			parameters: HISTORY_SCHEMA,
 			prepareArguments(args) {
-				return args === undefined ? {} : args;
+				return prepareHistoryArguments(args);
 			},
 			execute: (callId, input, signal, _update, ctx) =>
 				queries.history(callId, input, signal, ctx),
@@ -84,13 +89,18 @@ export function createTools(
 			name: "new_context",
 			label: "new_context",
 			description: NEW_CONTEXT_DESCRIPTION,
-			parameters: Type.Object({}, { additionalProperties: false }),
+			parameters: NEW_CONTEXT_SCHEMA,
+			prepareArguments: prepareNewContextArguments,
 			exposure: "model-only",
 			executionMode: "sequential",
-			async execute(id, _input, signal, _update, ctx) {
+			async execute(id, input, signal, _update, ctx) {
 				assertActive();
 				if (signal?.aborted) throw new Error("Rollover cancelled");
-				const started = lifecycle.requestRollover(ctx, id);
+				const { role } = prepareNewContextArguments(input);
+				const handoff =
+					role === undefined ? undefined : await roles.prepare(role, ctx);
+				if (signal?.aborted) throw new Error("Rollover cancelled");
+				const started = lifecycle.requestRollover(ctx, id, handoff);
 				if (started) ctx.abort();
 				return {
 					...result({

@@ -27,6 +27,7 @@ const packageSpecs = [
 	["@earendil-works/pi-agent-core", "agent"],
 	["@earendil-works/pi-tui", "tui"],
 	["@earendil-works/pi-coding-agent", "coding-agent"],
+	["@earendil-works/pi-codemode", "codemode"],
 ];
 
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));

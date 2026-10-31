@@ -1,5 +1,15 @@
 # @howaboua/pi-browser
 
+## 0.0.13
+
+- Fixed npm-installed Pi Browser blocking startup when Pi Codex Conversion is installed.
+
+## 0.0.12
+
+- Added an API to start voice in local or configured remote browsers and report when the microphone is listening.
+- Added a voice-only setting that hides browser automation tools from agents.
+- Fixed TypeScript calls rejecting request objects while equivalent JSON strings worked.
+
 ## 0.0.11
 
 - - Browser calls in Code and Notebook now return objects instead of JSON strings.

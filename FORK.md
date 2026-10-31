@@ -5,10 +5,18 @@ Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist ups
 - Entry = one feature: commits/PRs, behavior, files touched. Tests and changelogs are omitted; `git show --stat <commit>` has the full list.
 - In-code divergences in shared files may carry `// FORK_MOD: <why>` comments; `rg FORK_MOD packages` lists them. Conflicts on those lines keep the fork side.
 - Upstream status is "not proposed" unless stated.
-- Upstream baseline: `@howaboua/pi-stuff@0.0.108` (`c8afcba3`), including `@howaboua/pi-codex-conversion@4.0.5`, `@howaboua/pi-notes-compaction@0.0.11` and `@howaboua/pi-observatory@0.0.2`. Development uses released Pi 1.4.0. Root, PCC and Vent retain Pi's TypeBox pin, `1.3.27`, rather than upstream extensions' `1.4.3`, so PCC declarations share Pi's schema identity.
+- Upstream baseline: `@howaboua/pi-stuff@0.0.110` (`e4aa5bb4`), including `@howaboua/pi-codex-conversion@4.0.7`, `@howaboua/pi-notes-compaction@0.0.13` and `@howaboua/pi-observatory@0.0.3`. Development links Pi 1.4.0 from a local Pi checkout. Root, PCC and Vent retain Pi's TypeBox pin, `1.3.27`, rather than upstream extensions' `1.4.3`, so PCC declarations share Pi's schema identity.
 - Version policy: package versions follow the upstream release being merged. Fork-only changes are documented here, not in Changesets or upstream changelogs. This fork does not create versioning PRs, publish npm packages or create package releases; do not run the retained upstream release commands locally.
 
 ## Repo
+
+### Upstream 4.0.7 integration
+
+- Upstream release: `@howaboua/pi-stuff@0.0.110` (`e4aa5bb4`), merged with ancestry preserved, including the intervening `0.0.109` release.
+- Behavior: adopts upstream's voice models and delegation, Herdr Core, Notes role handoffs, browser loader fixes and package dependency updates. Preserves the fork's session adapter switch, prompt appendix, provider scope, shortcuts, status line, Ask notifications, skills overlay, Vent and Memories.
+- Integration: combines session adapter restoration with upstream's execution-mode reapplication on tree navigation. Keeps the adapter toggle and voice web-search availability as separate settings inputs. Retains upstream's extracted prompt-guideline module and updated native binaries with matching provenance.
+- Dependencies: Pi peer minima retain the fork's 1.2 floor without weakening higher upstream requirements. Root, PCC and Vent share the local Pi checkout's TypeBox pin. The checkout linker now includes `pi-codemode` so every declared Pi dependency resolves to the same checkout without changing portable package manifests.
+- Files: `AGENTS.md`, `FORK.md`, `bun.lock`, package manifests, `scripts/link-pi-checkout.mjs`, `packages/pi-codex-conversion/src/{adapter/activation/config-contract.ts,extension/session-lifecycle.ts,prompt/build-system-prompt.ts,ui/settings/config-items.ts,ui/settings/screen/configuration.ts}`, `packages/pi-gippity-control/README.md`.
 
 ### Upstream 4.0.5 integration
 

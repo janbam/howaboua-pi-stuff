@@ -1,5 +1,18 @@
 # @howaboua/pi-notes-compaction
 
+## 0.0.13
+
+- Model roles are now agent-operated. Configure them in `model-roles.json`. `/roles` is read-only, and the old `enabled` flag and accept/dismiss controls no longer apply.
+- Added `new_context({role})` to continue the next context window on a role's configured model and reasoning after saving a checkpoint.
+- Agents receive role names, descriptions and guidance to switch only for sustained scope changes, with subagents considered for bounded specialist work.
+
+## 0.0.12
+
+- Added `/roles` for model preferences across providers and optional model-switch recommendations that preserve the current conversation.
+- Simplified Notes and History action names and Notes path and limit arguments. Existing calls remain supported.
+- Fixed fresh child agents being unable to join shared Notes when another extension had saved startup metadata.
+- Notes guidance now requires task checkpoints at meaningful milestones, completion and task switches, even before context runs low.
+
 ## 0.0.11
 
 - - Fixed native SQLite addon crashes when saving notes or searching ranked history in standalone Bun-based Pi builds. Existing notes and history indexes remain compatible with Node-based Pi.

@@ -242,6 +242,8 @@ export class CodexVoiceSessionMessages {
 			this.callbacks.onDeliveryUnavailable(error);
 			return;
 		}
+		// Capture once so the audit card can show exactly what Pi receives, not a reconstruction.
+		const agentInput = renderRealtimeUserInput(turn.input, turn.transcriptDelta);
 		const signal = this.delegationAbortController.signal;
 		let deliveryStarted = false;
 		try {
@@ -273,7 +275,7 @@ export class CodexVoiceSessionMessages {
 			this.pi.sendMessage(
 				{
 					customType: REALTIME_DELEGATION_MESSAGE_TYPE,
-					content: renderRealtimeUserInput(turn.input, turn.transcriptDelta),
+					content: agentInput,
 					display: false,
 					details: {
 						input: turn.input,
@@ -318,7 +320,7 @@ export class CodexVoiceSessionMessages {
 		}
 		this.pi.appendEntry<RealtimeVoiceMessageDetails>(
 			REALTIME_DELEGATION_MESSAGE_TYPE,
-			{ input: turn.input, route: "delegation" },
+			{ input: turn.input, route: "delegation", agentInput },
 		);
 	}
 }

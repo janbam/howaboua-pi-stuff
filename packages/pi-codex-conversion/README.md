@@ -9,7 +9,7 @@ For the argument and token numbers, read [How I gave Pi 17 tools without loading
 ## What you get
 
 - Codex-shaped shell, patch and image tools
-- tools exposed directly, composed in one-shot code, or used through persistent Deno, TypeScript and JavaScript notebooks
+- tools exposed directly, composed in one-shot code, or used through a persistent TypeScript notebook
 - foreground, background and interactive shell sessions with resumable output
 - image descriptions for blind models
 - realtime voice, push-to-dictate and a remote voice interface for your phone or browser
@@ -30,7 +30,7 @@ Requires Pi 1.4.0 or newer and Node.js 22.19 or newer. Native helpers for macOS,
 
 Open `/codex` after installation. Codex-like GPT models use **Structured** mode by default.
 
-**My recommended setup:** select **Notebook** under **General**, enable **Heavy system prompt overwrite**, and choose **Codex V2** compaction under **Context**. These are opt-in, but they're what I'm daily-driving and fine-tuning towards.
+**My recommended setup:** select **TS Notebook** under **General**, enable **Heavy system prompt overwrite**, and choose **Codex V2** compaction under **Context**. These are opt-in, but they're what I'm daily-driving and fine-tuning towards.
 
 ## Reference
 
@@ -45,15 +45,18 @@ Choose an execution mode under `/codex` → **General**:
 | --- | --- |
 | **Structured** | Calls tools directly through top-level JSON schemas. |
 | **Code** | Composes tools in one-shot JavaScript cells through `exec`, with `wait` for longer work. |
-| **Notebook** | Uses a persistent Deno notebook with JavaScript and TypeScript support. |
-| **TS** | Uses a persistent TypeScript notebook with strict checking before execution and Node APIs. |
-| **JS Notebook** | Uses a persistent JavaScript notebook that saves the full live state, including closures and class instances. |
+| **TS Notebook** | Uses a persistent TypeScript notebook with strict checking before execution and Node APIs. |
+| **VM Code** | Composes tools in one JavaScript context kept for the conversation. |
 
-Code starts fresh for each cell. All three notebook modes retain state between cells and provide notebook management controls. They differ in runtime access and what can be restored after a restart. See [notebook modes](#code-mode-and-custom-tools) below.
+Code starts fresh for each cell. VM Code keeps `let`, `const`, `function` and `class` bindings for the conversation, without notebook controls or a saved heap. TS Notebook retains state between cells and provides notebook management controls. See [execution modes](#code-mode-and-custom-tools) below.
 
-Execution mode is separate from provider scope. Apply the adapter to **Codex and configured** providers or **all providers**. **Codex + Extra tools** keeps the full adapter for Codex-like models and Responses-compatible Additional providers, while exposing only enabled standalone tools to Additional providers using another API. **Extra tools only** adds selected patch and image tools without replacing the normal prompt. Standalone `apply_patch` replaces Pi's `edit` and `write`, keeping `read` and `bash`. **Voice only** keeps voice and dictation without changing the model's tools or requests.
+Execution mode is separate from provider scope. Apply the adapter to **Codex and configured** providers or **all providers**. For voice and dictation without the Codex adapter, install [GipPity Control](../pi-gippity-control) instead.
+
+**Codex + Extra tools** keeps the full adapter for Codex and Responses-compatible Additional providers and exposes only selected standalone tools to Additional providers on other APIs. **Extra tools only** exposes the selected tools without prompt conversion. Standalone `apply_patch` replaces `edit` and `write` while it is active.
 
 The Codex toolset reads files through the shell and edits with `apply_patch`, rather than Pi's separate text read, edit and write tools.
+
+Background shells survive context compaction and Notes rollover. The agent receives a fresh shell inventory without changing the standing prompt. If a command finishes with an uncollected result, PCC wakes the agent only when idle. Normal monitoring remains primary; these notices are a safety net.
 
 </details>
 
@@ -68,9 +71,9 @@ The Codex toolset reads files through the shell and edits with `apply_patch`, ra
 | --- | --- |
 | General | Settings scope, execution mode, session adapter switch, providers, prompt controls, time reminders |
 | Context | Compaction method and retained user messages |
-| Tools | Auto reasoning, image descriptions, standalone tools |
+| Tools | Auto reasoning, image descriptions, Code and Notebook shell output |
 | OpenAI | Fast and Ultrafast modes, Daybreak, verbosity, transport, diagnostics, Responses Lite |
-| Display | Statusline, tool rendering, background shells |
+| Display | Statusline, tool naming and details, background shells |
 | Voice | Realtime voice, remote access, summarisation, dictation, shortcuts, prompt paths |
 | Usage | Spend by model and reset window, Codex limits, reset credits |
 | About | GitHub, changelog, Discord, issues |
@@ -83,12 +86,20 @@ The first setting chooses **Global** or **This project**. Global settings live i
 
 Switching back to Global removes the project's overrides. Run `/reload` after editing configuration files by hand.
 
-**Adapter enabled** under General is session-local. Turning it off restores Pi's ordinary prompt, requests, tools, compaction and adapter UI, including removal of standalone extra tools. Voice, dictation and `/codex` remain available. The switch is restored when the session resumes and does not change another running session. Notes is a separate extension with its own `/notes` controls.
+Pi Codex upgrades older settings files on session start, including project files in trusted folders. It leaves current files and unrelated fields alone.
+
+**Adapter enabled** under General is session-local. Turn it off to restore Pi's own provider, prompt, tools and compaction for this session. Voice, dictation, and `/codex` stay available. Pi restores the toggle on resume and tree navigation.
+
+### Tool details
+
+**Minimal** keeps nested tool results and patch summaries visible while hiding ordinary cell output behind an expand hint. **Compact**, the default, adds a short cell output preview. **Preview** also shows cell source and patch diff previews.
+
+Press **Ctrl+O** to expand tool output and see the available source, output and diffs in any mode. This changes the display, not what the model receives.
 
 ### Optional controls
 
-- **Append CODEX_APPEND_SYSTEM.md:** appends this file from Pi's agent directory as a `<codex_append_system>` section after the converted prompt. On by default under General, following the selected Global or project scope. Voice prompts are unchanged.
-- **Heavy system prompt overwrite:** **on** trims Pi's default instructions while preserving other extensions' additions. **GPT (experimental)** uses denser guidance. Off by default.
+- **Append CODEX_APPEND_SYSTEM.md:** appends the file from Pi's agent directory as a `<codex_append_system>` section after the converted prompt. Defaults to on and follows the selected global or project scope.
+- **Heavy system prompt overwrite:** **on** replaces Pi's default instructions with compact guidance and keeps other extensions' contributions. **Off** keeps Pi's defaults. Pi Codex uses compact wording in both cases.
 - **Current time reminders:** adds periodic time updates for the model. Choose 30 or 60 minutes under General. Off by default.
 - **Auto reasoning:** asks supported GPT-6 models to adjust effort during work, never below your selected level. Your selection returns when the run settles. Off by default. The model can ignore the instruction, so this is not a guarantee of adaptive effort.
 - **Fast Mode:** choose off, priority processing or Ultrafast independently for Astra, Sol, Terra and Luna. Availability depends on the model and account.
@@ -121,7 +132,7 @@ V2 can preserve 16k, 32k or 64k of recent user messages verbatim. The default is
 
 V2 and Both require Codex or a configured compatible passthrough. **Choose Both before creating a checkpoint you need across providers, or convert to Pi summary before switching.** Other routes use Pi summary without erasing your saved method.
 
-For notes, history, context-window rollover and shared agent context, install [Notes Compaction](../pi-notes-compaction/README.md) and configure it under `/notes`. These are not built into PCC. Existing Notes-enabled PCC configurations require Notes to be loaded or that old continuity setting to be explicitly disabled.
+For notes, history, context-window rollover and shared agent context, install [Agent Comms](../pi-agent-comms/docs/NOTES.md) and configure it under `/notes`. These are not built into PCC. Existing Notes-enabled PCC configurations require Notes to be loaded or that old continuity setting to be explicitly disabled.
 
 </details>
 
@@ -155,21 +166,17 @@ Codex • notebook mode • 5h: 80% • weekly: 60% Cache • HIT • WS delta
 <a name="code-mode-and-custom-tools"></a>
 
 <details>
-<summary><strong>Notebook modes and custom tools</strong></summary>
+<summary><strong>Execution modes and custom tools</strong></summary>
 
-Code and Deno download their runtimes on first use. TS and JS Notebook reuse matching installed packages or download them with npm. First use needs registry access when packages are missing. Cached runtimes work offline, and unselected modes do not download anything.
+Code downloads its runtime on first use. TS Notebook reuses matching installed packages or downloads them with npm. VM Code needs no separate runtime download. Cached runtimes work offline, and unselected modes do not download anything.
 
-Ask your agent to inspect, save, load or clean up notebook state. The `notebook` tool provides its own action help. **Restart and cancellation do not undo file changes or other external tool effects.**
+In TS Notebook, ask your agent to inspect, save, load or clean up notebook state. The `notebook` tool provides its own action help. **Restart and cancellation do not undo file changes or other external tool effects.**
 
-### Deno Notebook
-
-The **Notebook** setting provides persistent JavaScript and TypeScript with Deno APIs, imports, checkpoints, project pins and named profiles. It also supports startup and tool-result hooks for reusable automation.
-
-After a normal cell yields, `isolated:true` cells can run in separate Deno kernels from the last completed checkpoint. Up to four isolated cells can run at once. They save named profile candidates without changing live state. Loading a candidate adds its saved bindings and rejects name collisions, rather than replacing the notebook. Only checkpoint-supported state transfers. Recreate imports, closures and live handles when needed.
+If you used Deno Notebook, follow the [recovery and cleanup guide](../../docs/deno-to-ts-notebook.md). The old mode setting now selects TS Notebook, but Deno notebooks and profiles are not imported or deleted.
 
 ### TS Notebook
 
-Select **TS** for strict TypeScript checking, retained type declarations, Node and Web APIs, and imports from local files or packages. Invalid code and tool arguments are rejected before execution. New npm dependencies require user approval.
+Select **TS Notebook** for strict TypeScript checking, retained type declarations, Node and Web APIs, and imports from local files or packages. Invalid code and tool arguments are rejected before execution. New npm dependencies require user approval.
 
 Run Pi under Node on Linux or macOS with x64 or arm64, or Windows x64.
 
@@ -177,21 +184,32 @@ Variables, closures, class instances and module state survive between cells. Che
 
 Concurrent isolated cells start from the last checkpoint and save separate candidates. Loading one replaces the live notebook rather than automatically merging changes. Releasing bindings also rebuilds the kernel and clears live-only values.
 
-### JS Notebook
+### VM Code
 
-Select **JS Notebook** for JavaScript with full-state checkpoints, including closures, private class fields, aliases and cycles. The notebook is shared across conversations in the same project.
+Select **VM Code** to compose tools in JavaScript while keeping `let`, `const`, `function` and `class` bindings across `exec` calls in the conversation. `exec` and `wait` stay the same, and tools stay `tools.name`.
 
-Run Pi under Node. The notebook has no Node APIs, imports, direct network access or TypeScript checking. The agent uses tools for host operations.
+VM Code runs one cell at a time in a conversation-local context. `store` and `load` keep conversation-local JSON without writing to disk.
 
-Normal cells run serially and save the full state. Restart restores that checkpoint. Releasing a name makes it reusable without changing values captured by existing closures. Reset affects the shared project notebook, while preserving pinned data and named profiles.
+Under Node.js, the worker's JavaScript heap is capped at 256 MiB. Under Bun 1.4.4 or later, including standalone Pi, the evaluator runs in a separate process with a 320 MiB memory budget.
 
-After a normal cell yields, isolated cells can run while it is still running. Each starts from the latest committed checkpoint, not the normal cell's unfinished changes, and saves a separate candidate without changing the live notebook. External tool and file effects remain shared.
+- **Linux:** systemd and cgroup v2 enforce a hard process limit with no swap. A working systemd user session is required.
+- **macOS and Windows:** a watchdog stops the evaluator when its resident memory exceeds the budget. A fast allocation can exceed the budget before the watchdog reacts.
 
-Whole-notebook profiles and isolated candidates replace the live state when loaded. Selective data profiles add saved data under unused names instead. Conflicting unsaved changes are kept in recovery profiles. Snapshots require compatible runtime versions and are never silently reset.
+If the evaluator cannot start, use Pi under Node.js or select **Code**.
+
+Top-level `await` works, and `const`, `var` and function hoisting stay the same as a cell without `await`. The environment has no Node APIs, imports, direct network access or timers. The agent uses tools for host operations.
+
+VM Code is not an isolation boundary for untrusted code.
+
+A script error keeps the bindings. A stall, cancellation, memory limit, `terminate` or conversation change drops them, and the next `exec` starts fresh.
+
+Existing QuickJS Code settings (`js`) select VM Code automatically. Use **Code** if you need fresh JavaScript for every cell. Old JS Notebook files are neither loaded nor deleted.
 
 ### Extension tools and MCP
 
-Installed Pi tools and enabled MCP servers are available inside Code and all three notebook modes. Configure MCP servers through Pi. Existing permissions, tool restrictions and disabled servers still apply.
+Installed Pi tools and enabled MCP servers are available inside Code, VM Code and TS Notebook. Configure MCP servers through Pi. Existing permissions, tool restrictions and disabled servers still apply.
+
+Use `content(result.content)` to emit mixed MCP text and images in their original order. The helper also accepts a single content block. Resource blocks remain JSON text; audio and encrypted text are not supported.
 
 `exec` and `wait` wait for their active Pi tool calls to return before yielding, even when the cell's yield timeout has elapsed.
 
@@ -215,17 +233,20 @@ See the [working examples](./examples/custom-tools/) and [definition contract](.
 <details>
 <summary><strong>Voice, dictation and remote access</strong></summary>
 
-Choose **Voice model** in `/codex voice` or the browser interface. Voice runs independently of the active text model.
+Choose **Voice model** in `/codex voice` or the browser interface. Changing the Pi model does not interrupt a voice call.
 
 | Voice model | Credential |
 | --- | --- |
 | `codex-live-1.1`, the default | Pi's legacy `openai-codex` login |
+| `api-live-1.1` | An OpenAI API key configured in Pi |
 | `realtime-2.1` | An OpenAI API key configured in Pi |
 | `realtime-2.1-mini` | An OpenAI API key configured in Pi |
 
-Codex Live and dictation use OAuth through `/login openai-codex`. Selecting a Realtime voice model does not change dictation's login. For Realtime, enter the exact, case-sensitive Pi provider name in **API provider** in terminal or LAN voice settings. The default is `openai`. GipPity uses that provider's API key, headers and compatible Realtime endpoint without storing or displaying the key. Configure the provider's Realtime-compatible endpoint in Pi. Missing keys, OAuth credentials and invalid endpoints are rejected without falling back to another account. Changes apply on the next call. Realtime API calls are billed separately through the selected provider. Sign in with ChatGPT does not provide this API access or replace the legacy Codex login.
+Codex Live and dictation use OAuth through `/login openai-codex`. Selecting an API voice model does not change dictation's login. For API voice models, enter the exact, case-sensitive Pi provider name in **API provider** in terminal or LAN voice settings. The default is `openai`. GipPity uses that provider's API key, headers and compatible endpoint without storing or displaying the key. Missing keys, OAuth credentials and invalid endpoints are rejected without falling back to another account. Changes apply on the next call. API voice calls are billed separately through the selected provider. Sign in with ChatGPT does not provide this API access or replace the legacy Codex login.
 
 Codex Live rewrites the current voice conversation interval into a self-contained task before sending it to Pi. **Task delegation model** shows the configured model without a picker. Change `voice.taskDelegationModel` in the JSON configuration to use another `provider/model` value. The default is `openai-codex/gpt-6-luna`. Choose **Task delegation reasoning** separately in terminal or LAN settings. It defaults to `low` and is independent of voice context summarisation. These settings apply only to Codex Live; GPT-Realtime still sends tasks directly through `send_task`.
+
+GPT Live 1.1 on the API uses the current Pi model to prepare voice requests before sending them to Pi. The **Default** context summarisation setting also uses the current Pi model for API Live.
 
 Realtime models use `send_task` to send Pi a self-contained task with relevant voice-discussion decisions and constraints. Busy Pi sessions receive it as steering, with existing tools and confirmations preserved. Realtime models can also use developer-registered voice tools. For optional search, load `@howaboua/pi-codex-web-run`, configure its access and enable **Realtime web search**. Search uses Web Run's configured provider and credentials.
 
@@ -269,7 +290,7 @@ Use `/codex voice stop` to stop voice. The remote server stops when its owning P
 <details>
 <summary><strong>Models and providers</strong></summary>
 
-PCC supports GPT-6 Astra, Sol and Luna, plus GPT-6.1 Sol and Terra, with Responses Lite and live reasoning adjustments on Codex transport. Available context sizes and reasoning levels depend on the selected model. Cost estimates use [published API rates](https://developers.openai.com/api/docs/pricing).
+PCC supports GPT-6 Astra, Sol and Luna, GPT-6.1 Sol and Terra, and GPT-6.2 Sol and Astra, with Responses Lite and live reasoning adjustments on Codex transport. Available context sizes and reasoning levels depend on the selected model. Cost estimates use [published API rates](https://developers.openai.com/api/docs/pricing).
 
 Default scope covers Codex-like GPT routes and Responses providers listed under **Additional providers**. Switching to an unrelated model restores Pi's ordinary tools.
 

@@ -4,9 +4,10 @@ import type {
 	ContextSharingService,
 	SharedContextRequest,
 	SharedContextResult,
-} from "@howaboua/pi-notes-compaction/context-sharing";
+} from "@howaboua/pi-agent-comms/context-sharing";
+import { NOTES_UNAVAILABLE } from "./notes-discovery.js";
 
-/** Read-only continuity when a live owner disappears. Parsing remains Conversion-owned. */
+/** Read-only continuity when a live owner disappears. Notes owns parsing. */
 export class AttachmentNotes {
 	private readonly getService: () => ContextSharingService | undefined;
 	constructor(getService: () => ContextSharingService | undefined) {
@@ -19,7 +20,7 @@ export class AttachmentNotes {
 			!service.parseAttachmentNotes ||
 			!service.readAttachmentNotes
 		)
-			throw new Error("Update Codex Conversion to retain attached checkpoints");
+			throw new Error(NOTES_UNAVAILABLE);
 		return {
 			export: service.exportAttachmentNotes,
 			parse: service.parseAttachmentNotes,
@@ -98,14 +99,6 @@ export class AttachmentNotes {
 			)
 		);
 	}
-	unavailable(error: unknown) {
-		return (
-			error instanceof Error &&
-			/^(Shared context (?:owner|controller) is unavailable|Shared context response was lost|Herdr machine .* is (?:unavailable|disconnected)|remote Shepherdr bridge (?:is unavailable|closed|exited\b)|remote Shepherdr context timed out)/.test(
-				error.message,
-			)
-		);
-	}
 	async read(
 		request: SharedContextRequest,
 		identity: ContextAgentIdentity,
@@ -148,7 +141,6 @@ export class AttachmentNotes {
 				unavailable = String(error);
 			}
 		}
-		const result = this.service().read(snapshot, request.params);
 		if (
 			!snapshot ||
 			typeof snapshot !== "object" ||
@@ -157,13 +149,13 @@ export class AttachmentNotes {
 		)
 			throw new Error("Invalid retained checkpoint timestamp");
 		const details = {
-			...result.details.codexHistoryNotes,
 			source,
 			read_only: true,
-			captured_at: new Date(snapshot.timestamp).toISOString(),
+			captured_at:
+				new Date(snapshot.timestamp).toISOString().slice(0, 16) + "Z",
 			...(savedAt === undefined
 				? {}
-				: { saved_at: new Date(savedAt).toISOString() }),
+				: { saved_at: new Date(savedAt).toISOString().slice(0, 16) + "Z" }),
 			...(detached
 				? { detached: true }
 				: {
@@ -173,21 +165,32 @@ export class AttachmentNotes {
 							: {}),
 					}),
 		};
+		const warning = `Read-only checkpoints captured ${details.captured_at}.${
+			detached
+				? " Counterpart detached."
+				: unavailable
+					? " Live owner and saved updates unavailable; these checkpoints may be stale. Resume the counterpart for current notes."
+					: " Live owner unavailable; reading saved checkpoints."
+		}`;
+		const result = this.service().read(snapshot, request.params, {
+			read_only: true,
+			captured_at: details.captured_at,
+			...(savedAt === undefined ? {} : { saved_at: details.saved_at }),
+			warning,
+		});
+		if (
+			!result.details.codexHistoryNotes ||
+			typeof result.details.codexHistoryNotes !== "object" ||
+			!("warning" in result.details.codexHistoryNotes) ||
+			result.details.codexHistoryNotes["warning"] !== warning
+		)
+			throw new Error("Update Notes to read retained attached checkpoints");
 		return {
-			content: [
-				...result.content,
-				{
-					type: "text",
-					text: `Read-only checkpoints captured ${details.captured_at}.${
-						detached
-							? " Counterpart detached."
-							: unavailable
-								? " Live owner and saved updates unavailable; these checkpoints may be stale. Resume the counterpart for current notes."
-								: " Live owner unavailable; reading saved checkpoints."
-					}`,
-				},
-			],
-			details: { codexHistoryNotes: details },
+			...result,
+			details: {
+				...result.details,
+				codexHistoryNotes: { ...result.details.codexHistoryNotes, ...details },
+			},
 		};
 	}
 }

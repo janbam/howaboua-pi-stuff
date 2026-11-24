@@ -1,5 +1,29 @@
 # @howaboua/pi-ask
 
+## 0.0.22
+
+- Ask always uses compact question and handoff help, including in standalone installs.
+
+## 0.0.21
+
+- Shorter review and planning prompts clarify when to ask, wait for a handoff or stop.
+
+## 0.0.20
+
+- Ask help now identifies `handoff` as a boolean.
+
+## 0.0.19
+
+- Requires Node.js 22.19 or newer.
+  - Replaced the TypeBox dependency with Pi's native schema builders and validation.
+
+## 0.0.18
+
+- Requires Pi 1.5 or newer.
+  - Waiting prompts now report Pi's native blocked state. Steering prompts remain non-blocking.
+  - Invalid question arguments now explain how to find the supported format.
+  - Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`.
+
 ## 0.0.17
 
 - - Removed redundant help-call instructions from Ask's help.

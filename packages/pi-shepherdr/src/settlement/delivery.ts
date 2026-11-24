@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { activityAttemptId } from "../activity.js";
+import { activityAttemptId, activityTask } from "../activity.js";
 import { injectAgentEvent } from "../messages/events.js";
 import type { WorkAttempt } from "../monitor-state.js";
 import type {
@@ -18,12 +18,15 @@ export interface ClaimedSettlement extends CollectedSettlement {
 	record: MonitoredAgent;
 }
 
-interface SettlementClaim {
-	replyingTo?: ExtensionReply;
+interface SettlementWaiter {
 	cleanup(): void;
 	reject(error: Error): void;
 	resolve(settlement: ClaimedSettlement): void;
 }
+
+type SettlementClaim =
+	| { replyingTo: ExtensionReply; waiter?: SettlementWaiter }
+	| { replyingTo?: ExtensionReply; waiter: SettlementWaiter };
 
 /** Claims are per-attempt capabilities; delivery chooses exactly one waiter or controller. */
 export class SettlementDelivery {
@@ -44,10 +47,17 @@ export class SettlementDelivery {
 	replyingTo(attemptId: string) {
 		return this.claims.get(attemptId)?.replyingTo;
 	}
+	observeReply(attempt: WorkAttempt, reply: ExtensionReply): void {
+		const claim = this.claims.get(attempt.attemptId);
+		this.claims.set(attempt.attemptId, {
+			...(claim?.waiter ? { waiter: claim.waiter } : {}),
+			replyingTo: reply,
+		});
+	}
 	stop() {
 		for (const claim of this.claims.values()) {
-			claim.cleanup();
-			claim.reject(new Error("Shepherdr monitor stopped"));
+			claim.waiter?.cleanup();
+			claim.waiter?.reject(new Error("Shepherdr monitor stopped"));
 		}
 		this.claims.clear();
 	}
@@ -58,13 +68,15 @@ export class SettlementDelivery {
 	): Promise<ClaimedSettlement> | undefined {
 		signal.throwIfAborted();
 		// Updates share the worker's current settlement, without stealing its waiter.
-		if (this.claims.has(attempt.attemptId)) return;
+		const existing = this.claims.get(attempt.attemptId);
+		if (existing?.waiter) return;
+		const reply = replyingTo ?? existing?.replyingTo;
 		return new Promise<ClaimedSettlement>((resolve, reject) => {
 			const abort = () => {
 				const claim = this.claims.get(attempt.attemptId);
 				if (!claim) return;
 				this.claims.delete(attempt.attemptId);
-				claim.cleanup();
+				claim.waiter?.cleanup();
 				reject(
 					signal.reason instanceof Error
 						? signal.reason
@@ -72,10 +84,12 @@ export class SettlementDelivery {
 				);
 			};
 			const claim: SettlementClaim = {
-				...(replyingTo ? { replyingTo } : {}),
-				cleanup: () => signal.removeEventListener("abort", abort),
-				reject,
-				resolve,
+				...(reply ? { replyingTo: reply } : {}),
+				waiter: {
+					cleanup: () => signal.removeEventListener("abort", abort),
+					reject,
+					resolve,
+				},
 			};
 			this.claims.set(attempt.attemptId, claim);
 			signal.addEventListener("abort", abort, { once: true });
@@ -96,8 +110,10 @@ export class SettlementDelivery {
 		const claim = this.claims.get(attemptId);
 		if (!claim) return;
 		this.claims.delete(attemptId);
-		claim.cleanup();
-		claim.reject(error instanceof Error ? error : new Error(String(error)));
+		claim.waiter?.cleanup();
+		claim.waiter?.reject(
+			error instanceof Error ? error : new Error(String(error)),
+		);
 	}
 
 	deliverSettlement(
@@ -111,13 +127,15 @@ export class SettlementDelivery {
 		const claim = attemptId ? this.claims.get(attemptId) : undefined;
 		if (claim && attemptId) {
 			this.claims.delete(attemptId);
-			claim.cleanup();
+		}
+		if (claim?.waiter) {
+			claim.waiter.cleanup();
 			const {
 				reply: _latestReply,
 				session: _session,
 				...claimedSettlement
 			} = settlement;
-			claim.resolve({
+			claim.waiter.resolve({
 				...claimedSettlement,
 				record,
 				...(blockedMessage ? { blockedMessage } : {}),
@@ -125,6 +143,17 @@ export class SettlementDelivery {
 			});
 			return;
 		}
+		// Notice-only turns can deliberately end without a report. Settle them
+		// silently, but keep assigned work and actionable events visible.
+		if (
+			settlement.status !== "blocked" &&
+			!blockedMessage &&
+			!activityTask(record.activity) &&
+			reply?.stopReason === "stop" &&
+			!reply.text.trim() &&
+			!settlement.extensionMessages?.length
+		)
+			return;
 		injectAgentEvent(this.pi, lifecycle.context, {
 			agent: settlement.agent,
 			agentToolName: "agents",

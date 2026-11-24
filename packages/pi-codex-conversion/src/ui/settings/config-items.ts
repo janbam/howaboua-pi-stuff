@@ -23,12 +23,17 @@ export function buildConfigSettings(
 	adapterEnabled = true,
 	webSearchAvailable?: boolean,
 ): ConfigSetting[] {
-	if (tab === "adapter") return buildAdapterSettings(config, theme, adapterEnabled);
+	if (tab === "adapter")
+		return buildAdapterSettings(config, theme, adapterEnabled);
 	if (tab === "context") return buildContextSettings(config, ctx);
 	if (tab === "tools") return buildToolsSettings(config);
 	if (tab === "openai") return buildOpenAISettings(config);
 	if (tab === "display") return buildDisplaySettings(config);
 	if (tab === "voice")
-		return buildVoiceSettings(config, availableContextModels, webSearchAvailable);
+		return buildVoiceSettings(
+			config,
+			availableContextModels,
+			webSearchAvailable,
+		);
 	return [];
 }

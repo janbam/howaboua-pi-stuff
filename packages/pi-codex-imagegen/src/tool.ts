@@ -1,45 +1,53 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { Static } from "@earendil-works/pi-schema";
 import { Text } from "@earendil-works/pi-tui";
 import {
-	IMAGE_GENERATION_PARAMETERS,
 	IMAGE_GENERATION_TOOL_NAME,
 	IMAGE_GENERATION_UNSUPPORTED_MESSAGE,
 	type ImageGenerationToolOptions,
+	imageGenerationParameters,
 	supportsExecutableImageGeneration,
 	supportsImageInputs,
 } from "./contract.js";
-import { executeCodexImageGeneration } from "./execute.js";
-import {
-	formatImagegenOutput,
-	type ImagegenOutput,
-	imageContentsFromImagegenOutput,
-} from "./output.js";
-import { renderTextWithImages, renderToolCell } from "./render.js";
+import { generateImageArtifacts } from "./execute.js";
+import { formatImagegenOutput, type ImagegenOutput } from "./output.js";
+import { renderToolCell } from "./render.js";
+import { readImagegenSettings } from "./settings.js";
 
 export function createImageGenerationTool(
 	options: ImageGenerationToolOptions = {},
-): ToolDefinition<typeof IMAGE_GENERATION_PARAMETERS, ImagegenOutput> {
+): ToolDefinition<
+	ReturnType<typeof imageGenerationParameters>,
+	ImagegenOutput
+> {
 	return {
 		name: IMAGE_GENERATION_TOOL_NAME,
 		label: IMAGE_GENERATION_TOOL_NAME,
-		description: "Generate/edit images; omit selectors to generate",
+		description: "Generate or edit images",
 		...(options.promptSnippet === false
 			? {}
 			: { promptSnippet: "Generate/edit" }),
-		parameters: IMAGE_GENERATION_PARAMETERS,
-		async execute(toolCallId, params, signal, _onUpdate, ctx) {
-			if (!supportsExecutableImageGeneration(ctx.model, options))
+		parameters: imageGenerationParameters(readImagegenSettings().access),
+		async execute(
+			toolCallId,
+			params: Static<ReturnType<typeof imageGenerationParameters>>,
+			signal,
+			_onUpdate,
+			ctx,
+		) {
+			if (
+				!supportsExecutableImageGeneration(ctx.model, options) &&
+				readImagegenSettings().access !== "openai"
+			)
 				throw new Error(IMAGE_GENERATION_UNSUPPORTED_MESSAGE);
-			const details = await executeCodexImageGeneration(
+			const { details, imageContent } = await generateImageArtifacts(
 				params,
 				ctx,
 				signal,
+				supportsImageInputs(ctx.model),
 				options,
 				toolCallId,
 			);
-			const imageContent = supportsImageInputs(ctx.model)
-				? imageContentsFromImagegenOutput(details)
-				: [];
 			return {
 				content: [
 					{ type: "text", text: formatImagegenOutput(details) },
@@ -58,7 +66,12 @@ export function createImageGenerationTool(
 								: context.isError
 									? "Image generation failed"
 									: "Generated image",
-							typeof args.prompt === "string" ? args.prompt : undefined,
+							args &&
+								typeof args === "object" &&
+								"prompt" in args &&
+								typeof args.prompt === "string"
+								? args.prompt
+								: undefined,
 							theme,
 						);
 					},
@@ -70,9 +83,7 @@ export function createImageGenerationTool(
 							"dim",
 							textBlock?.type === "text" ? textBlock.text : "(no output)",
 						);
-						return result.content.some((item) => item.type === "image")
-							? renderTextWithImages(text, result.content, theme)
-							: new Text(text, 0, 0);
+						return new Text(text, 0, 0);
 					},
 				}),
 	};

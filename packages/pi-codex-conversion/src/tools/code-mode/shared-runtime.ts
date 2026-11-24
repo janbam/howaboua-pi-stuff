@@ -1,5 +1,10 @@
+import type { ToolDetailsMode } from "../../adapter/activation/config-contract.ts";
 import { OpaqueResultState } from "./opaque-result-state.ts";
-import type { ExtensionContext, ToolLoadout, ToolLoadoutChanges } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionContext,
+	ToolLoadout,
+	ToolLoadoutChanges,
+} from "@earendil-works/pi-coding-agent";
 import { ensureCodeModeHostBinary } from "./binary.js";
 import { CodeModeHostClient } from "./host-client.js";
 import { createNotebookControlProxy } from "./notebook-tool.ts";
@@ -14,7 +19,7 @@ import type {
 	ToolExecutionContext,
 } from "./types.js";
 
-export type CodeModeExecutionKind = "code" | "notebook" | "ts" | "js";
+export type CodeModeExecutionKind = "code" | "ts" | "vm";
 
 export interface OpaqueContextGuard {
 	lazy: boolean;
@@ -32,16 +37,40 @@ export interface NotebookRuntimeOptions {
 	profile?: string | undefined;
 }
 
-export interface NotebookClientOptions extends NotebookRuntimeOptions {
+export interface CodeModeClientOptions {
+	maxHeapMiB: number;
+	agentDir: string;
 	prepareToolInput: typeof prepareCodeModeToolInput;
 }
 
+export interface NotebookClientOptions extends CodeModeClientOptions {
+	profile?: string | undefined;
+}
+
 export interface CodeModeExecutionClient {
-	execute(source: string, context: ToolExecutionContext, signal?: AbortSignal, tools?: CodeModeToolDefinition[]): Promise<RuntimeResponse>;
-	wait(cellId: string, yieldTimeMs: number, context: ToolExecutionContext, signal?: AbortSignal): Promise<RuntimeResponse>;
-	terminate(cellId: string, context: ToolExecutionContext, signal?: AbortSignal): Promise<RuntimeResponse>;
+	execute(
+		source: string,
+		context: ToolExecutionContext,
+		signal?: AbortSignal,
+		tools?: CodeModeToolDefinition[],
+	): Promise<RuntimeResponse>;
+	wait(
+		cellId: string,
+		yieldTimeMs: number,
+		context: ToolExecutionContext,
+		signal?: AbortSignal,
+	): Promise<RuntimeResponse>;
+	terminate(
+		cellId: string,
+		context: ToolExecutionContext,
+		signal?: AbortSignal,
+	): Promise<RuntimeResponse>;
 	checkpoint?(): Promise<void>;
-	controlNotebook?(request: NotebookControlRequest, context: ToolExecutionContext, signal?: AbortSignal): Promise<NotebookControlResult>;
+	controlNotebook?(
+		request: NotebookControlRequest,
+		context: ToolExecutionContext,
+		signal?: AbortSignal,
+	): Promise<NotebookControlResult>;
 	shutdown(): Promise<void>;
 	clearOpaqueResults?(): void;
 }
@@ -52,48 +81,73 @@ export interface CodeModeToolProvider {
 	documentationPath?: string | undefined;
 	isActive?(ctx: unknown): boolean;
 	providesRenderers?: boolean | undefined;
-	richRendering?(): boolean;
-	minimalOutput?(): boolean;
+	toolDetails?(): ToolDetailsMode;
 	executionKind?(ctx: unknown): CodeModeExecutionKind;
 	notebookOptions?(ctx: unknown): NotebookRuntimeOptions;
 	opaqueResultScope?(ctx: ExtensionContext): Promise<string>;
 	lazyOpaqueResultScope?(): boolean;
-	deliverOpaqueResponse?(response: RuntimeResponse, callId: string, scope: string, ctx: ExtensionContext): string;
+	deliverOpaqueResponse?(
+		response: RuntimeResponse,
+		callId: string,
+		scope: string,
+		ctx: ExtensionContext,
+	): string;
 }
 
 export class SharedCodeModeRuntime {
 	readonly providers = new Map<object, CodeModeToolProvider>();
 	readonly renderStore = new CodeModeNestedRenderStore();
 	private clientPromise: Promise<CodeModeHostClient> | undefined;
-	private notebookClientPromise: Promise<CodeModeExecutionClient> | undefined;
-	private notebookClientOptionsKey: string | undefined;
-	private notebookClientTransition: Promise<void> = Promise.resolve();
+	private runtimeClientPromise: Promise<CodeModeExecutionClient> | undefined;
+	private runtimeClientOptionsKey: string | undefined;
+	private runtimeClientTransition: Promise<void> = Promise.resolve();
 	private clientStartupAbort: AbortController | undefined;
 	private customPromptToolsSnapshot: CodeModeToolDefinition[] | undefined;
-	private readonly opaqueResults = new OpaqueResultState(ctx => this.activeProviders(ctx), ctx => this.opaqueOwner(ctx));
+	private readonly opaqueResults = new OpaqueResultState(
+		(ctx) => this.activeProviders(ctx),
+		(ctx) => this.opaqueOwner(ctx),
+	);
 
 	opaqueContextGuard(ctx: ExtensionContext): Promise<OpaqueContextGuard> {
 		return this.opaqueResults.opaqueContextGuard(ctx);
 	}
 
-	deliverOpaqueResponse(response: RuntimeResponse, callId: string, guard?: OpaqueContextGuard): RuntimeResponse {
+	deliverOpaqueResponse(
+		response: RuntimeResponse,
+		callId: string,
+		guard?: OpaqueContextGuard,
+	): RuntimeResponse {
 		return this.opaqueResults.deliverOpaqueResponse(response, callId, guard);
 	}
 
-	completedCell(cellId: string, ctx: ExtensionContext): Promise<RuntimeResponse | undefined> {
+	completedCell(
+		cellId: string,
+		ctx: ExtensionContext,
+	): Promise<RuntimeResponse | undefined> {
 		return this.opaqueResults.completedCell(cellId, ctx);
 	}
 
 	clearOpaqueResults(): void {
 		this.opaqueResults.clear();
-		for (const pending of [this.clientPromise, this.notebookClientPromise])
-			void pending?.then(client => client.clearOpaqueResults?.(), () => undefined);
+		for (const pending of [this.clientPromise, this.runtimeClientPromise])
+			void pending?.then(
+				(client) => client.clearOpaqueResults?.(),
+				() => undefined,
+			);
 	}
 
 	private opaqueOwner(ctx: ExtensionContext): string {
-		return JSON.stringify([ctx.sessionManager.getSessionId(), ctx.model?.api, ctx.model?.provider,
-			ctx.model?.id, ctx.model?.baseUrl, this.executionKind(ctx),
-			this.collectTools(ctx).some(tool => "invoke" in tool && tool.opaqueResult)]);
+		return JSON.stringify([
+			ctx.sessionManager.getSessionId(),
+			ctx.model?.api,
+			ctx.model?.provider,
+			ctx.model?.id,
+			ctx.model?.baseUrl,
+			this.executionKind(ctx),
+			this.collectTools(ctx).some(
+				(tool) => "invoke" in tool && tool.opaqueResult,
+			),
+		]);
 	}
 
 	addProvider(provider: CodeModeToolProvider): object {
@@ -107,10 +161,17 @@ export class SharedCodeModeRuntime {
 	}
 
 	prepareLoadout(loadout: ToolLoadout): ToolLoadoutChanges {
-		const changes = [...this.providers.values()].map((provider) => provider.prepareLoadout?.(loadout));
+		const changes = [...this.providers.values()].map((provider) =>
+			provider.prepareLoadout?.(loadout),
+		);
 		return {
-			hiddenDeclarations: changes.flatMap((change) => change?.hiddenDeclarations ?? []),
-			descriptions: Object.assign({}, ...changes.map((change) => change?.descriptions)),
+			hiddenDeclarations: changes.flatMap(
+				(change) => change?.hiddenDeclarations ?? [],
+			),
+			descriptions: Object.assign(
+				{},
+				...changes.map((change) => change?.descriptions),
+			),
 		};
 	}
 
@@ -140,25 +201,24 @@ export class SharedCodeModeRuntime {
 
 	collectPromptTools(ctx?: unknown): CodeModeToolDefinition[] {
 		if (!this.customPromptToolsSnapshot) return this.refreshPromptTools(ctx);
-		const liveProgrammaticTools = this.collectProviderTools(ctx)
-			.filter((tool) => !isCustomTool(tool));
+		const liveProgrammaticTools = this.collectProviderTools(ctx).filter(
+			(tool) => !isCustomTool(tool),
+		);
 		return [...liveProgrammaticTools, ...this.customPromptToolsSnapshot];
 	}
 
 	collectRenderTools(): CodeModeToolDefinition[] {
 		return collectUniqueTools(
-			[...this.providers.values()].filter((provider) => provider.providesRenderers),
+			[...this.providers.values()].filter(
+				(provider) => provider.providesRenderers,
+			),
 		);
 	}
 
-	useRichRendering(): boolean {
-		return [...this.providers.values()].find((provider) => provider.richRendering)
-			?.richRendering?.() ?? true;
-	}
-
-	useMinimalOutput(): boolean {
-		return [...this.providers.values()].find((provider) => provider.minimalOutput)
-			?.minimalOutput?.() ?? false;
+	toolDetails(): ToolDetailsMode {
+		for (const provider of this.providers.values())
+			if (provider.toolDetails) return provider.toolDetails();
+		return "preview";
 	}
 
 	executionKind(ctx?: unknown): CodeModeExecutionKind {
@@ -167,27 +227,40 @@ export class SharedCodeModeRuntime {
 				.map((provider) => provider.executionKind?.(ctx))
 				.filter((kind): kind is CodeModeExecutionKind => Boolean(kind)),
 		);
-		if (explicit.size > 1) throw new Error("Conflicting code-mode execution runtimes are active");
-		return explicit.values().next().value ?? "code";
+		if (explicit.size > 1)
+			throw new Error("Conflicting code-mode execution runtimes are active");
+		const kind = explicit.values().next().value ?? "code";
+		switch (kind) {
+			case "code":
+			case "ts":
+			case "vm":
+				return kind;
+			default:
+				throw new Error(
+					"Unsupported Code execution mode. Reload Pi and choose a supported mode.",
+				);
+		}
 	}
 
 	async getClient(ctx?: unknown): Promise<CodeModeExecutionClient> {
 		const kind = this.executionKind(ctx);
-		if (kind !== "code") return this.getNotebookClient(ctx, kind);
+		if (kind !== "code") return this.getRuntimeClient(ctx, kind);
 		if (!this.clientPromise) {
 			const startupAbort = new AbortController();
 			const pending = ensureCodeModeHostBinary(startupAbort.signal).then(
-				(binary) => new CodeModeHostClient({
-					binary,
-					tools: [],
-					renderStore: this.renderStore,
-				}),
+				(binary) =>
+					new CodeModeHostClient({
+						binary,
+						tools: [],
+						renderStore: this.renderStore,
+					}),
 			);
 			this.clientPromise = pending;
 			this.clientStartupAbort = startupAbort;
 			void pending.then(
 				() => {
-					if (this.clientPromise === pending) this.clientStartupAbort = undefined;
+					if (this.clientPromise === pending)
+						this.clientStartupAbort = undefined;
 				},
 				() => {
 					if (this.clientPromise !== pending) return;
@@ -199,37 +272,62 @@ export class SharedCodeModeRuntime {
 		return this.clientPromise;
 	}
 
-	private getNotebookClient(ctx: unknown, kind: "notebook" | "ts" | "js"): Promise<CodeModeExecutionClient> {
-		const options = this.activeProviders(ctx).find((provider) => provider.notebookOptions)?.notebookOptions?.(ctx);
-		if (!options) return Promise.reject(new Error("Notebook Code Mode runtime options are unavailable"));
-		const key = JSON.stringify([kind, options.agentDir, options.maxHeapMiB, options.profile ?? null]);
-		if (this.notebookClientPromise && this.notebookClientOptionsKey === key) return this.notebookClientPromise;
-		const transition = this.notebookClientTransition.then(async () => {
-			if (this.notebookClientPromise && this.notebookClientOptionsKey !== key) {
-				const previous = this.notebookClientPromise;
-				this.notebookClientPromise = undefined;
-				this.notebookClientOptionsKey = undefined;
+	private getRuntimeClient(
+		ctx: unknown,
+		kind: Exclude<CodeModeExecutionKind, "code">,
+	): Promise<CodeModeExecutionClient> {
+		const options = this.activeProviders(ctx)
+			.find((provider) => provider.notebookOptions)
+			?.notebookOptions?.(ctx);
+		if (!options)
+			return Promise.reject(
+				new Error("Execution settings are unavailable. Reload Pi and retry."),
+			);
+		const key = JSON.stringify([
+			kind,
+			options.agentDir,
+			options.maxHeapMiB,
+			kind === "ts" ? (options.profile ?? null) : null,
+		]);
+		if (this.runtimeClientPromise && this.runtimeClientOptionsKey === key)
+			return this.runtimeClientPromise;
+		const transition = this.runtimeClientTransition.then(async () => {
+			if (this.runtimeClientPromise && this.runtimeClientOptionsKey !== key) {
+				const previous = this.runtimeClientPromise;
+				this.runtimeClientPromise = undefined;
+				this.runtimeClientOptionsKey = undefined;
 				await (await previous).shutdown();
 			}
-			if (!this.notebookClientPromise) {
+			if (!this.runtimeClientPromise) {
 				// Native lazy imports cannot resolve Pi's loader aliases; inject eager validation.
-				const clientOptions = { ...options, prepareToolInput: prepareCodeModeToolInput };
-				const pending = kind === "js"
-					? import("../js-mode/client.ts").then(({ JsNotebookClient }) => new JsNotebookClient(clientOptions, this.renderStore))
-					: kind === "ts"
-					? import("../ts-mode/client.ts").then(({ TsCodeModeClient }) => new TsCodeModeClient(clientOptions, this.renderStore))
-					: import("../notebook-mode/client.ts").then(({ NotebookCodeModeClient }) => new NotebookCodeModeClient(clientOptions, this.renderStore));
-				this.notebookClientPromise = pending;
-				this.notebookClientOptionsKey = key;
+				const clientOptions = {
+					...options,
+					prepareToolInput: prepareCodeModeToolInput,
+				};
+				const pending =
+					kind === "vm"
+						? import("../vm-mode/client.ts").then(
+								({ VmCodeClient }) =>
+									new VmCodeClient(clientOptions, this.renderStore),
+							)
+						: import("../ts-mode/client.ts").then(
+								({ TsCodeModeClient }) =>
+									new TsCodeModeClient(clientOptions, this.renderStore),
+							);
+				this.runtimeClientPromise = pending;
+				this.runtimeClientOptionsKey = key;
 				void pending.catch(() => {
-					if (this.notebookClientPromise !== pending) return;
-					this.notebookClientPromise = undefined;
-					this.notebookClientOptionsKey = undefined;
+					if (this.runtimeClientPromise !== pending) return;
+					this.runtimeClientPromise = undefined;
+					this.runtimeClientOptionsKey = undefined;
 				});
 			}
-			return this.notebookClientPromise;
+			return this.runtimeClientPromise;
 		});
-		this.notebookClientTransition = transition.then(() => undefined, () => undefined);
+		this.runtimeClientTransition = transition.then(
+			() => undefined,
+			() => undefined,
+		);
 		return transition;
 	}
 
@@ -239,7 +337,7 @@ export class SharedCodeModeRuntime {
 	}
 
 	async checkpointNotebook(): Promise<void> {
-		const pending = this.notebookClientPromise;
+		const pending = this.runtimeClientPromise;
 		if (!pending) return;
 		const client = await pending;
 		await client.checkpoint?.();
@@ -251,17 +349,18 @@ export class SharedCodeModeRuntime {
 		signal?: AbortSignal,
 	): Promise<NotebookControlResult> {
 		const kind = this.executionKind(context.extensionContext);
-		if (kind === "code") {
-			throw new Error("notebook is available only in Notebook or TS mode");
+		if (kind !== "ts") {
+			throw new Error("Notebook controls require TS mode");
 		}
-		const client = await this.getNotebookClient(context.extensionContext, kind);
-		if (!client.controlNotebook) throw new Error("Notebook lifecycle controls are unavailable");
+		const client = await this.getRuntimeClient(context.extensionContext, kind);
+		if (!client.controlNotebook)
+			throw new Error("Notebook lifecycle controls are unavailable");
 		return client.controlNotebook(request, context, signal);
 	}
 
 	async shutdownHost(): Promise<void> {
 		this.clearOpaqueResults();
-		await this.notebookClientTransition;
+		await this.runtimeClientTransition;
 		while (this.clientPromise) {
 			const pending = this.clientPromise;
 			this.clientPromise = undefined;
@@ -273,10 +372,10 @@ export class SharedCodeModeRuntime {
 				// Startup failure already reached the caller.
 			}
 		}
-		while (this.notebookClientPromise) {
-			const pending = this.notebookClientPromise;
-			this.notebookClientPromise = undefined;
-			this.notebookClientOptionsKey = undefined;
+		while (this.runtimeClientPromise) {
+			const pending = this.runtimeClientPromise;
+			this.runtimeClientPromise = undefined;
+			this.runtimeClientOptionsKey = undefined;
 			try {
 				await (await pending).shutdown();
 			} catch {
@@ -287,10 +386,11 @@ export class SharedCodeModeRuntime {
 
 	private collectProviderTools(ctx?: unknown): CodeModeToolDefinition[] {
 		const tools = collectUniqueTools(this.activeProviders(ctx), ctx);
-		if (this.executionKind(ctx) === "code") return tools;
+		const kind = this.executionKind(ctx);
+		if (kind !== "ts") return tools;
 		if (tools.some((tool) => tool.name === "notebook"))
 			throw new Error("Duplicate code-mode tool: notebook");
-		return [...tools, createNotebookControlProxy(this, this.executionKind(ctx))];
+		return [...tools, createNotebookControlProxy(this)];
 	}
 }
 

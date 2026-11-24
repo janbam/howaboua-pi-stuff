@@ -5,10 +5,17 @@ import { registerOpenAICodexCustomProvider } from "../src/providers/openai-codex
 
 test("the session adapter switch exposes stock Codex and permits the native overlay to return", () => {
 	const providers = new Map<string, Provider>();
-	const registration = registerOpenAICodexCustomProvider({
-		registerProvider(provider: Provider) { providers.set(provider.id, provider); },
-		unregisterProvider(providerId: string) { providers.delete(providerId); },
-	} as never, {});
+	const registration = registerOpenAICodexCustomProvider(
+		{
+			registerProvider(provider: Provider) {
+				providers.set(provider.id, provider);
+			},
+			unregisterProvider(providerId: string) {
+				providers.delete(providerId);
+			},
+		} as never,
+		{},
+	);
 
 	// Removal must follow an actual registration rather than succeed on an already empty registry.
 	const original = providers.get("openai-codex");

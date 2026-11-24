@@ -17,7 +17,6 @@ import { isAskHelpInput, isSteeringAskInput } from "./ask/normalize.js";
 import { runNotifyScript } from "./ask/notify.js";
 import { PENDING_ASK_ENTRY_TYPE, readPendingAsks } from "./ask/pending.js";
 import { createAskRuntime, createAskTool } from "./ask/tool.js";
-import registerPackageChangelog from "./changelog.js";
 
 export { createAskTool } from "./ask/tool.js";
 
@@ -29,11 +28,8 @@ const CODE_MODE_MODULE = `${CODE_MODE_PACKAGE}/code-mode`;
 const DEVELOPER_MESSAGES_MODULE = `${CODE_MODE_PACKAGE}/developer-messages`;
 
 export default async function humanInTheLoop(pi: ExtensionAPI): Promise<void> {
-	registerPackageChangelog(pi);
 	const trySendCodexDeveloperMessage = await loadCodexDeveloperMessageSender();
-	let gpt = false;
 	const askRuntime = createAskRuntime({
-		isGpt: () => gpt,
 		onRequestChange: (change) => publishAskRequest(pi, change),
 		deliverSteer: createSteerDelivery(pi, trySendCodexDeveloperMessage),
 		onBlockedChange: (state) => {
@@ -61,27 +57,6 @@ export default async function humanInTheLoop(pi: ExtensionAPI): Promise<void> {
 		);
 	};
 	pi.registerTool(ask);
-	try {
-		const { registerGptPromptMode } = await import(
-			"@howaboua/pi-codex-conversion/prompt-mode"
-		);
-		registerGptPromptMode(pi, (active) => {
-			gpt = active;
-			return [ask];
-		});
-	} catch (error) {
-		if (
-			!(error instanceof Error) ||
-			!("code" in error) ||
-			![
-				"ERR_MODULE_NOT_FOUND",
-				"MODULE_NOT_FOUND",
-				"ERR_PACKAGE_PATH_NOT_EXPORTED",
-			].includes(String(error.code)) ||
-			!error.message.includes(CODE_MODE_PACKAGE)
-		)
-			throw error;
-	}
 
 	await registerAskInCodeMode(pi, ask);
 	pi.on("session_start", (_event, ctx) => restorePending(ctx));
@@ -102,9 +77,8 @@ async function loadCodexDeveloperMessageSender(): Promise<
 	TryCodexDeveloperMessage | undefined
 > {
 	try {
-		const { trySendCodexDeveloperMessage } = await import(
-			"@howaboua/pi-codex-conversion/developer-messages"
-		);
+		const { trySendCodexDeveloperMessage } =
+			await import("@howaboua/pi-codex-conversion/developer-messages");
 		return trySendCodexDeveloperMessage;
 	} catch (error) {
 		if (

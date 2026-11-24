@@ -1,5 +1,30 @@
 # @howaboua/pi-github-watch
 
+## 0.0.9
+
+- GitHub Watch always uses compact watch help, including in standalone installs.
+
+## 0.0.8
+
+- Known Codex, Cursor Bugbot and CodeRabbit quota notices appear in the UI without waking the agent.
+- Shorter watch help clarifies target references, when watches stop and how to resume a paused watch.
+
+## 0.0.7
+
+- PR watches now notify when the head commit changes, even without a new comment or review.
+
+## 0.0.6
+
+- Return `OK` after cancelling all watches.
+
+## 0.0.5
+
+- Requires Pi 1.5 or newer.
+  - Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`.
+  - Feedback notices now frame replies and review resolution around the current task rather than prescribing a response.
+  - Watch schedules now display check times to the minute.
+  - Removed the TypeBox installation requirement.
+
 ## 0.0.4
 
 - - GPT mode uses note-style watch help.

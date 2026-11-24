@@ -5,6 +5,7 @@ import type { RealtimeInitialMessageItem } from "../context.ts";
 import type { CodexRealtimePeer } from "../conversation/peer.ts";
 import type { CodexRealtimeConversation } from "../conversation/session.ts";
 import type { CodexDictationSession } from "../dictation/session.ts";
+import type { VoiceAudioDiagnostics } from "../helper-protocol.ts";
 import { rewriteTaskDelegation } from "../task-delegation.ts";
 import type { RealtimeVoiceTurn } from "../turns.ts";
 
@@ -17,17 +18,16 @@ interface SessionLifecycle<T> {
 	onStatus(status: string): void;
 }
 
-interface RealtimeSessionLifecycle
-	extends SessionLifecycle<CodexRealtimeConversation> {
+interface RealtimeSessionLifecycle extends SessionLifecycle<CodexRealtimeConversation> {
 	onEndCall(session: CodexRealtimeConversation): void;
 	onDrop(session: CodexRealtimeConversation, error: Error): void;
 	onTurn(session: CodexRealtimeConversation, turn: RealtimeVoiceTurn): void;
 	onUserTranscript(transcript: string): void;
 	onTranscriptTail(transcript: string): void;
+	onAudioDiagnostics(diagnostics: VoiceAudioDiagnostics): void;
 }
 
-interface DictationSessionLifecycle
-	extends SessionLifecycle<CodexDictationSession> {
+interface DictationSessionLifecycle extends SessionLifecycle<CodexDictationSession> {
 	onTranscript(transcript: string): void;
 }
 
@@ -47,9 +47,8 @@ export async function startControllerConversation(options: {
 		await options.peer?.close();
 		return;
 	}
-	const { CodexRealtimeConversation } = await import(
-		"../conversation/session.ts"
-	);
+	const { CodexRealtimeConversation } =
+		await import("../conversation/session.ts");
 	if (!options.lifecycle.stillAuthorizing() || options.signal?.aborted) {
 		await options.peer?.close();
 		return;
@@ -73,13 +72,29 @@ export async function startControllerConversation(options: {
 			onTurn: (turn) => options.lifecycle.onTurn(session, turn),
 			onUserTranscript: options.lifecycle.onUserTranscript,
 			onTranscriptTail: options.lifecycle.onTranscriptTail,
-			rewriteDelegation: (turn, signal) =>
-				rewriteTaskDelegation(options.ctx, options.config.voice, turn, signal),
+			onAudioDiagnostics: options.lifecycle.onAudioDiagnostics,
+			rewriteDelegation: (turn, signal) => {
+				const model = options.ctx.model;
+				if (options.config.voice.model === "api-live-1.1" && !model)
+					throw new Error("Select a Pi model before delegating voice work.");
+				const voice =
+					options.config.voice.model === "api-live-1.1" && model
+						? {
+								...options.config.voice,
+								taskDelegationModel: `${model.provider}/${model.id}`,
+							}
+						: options.config.voice;
+				return rewriteTaskDelegation(options.ctx, voice, turn, signal);
+			},
 			onDelegationError: (error) =>
 				options.ctx.ui.notify(error.message, "error"),
 		},
 		realtimePeer,
-		options.config.voice.model !== "codex-live-1.1",
+		options.config.voice.model === "api-live-1.1"
+			? "api-live"
+			: options.config.voice.model === "codex-live-1.1"
+				? "codex"
+				: "realtime",
 	);
 	options.lifecycle.onCreated(session);
 	if (options.signal?.aborted) {

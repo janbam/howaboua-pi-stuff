@@ -1,12 +1,9 @@
-import {
-	type Static,
-	type TSchema,
-	validateToolArguments,
-} from "@earendil-works/pi-ai";
+import { validateToolArguments } from "@earendil-works/pi-ai";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { type Schema, type Static } from "@earendil-works/pi-schema";
 
 export type GrokToolResult =
 	| null
@@ -22,7 +19,7 @@ export interface GrokToolContext {
 	callId: string;
 }
 
-export interface GrokToolDefinition<T extends TSchema = TSchema> {
+export interface GrokToolDefinition<T extends Schema = Schema> {
 	name: string;
 	description: string;
 	parameters: T;
@@ -36,7 +33,7 @@ export interface GrokToolWireDefinition extends Record<string, unknown> {
 	type: "function";
 	name: string;
 	description: string;
-	parameters: TSchema;
+	parameters: Schema;
 }
 
 export interface GrokToolRegistry {
@@ -62,7 +59,7 @@ const RESERVED = new Set([
 ]);
 
 /** Register during extension loading. Pi removes this subscription on reload. */
-export function registerGrokTool<T extends TSchema>(
+export function registerGrokTool<T extends Schema>(
 	pi: ExtensionAPI,
 	tool: GrokToolDefinition<T>,
 ): () => void {

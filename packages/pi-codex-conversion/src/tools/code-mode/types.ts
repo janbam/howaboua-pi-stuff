@@ -2,6 +2,7 @@ import type {
 	AgentToolResult,
 	ExtensionContext,
 	ExtensionToolContext,
+	KeybindingHints,
 	ToolAnnotations,
 	ToolNamespace,
 } from "@earendil-works/pi-coding-agent";
@@ -40,16 +41,16 @@ export interface CustomToolDefinition extends CodeModeToolMetadata {
 	disabledReason?: string | undefined;
 }
 
-export interface ProgrammaticCodeModeToolDefinition
-	extends CodeModeToolMetadata {
+export interface ProgrammaticCodeModeToolDefinition extends CodeModeToolMetadata {
 	kind: "function" | "freeform";
 	textOutput?: "command" | "plain-command" | undefined;
 	blocking?: boolean | undefined;
 	isBlocking?(input: unknown): boolean;
+	/** For deferred tools: true enables availability notices, false omits catalogue listing. */
 	discoverWhenDeferred?: boolean | undefined;
 	/** Compact callable spine; full help remains in ALL_TOOLS. */
 	discoveryUsage?: string | undefined;
-	/** Help entries accept an empty call without performing an operation. Server summaries own MCP discovery. */
+	/** Help entries accept no argument or {} without performing an operation. Server summaries own MCP discovery. */
 	discovery?: "help" | "server" | undefined;
 	/** The nested input adapter accepts an omitted argument, independently of help-only discovery. */
 	inputOptional?: boolean | undefined;
@@ -96,7 +97,9 @@ export interface ToolExecutionContext {
 	completion?: CodeModeToolCompletion | undefined;
 	onUpdate?: ((result: AgentToolResult<unknown>) => void) | undefined;
 	captureResult?: ((result: RuntimeToolResult) => void) | undefined;
-	captureOpaqueResult?: ((output: OpaqueToolOutput, images: RuntimeContentItem[]) => void) | undefined;
+	captureOpaqueResult?:
+		| ((output: OpaqueToolOutput, images: RuntimeContentItem[]) => void)
+		| undefined;
 	opaqueScope?: string | undefined;
 	opaqueContextGeneration?: number | undefined;
 	opaqueContextValid?: (() => Promise<boolean>) | undefined;
@@ -110,7 +113,7 @@ export interface CodeModeRenderTheme {
 	bold(text: string): string;
 }
 
-export interface CodeModeNestedRenderContext {
+export interface CodeModeNestedRenderContext extends Partial<KeybindingHints> {
 	toolCallId?: string | undefined;
 	cwd?: string | undefined;
 	lastComponent?: Component | undefined;
@@ -148,6 +151,8 @@ export interface RuntimeToolTrace {
 	/** Completed Pi nested-call identities; may stay empty until in-flight calls return. */
 	nativeCallIds?: string[] | undefined;
 	result?: RuntimeToolResult | undefined;
+	/** Positions of result images stored in the same Pi message's outer content. */
+	emittedImages?: { contentIndex: number; imageIndex: number }[] | undefined;
 	error?: string | undefined;
 }
 
@@ -164,24 +169,20 @@ export interface OpaqueToolOutput {
 	encryptedOutput: string;
 }
 
-export interface NotebookMemoryUsage {
-	heapUsedBytes: number;
-	heapTotalBytes: number;
-	rssBytes: number;
-	externalBytes: number;
-	heapLimitBytes: number;
-}
-
 export type NotebookHook = "startup" | "tool_result";
 
 export type NotebookControlRequest =
 	| { action: "status"; query?: string | undefined }
 	| { action: "list"; query?: string | undefined }
 	| { action: "checkpoint" }
-	| { action: "hook"; name: string; event: NotebookHook | false }
-	| { action: "save"; name: string; names?: string[] }
+	| { action: "save"; name: string }
 	| { action: "load"; name: string }
-	| { action: "pin"; names: string[]; hook?: NotebookHook | false | undefined; checkpoint?: { snapshot: string; restore: string } | undefined }
+	| {
+			action: "pin";
+			names: string[];
+			hook?: NotebookHook | false | undefined;
+			checkpoint?: { snapshot: string; restore: string } | undefined;
+	  }
 	| { action: "unpin"; names: string[] }
 	| { action: "release"; names: string[] }
 	| { action: "prune"; query: string }
@@ -214,5 +215,4 @@ export type RuntimeResponse = (
 	execSessionIds?: number[] | undefined;
 	traces?: RuntimeToolTrace[] | undefined;
 	droppedTraceCount?: number | undefined;
-	notebookMemory?: NotebookMemoryUsage | undefined;
 };

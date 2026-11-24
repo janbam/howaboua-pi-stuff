@@ -1,5 +1,13 @@
-import { type Context, type Model, normalizeContext, uuidv7 } from "@earendil-works/pi-ai";
-import type { ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
+import {
+	type Context,
+	type Model,
+	normalizeContext,
+	uuidv7,
+} from "@earendil-works/pi-ai";
+import type {
+	ExtensionContext,
+	SessionEntry,
+} from "@earendil-works/pi-coding-agent";
 import {
 	DEFAULT_VOICE_CONTEXT_REASONING,
 	type VoiceContextReasoning,
@@ -53,14 +61,19 @@ export async function createNativeVoiceContextSummary(
 	);
 	if (!model)
 		throw new Error(
-			`Voice context model is unavailable: ${request.model.provider}/${request.model.modelId}`,
+			`Voice context model is unavailable: ${request.model.provider}/${request.model.modelId}. Choose another context model or turn voice context off in settings.`,
 		);
 	const provider = request.ctx.modelRegistry.getProvider(model.provider);
 	if (!provider)
 		throw new Error(`Voice context provider is unavailable: ${model.provider}`);
 	const auth = await request.ctx.modelRegistry.getApiKeyAndHeaders(model);
-	if (!auth.ok) throw new Error(auth.error);
-	const requestModel = auth.baseUrl ? { ...model, baseUrl: auth.baseUrl } : model;
+	if (!auth.ok)
+		throw new Error(
+			`Voice context could not use ${model.provider}/${model.id}: ${auth.error}. Choose another context model or turn voice context off in settings.`,
+		);
+	const requestModel = auth.baseUrl
+		? { ...model, baseUrl: auth.baseUrl }
+		: model;
 	assertCheckpointCompatibility(requestModel, details);
 
 	const liveTail = serializeLiveTailToResponsesInput({
@@ -107,7 +120,11 @@ export async function createNativeVoiceContextSummary(
 			};
 		},
 	} satisfies OpenAICodexStreamOptions;
-	for await (const event of provider.streamSimple(requestModel, normalizeContext(context), streamOptions)) {
+	for await (const event of provider.streamSimple(
+		requestModel,
+		normalizeContext(context),
+		streamOptions,
+	)) {
 		if (event.type === "done") completed = event.message;
 		if (event.type === "error")
 			throw new Error(event.error.errorMessage || "Voice context model failed");

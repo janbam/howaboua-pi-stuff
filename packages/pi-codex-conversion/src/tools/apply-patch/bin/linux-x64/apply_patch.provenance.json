@@ -3,14 +3,14 @@
   "source": {
     "repository": "openai/codex",
     "revision": "83086188ae0614bd882818ff1aa23f3194962012",
-    "inputsSha256": "ede72d11ead3f92ebec40931a5019d424875fdf446850f39ae19eee741b822b7"
+    "inputsSha256": "11962e16fcdb4f52c80aaa656c8e83e2d04f5689ef0809e2eb352b9fd668d154"
   },
   "binary": {
-    "sha256": "e8e587b773ca647cc4d03a31e481592f618b3088a97278a6c7cc60edc3b45893"
+    "sha256": "2d6b7f43a0167a9d800dde764768c6bad5ada6252e2d37f358e54328654418c2"
   },
   "build": {
     "target": "x86_64-unknown-linux-gnu",
-    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
-    "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)"
+    "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+    "cargo": "cargo 1.100.0 (3acc79c0c 2026-11-05)"
   }
 }

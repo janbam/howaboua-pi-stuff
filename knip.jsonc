@@ -2,51 +2,66 @@
 	"$schema": "https://unpkg.com/knip@6/schema.json",
 	"workspaces": {
 		"packages/pi-suggestions": {
-			"entry": ["changelog.ts"],
-			"project": ["*.ts", "src/**/*.ts"]
+			"project": ["*.ts", "src/**/*.ts"],
 		},
 		"packages/pi-observatory": {
-			"entry": ["index.ts", "changelog.ts", "src/server.ts", "src/index-worker.ts", "src/query-worker.ts", "scripts/*.mjs", "web/app.js", "web/tab-client.js", "tabs/*/collect.ts", "tabs/*/query.ts", "tabs/*/web/view.js"],
-			"project": ["*.ts", "src/**/*.ts", "scripts/*.mjs", "web/*.js", "tabs/**/*.ts", "tabs/**/web/*.js"]
-		},
-		"packages/pi-notes-compaction": {
-			"entry": ["changelog.ts", "src/history-search-worker.mjs"],
-			"project": ["*.ts", "src/**/*.ts", "src/**/*.mjs"]
-		},
-		"packages/pi-agent-board": {
-			"entry": ["src/viewer/server.ts", "src/viewer/web/app.js", "scripts/*.mjs"],
-			"project": ["src/**/*.ts", "src/viewer/web/*.js", "scripts/*.mjs"],
-			"ignoreUnresolved": ["^/vendor/(marked|purify)\\.js$"]
-		},
-		"packages/pi-chatgpt-sites": {
-			"entry": ["index.ts", "src/git-askpass.ts", "scripts/*.mjs"],
-			"project": ["src/**/*.ts", "scripts/*.mjs"]
-		},
-		"packages/pi-grok-realtime": {
-			"entry": ["changelog.ts", "examples/**/*.ts", "scripts/**/*.mjs"],
-			"project": ["*.ts", "src/**/*.ts", "examples/**/*.ts", "scripts/**/*.mjs"]
-		},
-		"packages/pi-auto-trees": {
-			"entry": ["changelog.ts"]
-		},
-		"packages/pi-ask": {
-			"entry": ["changelog.ts"]
-		},
-		"packages/pi-better-skills-tool": {
-			"entry": ["changelog.ts", "tests/**/*.test.ts"]
-		},
-		"packages/pi-browser": {
 			"entry": [
-				"changelog.ts",
-				"extension.ts",
 				"index.ts",
-				"remote-worker.ts",
-				"src/browser/voice-start.ts"
+				"src/server.ts",
+				"src/index-worker.ts",
+				"src/query-worker.ts",
+				"scripts/*.mjs",
+				"web/app.js",
+				"web/tab-client.js",
+				"tabs/*/collect.ts",
+				"tabs/*/query.ts",
+				"tabs/*/web/view.js",
 			],
 			"project": [
 				"*.ts",
-				"src/**/*.ts"
-			]
+				"src/**/*.ts",
+				"scripts/*.mjs",
+				"web/*.js",
+				"tabs/**/*.ts",
+				"tabs/**/web/*.js",
+			],
+		},
+		"packages/pi-agent-comms": {
+			"entry": [
+				"src/notes/history-search-worker.mjs",
+				"src/board/viewer/server.ts",
+				"src/board/viewer/web/app.js",
+				"scripts/*.mjs",
+			],
+			"project": [
+				"src/**/*.ts",
+				"src/**/*.mjs",
+				"src/board/viewer/web/*.js",
+				"scripts/*.mjs",
+			],
+			"ignoreUnresolved": ["^/vendor/(marked|purify)\\.js$"],
+		},
+		"packages/pi-chatgpt-sites": {
+			"entry": ["index.ts", "scripts/*.mjs"],
+			"project": ["src/**/*.ts", "scripts/*.mjs"],
+		},
+		"packages/pi-grok-realtime": {
+			"entry": ["src/host-settings.ts", "examples/**/*.ts", "scripts/**/*.mjs"],
+			"project": [
+				"*.ts",
+				"src/**/*.ts",
+				"examples/**/*.ts",
+				"scripts/**/*.mjs",
+			],
+		},
+		"packages/pi-browser": {
+			"entry": [
+				"extension.ts",
+				"index.ts",
+				"remote-worker.ts",
+				"src/browser/voice-start.ts",
+			],
+			"project": ["*.ts", "src/**/*.ts"],
 		},
 		"packages/pi-codex-conversion": {
 			"ignoreExportsUsedInFile": true,
@@ -61,41 +76,28 @@
 				"src/prompt-mode.ts",
 				"src/apply-patch-display.ts",
 				"src/realtime-voice.ts",
+				"src/host-settings.ts",
 				"src/codex-usage/analyse.ts",
 				"scripts/**/*.mjs",
 				"examples/custom-tools/**/*.mjs",
-				"tests/**/*.test.ts",
-				"changelog.ts"
 			],
 			"project": [
 				"src/**/*.ts",
 				"scripts/**/*.mjs",
 				"examples/custom-tools/**/*.mjs",
-				"tests/**/*.ts"
 			],
-			"ignoreDependencies": ["proxy-from-env"]
-		},
-		"packages/pi-codex-guardian": {
-			"entry": ["changelog.ts"]
-		},
-		"packages/pi-codex-imagegen": {
-			"entry": ["changelog.ts"]
-		},
-		"packages/pi-codex-web-run": {
-			"entry": ["changelog.ts"]
+			"ignoreDependencies": ["proxy-from-env"],
 		},
 		"packages/pi-gippity-control": {
-			"entry": ["changelog.ts"]
-		},
-		"packages/pi-github-watch": {
-			"entry": ["changelog.ts"]
+			"entry": ["src/host-settings.ts"],
 		},
 		"packages/pi-sandbox": {
-			"entry": ["changelog.ts", "src/daemon.ts"]
+			"entry": ["src/daemon.ts"],
 		},
 		"packages/pi-pet": {
 			"ignoreDependencies": ["@howaboua/pi-gippity-control"],
 			"entry": [
+				".htmlvalidate.cjs",
 				"src/authoring/prepare-cli.ts",
 				"src/authoring/rebuild-cli.ts",
 				"src/authoring/validate-cli.ts",
@@ -103,27 +105,38 @@
 				"src/desktop/preload.ts",
 				"src/web/main.ts",
 				"tests/*.test.ts",
-				"scripts/**/*.mjs"
+				"scripts/**/*.mjs",
 			],
-			"project": ["extensions/**/*.ts", "src/**/*.ts", "tests/**/*.ts", "scripts/**/*.mjs"],
+			"project": [
+				"extensions/**/*.ts",
+				"src/**/*.ts",
+				"tests/**/*.ts",
+				"scripts/**/*.mjs",
+			],
 			"ignoreIssues": {
-				"src/protocol/index.ts": ["exports", "types"]
-			}
+				"src/protocol/index.ts": ["exports", "types"],
+			},
 		},
 		"packages/pi-pulses": {
 			"entry": ["integration.ts"],
 			"project": ["*.ts", "src/**/*.ts"],
-			"ignoreDependencies": ["@howaboua/pi-codex-conversion"]
+			// Shepherdr supplies ABI types only; runtime discovery uses Pi events.
+			"ignoreDependencies": [
+				"@howaboua/pi-codex-conversion",
+				"@howaboua/pi-shepherdr",
+			],
 		},
 		"packages/pi-shepherdr": {
-			"entry": ["changelog.ts", "profiles/**/*.mjs", "src/core/context-relay.mjs", "src/core/focus-channel-helper.mjs"]
+			"entry": [
+				"profiles/**/*.mjs",
+				"src/core/helper-bootstrap.mjs",
+				"src/core/helper-context.mjs",
+				"src/core/helper-core.mjs",
+				"src/core/helper-lifetime.mjs",
+				"src/core/remote-service.mjs",
+				"src/core/focus-channel-helper.mjs",
+				"src/remote/shepherdr-context.mjs",
+			],
 		},
-		"packages/pi-smart-btw": {
-			"entry": ["changelog.ts"]
-		},
-		"packages/pi-subagent-review": {
-			"entry": ["changelog.ts"],
-			"project": ["src/**/*.ts"]
-		}
-	}
+	},
 }

@@ -1,31 +1,28 @@
 import { defineTool } from "@earendil-works/pi-coding-agent";
+import { compile, obj, opt, type Static, str } from "@earendil-works/pi-schema";
 import { Text } from "@earendil-works/pi-tui";
-import type { Static } from "typebox";
-import { Type } from "typebox";
-import {
-	defaultSessionSkillsDir,
-	defaultSkillsDir,
-	type LoadedSkill,
-	runSkills,
-} from "./catalog.js";
+import { type LoadedSkill, runSkills } from "./catalog.js";
 
-const SkillsParameters = Type.Object(
-	{
-		command: Type.Optional(Type.String({ description: "help, list or read" })),
-	},
-	{ additionalProperties: false },
-);
-
+const SkillsParameters = obj({
+	command: opt(str({ description: "help, list or read" })),
+});
+const checkParameters = compile(SkillsParameters).check;
 type SkillsParameters = Static<typeof SkillsParameters>;
 
 export interface SkillsToolOptions {
-	isGpt?(): boolean;
 	globalRoot?: string;
 	getLoadedSkills?(): readonly LoadedSkill[];
 }
 
 export function prepareSkillsCodeModeInput(input: unknown): SkillsParameters {
-	if (input === undefined) return {};
+	if (
+		input === undefined ||
+		(input !== null &&
+			typeof input === "object" &&
+			Object.getPrototypeOf(input) === Object.prototype &&
+			Reflect.ownKeys(input).length === 0)
+	)
+		return {};
 	if (typeof input !== "string")
 		throw new Error(
 			'Expected a string command or no arguments: tools.skills() for discovery, tools.skills("read <skill>") to read',
@@ -39,17 +36,19 @@ export function createSkillsTool(options: SkillsToolOptions = {}) {
 		label: "Skills",
 		description: "Load skill instructions and references",
 		promptGuidelines: [
-			"skills: List once at session start; read always-applicable and task-relevant skills before work",
+			"skills: List once/session start; before work read always-applicable+task-relevant skills",
 		],
 		parameters: SkillsParameters,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const { output, skillReads } = runSkills(
-				params.command ?? "",
-				options.globalRoot ?? defaultSkillsDir(),
-				defaultSessionSkillsDir(ctx.cwd),
-				options.getLoadedSkills?.() ?? [],
-				options.isGpt?.() ?? false,
-			);
+			if (!checkParameters(params))
+				throw new Error(
+					"Invalid arguments; call skills with no arguments for help",
+				);
+			const { output, skillReads } = runSkills(params.command ?? "", {
+				...(options.globalRoot ? { globalRoot: options.globalRoot } : {}),
+				projectCwd: ctx.isProjectTrusted() ? ctx.cwd : undefined,
+				loadedSkills: options.getLoadedSkills?.() ?? [],
+			});
 			return {
 				content: [{ type: "text", text: output }],
 				details: { skillReads },
@@ -58,7 +57,7 @@ export function createSkillsTool(options: SkillsToolOptions = {}) {
 		// Show the full command untruncated; Pi's fallback renders only the tool name.
 		// Args may still be streaming, so tolerate a missing command.
 		renderCall(args, theme) {
-			const command = typeof args?.command === "string" ? args.command : "";
+			const command = checkParameters(args) ? (args.command ?? "") : "";
 			return new Text(
 				`${theme.fg("toolTitle", theme.bold("skills"))} ${theme.fg("accent", command)}`,
 				0,

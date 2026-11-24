@@ -9,10 +9,11 @@ export async function startRealtimeOffer(
 	mode: "native" | "bridge",
 ): Promise<string> {
 	await helper.start(config.tools.customRustBinariesDir);
-	if (helper.protocolVersion !== 6) {
-		const actualVersion = helper.protocolVersion ?? "unknown";
+	if (helper.protocolVersion !== 8) {
 		await helper.close();
-		throw new Error(`Incompatible Codex voice helper protocol ${actualVersion}; expected 6`);
+		throw new Error(
+			"Voice could not start because its helper does not match this package. Rebuild or remove any voice-helper override in tools.customRustBinariesDir, or reinstall the package, then try starting voice again.",
+		);
 	}
 	const offer = Promise.withResolvers<string>();
 	const removeEvent = helper.onEvent((event) => {
@@ -21,19 +22,22 @@ export async function startRealtimeOffer(
 	});
 	const removeExit = helper.onExit((error) => offer.reject(error));
 	const timeout = setTimeout(
-		() =>
-			offer.reject(new Error("Codex voice helper did not create an offer")),
+		() => offer.reject(new Error("Codex voice helper did not create an offer")),
 		OFFER_TIMEOUT_MS,
 	);
-	helper.send(mode === "bridge" ? { type: "start_v3_bridge" } : {
-		type: "start_v3",
-		...(config.voice.inputDevice
-			? { microphone: config.voice.inputDevice }
-			: {}),
-		...(config.voice.outputDevice
-			? { speaker: config.voice.outputDevice }
-			: {}),
-	});
+	helper.send(
+		mode === "bridge"
+			? { type: "start_v3_bridge" }
+			: {
+					type: "start_v3",
+					...(config.voice.inputDevice
+						? { microphone: config.voice.inputDevice }
+						: {}),
+					...(config.voice.outputDevice
+						? { speaker: config.voice.outputDevice }
+						: {}),
+				},
+	);
 	return offer.promise.finally(() => {
 		clearTimeout(timeout);
 		removeEvent();

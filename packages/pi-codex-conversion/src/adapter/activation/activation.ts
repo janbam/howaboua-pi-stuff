@@ -1,16 +1,35 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { getCodeModeExtensionToolSnapshot } from "../../code-mode-extension-tools.ts";
 import { renderCodexStatus } from "../../ui/status.ts";
-import { ALL_CODEX_ADAPTER_TOOL_NAMES, isAdapterRuntime, resolveCodexRuntimePlanForState, type CodexRuntimePlan, type ExtrasRuntimePlan } from "./runtime-plan.ts";
+import {
+	ALL_CODEX_ADAPTER_TOOL_NAMES,
+	isAdapterRuntime,
+	resolveCodexRuntimePlanForState,
+	type CodexRuntimePlan,
+	type ExtrasRuntimePlan,
+} from "./runtime-plan.ts";
 import type { AdapterState } from "./state.ts";
-import { APPLY_PATCH_REPLACED_TOOL_NAMES, APPLY_PATCH_TOOL_NAME, DEFAULT_TOOL_NAMES, STATUS_KEY, buildExtraToolsOnlyStatusText } from "./tool-set.ts";
+import {
+	APPLY_PATCH_REPLACED_TOOL_NAMES,
+	APPLY_PATCH_TOOL_NAME,
+	DEFAULT_TOOL_NAMES,
+	STATUS_KEY,
+	buildExtraToolsOnlyStatusText,
+} from "./tool-set.ts";
 
-export function syncAdapter(pi: ExtensionAPI, ctx: ExtensionContext, state: AdapterState): CodexRuntimePlan {
+export function syncAdapter(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	state: AdapterState,
+): CodexRuntimePlan {
 	state.availableToolNames = pi.getAllTools().map((tool) => tool.name);
 	const plan = resolveCodexRuntimePlanForState(ctx, state);
 	reconcileExternalToolLoadout(state, pi.getActiveTools());
 	const extensionTools =
-		state.enabled || plan.kind === "extras" || isAdapterRuntime(plan)
+		state.enabled || plan.kind !== "inactive"
 			? getCodeModeExtensionToolSnapshot(pi, ctx, { refreshGates: true })
 			: { tools: [], allToolNames: [] };
 	if (plan.kind === "extras")
@@ -21,7 +40,9 @@ export function syncAdapter(pi: ExtensionAPI, ctx: ExtensionContext, state: Adap
 	return plan;
 }
 
-type ExtensionToolSnapshot = ReturnType<typeof getCodeModeExtensionToolSnapshot>;
+type ExtensionToolSnapshot = ReturnType<
+	typeof getCodeModeExtensionToolSnapshot
+>;
 
 function enableExtraTools(
 	pi: ExtensionAPI,
@@ -31,7 +52,8 @@ function enableExtraTools(
 	extensionTools: ExtensionToolSnapshot,
 ): void {
 	const changed = hasRuntimePlanChanged(state, plan);
-	const previousOwned = state.adapterOwnedToolNames ?? ALL_CODEX_ADAPTER_TOOL_NAMES;
+	const previousOwned =
+		state.adapterOwnedToolNames ?? ALL_CODEX_ADAPTER_TOOL_NAMES;
 	const owned = state.enabled
 		? mergeToolNames(previousOwned, plan.toolNames)
 		: plan.ownedToolNames;
@@ -45,31 +67,44 @@ function enableExtraTools(
 	);
 	// apply_patch supersedes Pi's edit and write; bash and read stay since extras bring no shell or read replacement.
 	// previousToolNames keeps the hidden builtins, so disabling or dropping apply_patch restores them.
-	const replaced = plan.toolNames.includes(APPLY_PATCH_TOOL_NAME) ? APPLY_PATCH_REPLACED_TOOL_NAMES : [];
+	const replaced = plan.toolNames.includes(APPLY_PATCH_TOOL_NAME)
+		? APPLY_PATCH_REPLACED_TOOL_NAMES
+		: [];
 	const tools = changed
 		? mergeToolNames(
-			restoreTools(
-				state.previousToolNames ?? DEFAULT_TOOL_NAMES,
-				projectedTools,
-				owned,
-			).filter((name) => !replaced.includes(name)),
-			plan.toolNames,
-		)
+				restoreTools(
+					state.previousToolNames ?? DEFAULT_TOOL_NAMES,
+					projectedTools,
+					owned,
+				).filter((name) => !replaced.includes(name)),
+				plan.toolNames,
+			)
 		: projectedTools;
 	state.adapterOwnedToolNames = plan.toolNames;
 	applyRuntimeTools(pi, state, plan, tools);
-	if (ctx.hasUI) ctx.ui.setStatus(STATUS_KEY, !state.config.voiceFeaturesOnly && state.config.ui.statusLine ? buildExtraToolsOnlyStatusText(plan.toolNames, ctx.ui.theme) : undefined);
+	if (ctx.hasUI)
+		ctx.ui.setStatus(
+			STATUS_KEY,
+			state.config.ui.statusLine
+				? buildExtraToolsOnlyStatusText(plan.toolNames, ctx.ui.theme)
+				: undefined,
+		);
 }
 
 function enableAdapter(
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
 	state: AdapterState,
-	plan: Extract<CodexRuntimePlan, { kind: "normal" | "code" | "notebook" | "ts" | "js" }>,
+	plan: Extract<CodexRuntimePlan, { kind: "normal" | "code" | "ts" | "vm" }>,
 	extensionTools: ExtensionToolSnapshot,
 ): void {
 	const changed = hasRuntimePlanChanged(state, plan);
-	const owned = state.enabled ? mergeToolNames(state.adapterOwnedToolNames ?? plan.ownedToolNames, plan.ownedToolNames) : plan.ownedToolNames;
+	const owned = state.enabled
+		? mergeToolNames(
+				state.adapterOwnedToolNames ?? plan.ownedToolNames,
+				plan.ownedToolNames,
+			)
+		: plan.ownedToolNames;
 	if (!state.enabled) {
 		state.previousToolNames = stripAdapterTools(pi.getActiveTools(), owned);
 		state.enabled = true;
@@ -81,9 +116,10 @@ function enableAdapter(
 	);
 	let tools = projectedTools;
 	if (changed) {
-		const activeTools = plan.kind === "normal"
-			? restoreTools(state.previousToolNames ?? [], projectedTools, owned)
-			: projectedTools;
+		const activeTools =
+			plan.kind === "normal"
+				? restoreTools(state.previousToolNames ?? [], projectedTools, owned)
+				: projectedTools;
 		tools = mergeAdapterTools(activeTools, plan.toolNames, owned);
 	}
 	state.adapterOwnedToolNames = plan.ownedToolNames;
@@ -99,7 +135,11 @@ function disableAdapter(
 	extensionTools: ExtensionToolSnapshot,
 ): void {
 	const owned = state.adapterOwnedToolNames ?? plan.ownedToolNames;
-	if (state.enabled || (!(plan.kind === "inactive" && plan.missingToolNames) && pi.getActiveTools().some((name) => owned.includes(name)))) {
+	if (
+		state.enabled ||
+		(!(plan.kind === "inactive" && plan.missingToolNames) &&
+			pi.getActiveTools().some((name) => owned.includes(name)))
+	) {
 		const currentTools = state.enabled
 			? reconcileExtensionToolProjection(
 					state,
@@ -108,7 +148,7 @@ function disableAdapter(
 				)
 			: pi.getActiveTools();
 		// Registration cleanup has no prior loadout to restore, even after an earlier activation.
-		const previous = state.enabled ? state.previousToolNames ?? [] : [];
+		const previous = state.enabled ? (state.previousToolNames ?? []) : [];
 		setActiveTools(pi, restoreTools(previous, currentTools, owned));
 	}
 	state.enabled = false;
@@ -118,10 +158,13 @@ function disableAdapter(
 	delete state.appliedRuntimeKind;
 	delete state.appliedRuntimeToolNames;
 	delete state.appliedActiveToolNames;
-	if (ctx.hasUI) ctx.ui.setStatus(STATUS_KEY,
-		plan.kind === "inactive" && plan.missingToolNames
-			? `Codex adapter off: unavailable tools (${plan.missingToolNames.join(", ")}); check tool allowlist`
-			: undefined);
+	if (ctx.hasUI)
+		ctx.ui.setStatus(
+			STATUS_KEY,
+			plan.kind === "inactive" && plan.missingToolNames
+				? `Codex adapter off: unavailable tools (${plan.missingToolNames.join(", ")}); check tool allowlist`
+				: undefined,
+		);
 }
 
 function reconcileExtensionToolProjection(
@@ -132,8 +175,9 @@ function reconcileExtensionToolProjection(
 	const previousTools = state.previousToolNames ?? [];
 	const managedNames = new Set(extensionTools.allToolNames);
 	const previousManagedNames = state.codeModeExtensionToolNames ?? [];
-	const previousActiveNames = state.activeCodeModeExtensionToolNames
-		?? previousManagedNames.filter((name) => previousTools.includes(name));
+	const previousActiveNames =
+		state.activeCodeModeExtensionToolNames ??
+		previousManagedNames.filter((name) => previousTools.includes(name));
 	const previousActiveNameSet = new Set(previousActiveNames);
 	const activeNames = [
 		...new Set(
@@ -150,10 +194,9 @@ function reconcileExtensionToolProjection(
 	for (const name of activeNames) {
 		if (
 			!state.previousToolNames.includes(name) &&
-			(
-				currentTools.includes(name) ||
-				(!previousActiveNameSet.has(name) && previousManagedNames.includes(name))
-			)
+			(currentTools.includes(name) ||
+				(!previousActiveNameSet.has(name) &&
+					previousManagedNames.includes(name)))
 		)
 			state.previousToolNames.push(name);
 	}
@@ -161,8 +204,8 @@ function reconcileExtensionToolProjection(
 	state.activeCodeModeExtensionToolNames = activeNames;
 	// Keep nested integrations active so Pi records their admission for resume/tree.
 	// The Code Mode loadout bridge hides their provider-facing declarations instead.
-	const exposedActiveNames = state.previousToolNames.filter(
-		(name) => activeNameSet.has(name),
+	const exposedActiveNames = state.previousToolNames.filter((name) =>
+		activeNameSet.has(name),
 	);
 	const exposedActiveNameSet = new Set(exposedActiveNames);
 	return mergeToolNames(
@@ -199,9 +242,11 @@ function hasRuntimePlanChanged(
 	state: AdapterState,
 	plan: CodexRuntimePlan,
 ): boolean {
-	return !state.enabled ||
+	return (
+		!state.enabled ||
 		state.appliedRuntimeKind !== plan.kind ||
-		!sameToolList(state.appliedRuntimeToolNames ?? [], plan.toolNames);
+		!sameToolList(state.appliedRuntimeToolNames ?? [], plan.toolNames)
+	);
 }
 
 function applyRuntimeTools(
@@ -213,10 +258,18 @@ function applyRuntimeTools(
 	// Retain the native loadout in previousToolNames, but never run two code
 	// orchestrators or expose a second discovery path beside ALL_TOOLS.
 	let projected = toolNames;
-	if (plan.kind === "code" || plan.kind === "notebook" || plan.kind === "ts" || plan.kind === "js") {
-		const nativeSearch = pi.getAllTools().some((tool) =>
-			tool.name === "tool_search" && tool.sourceInfo?.path === "builtin:tool-search");
-		projected = toolNames.filter((name) => name !== "codemode" && !(nativeSearch && name === "tool_search"));
+	if (plan.kind === "code" || plan.kind === "ts" || plan.kind === "vm") {
+		const nativeSearch = pi
+			.getAllTools()
+			.some(
+				(tool) =>
+					tool.name === "tool_search" &&
+					tool.sourceInfo?.path === "builtin:tool-search",
+			);
+		projected = toolNames.filter(
+			(name) =>
+				name !== "codemode" && !(nativeSearch && name === "tool_search"),
+		);
 	}
 	setActiveTools(pi, projected);
 	state.appliedRuntimeKind = plan.kind;
@@ -237,22 +290,40 @@ function setActiveTools(pi: ExtensionAPI, toolNames: string[]): void {
 		pi.setActiveTools(toolNames);
 }
 
-export function mergeAdapterTools(activeTools: string[], adapterTools: string[], adapterOwnedTools: string[] = adapterTools): string[] {
+export function mergeAdapterTools(
+	activeTools: string[],
+	adapterTools: string[],
+	adapterOwnedTools: string[] = adapterTools,
+): string[] {
 	const owned = new Set([...adapterTools, ...adapterOwnedTools]);
-	const preserved = activeTools.filter((name) => !DEFAULT_TOOL_NAMES.includes(name) && !owned.has(name));
+	const preserved = activeTools.filter(
+		(name) => !DEFAULT_TOOL_NAMES.includes(name) && !owned.has(name),
+	);
 	return [...adapterTools, ...preserved];
 }
 
-export function restoreTools(previousTools: string[], activeTools: string[], adapterOwnedTools: string[] = ALL_CODEX_ADAPTER_TOOL_NAMES): string[] {
+export function restoreTools(
+	previousTools: string[],
+	activeTools: string[],
+	adapterOwnedTools: string[] = ALL_CODEX_ADAPTER_TOOL_NAMES,
+): string[] {
 	const restored = stripAdapterTools(previousTools, adapterOwnedTools);
-	for (const name of activeTools) if (!adapterOwnedTools.includes(name) && !restored.includes(name)) restored.push(name);
+	for (const name of activeTools)
+		if (!adapterOwnedTools.includes(name) && !restored.includes(name))
+			restored.push(name);
 	return restored;
 }
 
-export function stripAdapterTools(toolNames: string[], adapterOwnedTools: string[] = ALL_CODEX_ADAPTER_TOOL_NAMES): string[] {
+export function stripAdapterTools(
+	toolNames: string[],
+	adapterOwnedTools: string[] = ALL_CODEX_ADAPTER_TOOL_NAMES,
+): string[] {
 	return toolNames.filter((name) => !adapterOwnedTools.includes(name));
 }
 
 function sameToolList(left: string[], right: string[]): boolean {
-	return left.length === right.length && left.every((name, index) => name === right[index]);
+	return (
+		left.length === right.length &&
+		left.every((name, index) => name === right[index])
+	);
 }

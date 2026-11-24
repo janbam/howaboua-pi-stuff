@@ -1,22 +1,72 @@
-import { createCodexRequestTiming, type CodexAttemptTiming } from "./diagnostic-timing.ts";
+import {
+	createCodexRequestTiming,
+	type CodexAttemptTiming,
+} from "./diagnostic-timing.ts";
 import { codexRequestDiagnostics } from "./diagnostic-request.ts";
-import { appendAssistantMessageDiagnostic, createAssistantMessageDiagnostic, createAssistantMessageEventStream, type Api, type AssistantMessage, type AssistantMessageEventStream, type Model, type TranscriptContext } from "@earendil-works/pi-ai";
-import { DEFAULT_STREAM_IDLE_TIMEOUT_MS, MAX_WEBSOCKET_RECOVERY_RETRIES } from "./constants.ts";
+import {
+	appendAssistantMessageDiagnostic,
+	createAssistantMessageDiagnostic,
+	createAssistantMessageEventStream,
+	type Api,
+	type AssistantMessage,
+	type AssistantMessageEventStream,
+	type Model,
+	type TranscriptContext,
+} from "@earendil-works/pi-ai";
+import {
+	DEFAULT_STREAM_IDLE_TIMEOUT_MS,
+	MAX_WEBSOCKET_RECOVERY_RETRIES,
+} from "./constants.ts";
 import { createErrorMessage, NonRetryableProviderError } from "./errors.ts";
 import { resolveCodexWebSocketUrl } from "./headers.ts";
-import { codexDiagnosticsFailure, noThrowCodexDiagnosticsSink } from "./diagnostic-failure.ts";
-import { normalizeTimeoutMs, parseSSE } from "./sse.ts";
-import { assertSuccessfulCodexOutput, CodexProtocolError, isCodexApiError, isRetryableCodexStreamError, processCodexResponsesStream } from "./stream-events.ts";
+import {
+	codexDiagnosticsFailure,
+	noThrowCodexDiagnosticsSink,
+} from "./diagnostic-failure.ts";
+import {
+	compressRequestBodyZstd,
+	normalizeTimeoutMs,
+	parseSSE,
+} from "./sse.ts";
+import { serializeCodexRequest } from "./request-serialization.ts";
+import {
+	assertSuccessfulCodexOutput,
+	CodexProtocolError,
+	isCodexApiError,
+	isRetryableCodexStreamError,
+	processCodexResponsesStream,
+} from "./stream-events.ts";
 import { withCodexTurnState } from "./turn-state.ts";
-import type { CodexDiagnosticsLane, CodexDiagnosticsSink, CodexProviderStreamOptions } from "./types.ts";
+import type {
+	CodexDiagnosticsLane,
+	CodexDiagnosticsSink,
+	CodexProviderStreamOptions,
+} from "./types.ts";
 import { createInitialAssistantMessage } from "./types.ts";
 import { finalizeUsage } from "./usage.ts";
-import { recordWebSocketSseFallback, validateWebSocketTimeoutOptions } from "./websocket.ts";
-import { isPermanentWebSocketError, isWebSocketConnectionError, isWebSocketMessageTooBigError, isWebSocketUnauthorizedError, isWebSocketUpgradeRequiredError } from "./websocket-connection.ts";
+import {
+	recordWebSocketSseFallback,
+	validateWebSocketTimeoutOptions,
+} from "./websocket.ts";
+import {
+	isPermanentWebSocketError,
+	isWebSocketConnectionError,
+	isWebSocketSizeClose,
+	isWebSocketUnauthorizedError,
+	isWebSocketUpgradeRequiredError,
+} from "./websocket-connection.ts";
 import { processWebSocketStream } from "./websocket-stream.ts";
+import { WebSocketMessageTooBigError } from "./websocket-size.ts";
 import { recordCanonicalSessionResponse } from "./session-continuity.ts";
-import { CodexRecoveryBudget, codexStreamMaxRetries, retryAdviceRecoveryBudgetError } from "./transport/recovery-budget.ts";
-import { CodexTransportRequest, type CodexTransportRecoveryDependencies } from "./transport/request.ts";
+import {
+	CodexRecoveryBudget,
+	codexStreamMaxRetries,
+	retryAdviceRecoveryBudgetError,
+} from "./transport/recovery-budget.ts";
+import {
+	CodexTransportRequest,
+	type CodexTransportRecoveryDependencies,
+} from "./transport/request.ts";
 import { openCodexSSE } from "./transport/sse-request.ts";
 
 function recordUsage(
@@ -46,21 +96,48 @@ export function createCodexTransportStream<TApi extends Api>(
 	const { preferredTransport, effectiveTransport, effectiveOptions } = request;
 	const stream = createAssistantMessageEventStream();
 
-	(async () => {
+	// The returned event stream owns completion and error delivery.
+	void (async () => {
 		let output = createInitialAssistantMessage(model);
 		const sink = noThrowCodexDiagnosticsSink(deps.getDiagnostics?.());
-		const requestTiming = createCodexRequestTiming(sink, undefined, effectiveOptions?.sessionId);
-		const diagnostics: CodexDiagnosticsSink | undefined = sink ? event => sink({ ...event, requestId: requestTiming.requestId,
-			sessionRequestOrdinal: requestTiming.sessionRequestOrdinal, requestCounterProcessId: requestTiming.requestCounterProcessId }) : undefined;
+		const requestTiming = createCodexRequestTiming(
+			sink,
+			undefined,
+			effectiveOptions?.sessionId,
+		);
+		const diagnostics: CodexDiagnosticsSink | undefined = sink
+			? (event) =>
+					sink({
+						...event,
+						requestId: requestTiming.requestId,
+						sessionRequestOrdinal: requestTiming.sessionRequestOrdinal,
+						requestCounterProcessId: requestTiming.requestCounterProcessId,
+					})
+			: undefined;
 		let diagnosticsFailureRecorded = false;
 		let recoveryForCleanup: CodexRecoveryBudget | undefined;
 		const recordFailure = (transport: "websocket" | "sse", error: unknown) => {
 			if (!diagnostics) return;
 			diagnosticsFailureRecorded = true;
-			diagnostics({ type: "failure", lane: request.lane, transport, failure: codexDiagnosticsFailure(error) });
+			diagnostics({
+				type: "failure",
+				lane: request.lane,
+				transport,
+				failure: codexDiagnosticsFailure(error),
+			});
 		};
 		try {
-			const { accountId, canonicalSessionToken, reconstructedBody, body, canonicalHistory, baseSseHeaders, websocketHeaders, bodyJson, websocketBody, sseBody, transport } = await request.prepare(diagnostics);
+			const {
+				accountId,
+				canonicalSessionToken,
+				reconstructedBody,
+				body,
+				canonicalHistory,
+				baseSseHeaders,
+				websocketHeaders,
+				websocketBody,
+				transport,
+			} = await request.prepare(diagnostics);
 			const lane = request.lane;
 			const streamMaxRetries = codexStreamMaxRetries(effectiveOptions);
 			const callerSignal = effectiveOptions.signal;
@@ -72,10 +149,15 @@ export function createCodexTransportStream<TApi extends Api>(
 				validateWebSocketTimeoutOptions(effectiveOptions);
 				for (let attempt = 0; attempt <= streamMaxRetries; attempt++) {
 					if (attempt > 0) output = createInitialAssistantMessage(model);
-					if (recovery.recoveryDeadlineAt !== undefined) websocketRecoveryRetries++;
+					if (recovery.recoveryDeadlineAt !== undefined)
+						websocketRecoveryRetries++;
 					const attemptSignal = recovery.signal();
-					const attemptOptions = attemptSignal ? { ...effectiveOptions, signal: attemptSignal.signal } : effectiveOptions;
+					const attemptOptions = attemptSignal
+						? { ...effectiveOptions, signal: attemptSignal.signal }
+						: effectiveOptions;
 					let websocketStarted = false;
+					let websocketOutputEmitted = false;
+					let requestBytes: number | undefined;
 					const timing = requestTiming.start(lane, "websocket");
 					try {
 						await processWebSocketStream(
@@ -83,7 +165,12 @@ export function createCodexTransportStream<TApi extends Api>(
 							withCodexTurnState(websocketBody, deps.turnState),
 							websocketHeaders,
 							output,
-							stream,
+							{
+								push(event) {
+									websocketOutputEmitted = true;
+									stream.push(event);
+								},
+							},
 							model,
 							accountId,
 							() => {
@@ -95,68 +182,147 @@ export function createCodexTransportStream<TApi extends Api>(
 							},
 							attemptOptions,
 							deps.turnState,
-							diagnostics ? { lane, attempt: timing.attempt, record: diagnostics, requestId: requestTiming.requestId, timing } : undefined,
+							diagnostics
+								? {
+										lane,
+										attempt: timing.attempt,
+										record: diagnostics,
+										requestId: requestTiming.requestId,
+										timing,
+									}
+								: undefined,
 							{
 								reconstructedRequestBody: reconstructedBody,
 								token: canonicalSessionToken,
 								decision: canonicalHistory,
 							},
+							(bytes) => {
+								requestBytes = bytes;
+							},
 						);
 						if (callerSignal?.aborted) throw new Error("Request was aborted");
-						if (recovery.expired()) throw recovery.deadlineError();
 						finalizeUsage(output);
 						assertSuccessfulCodexOutput(output);
+						if (recovery.expired()) throw recovery.deadlineError();
 						timing.finish("completed");
 						recordUsage(diagnostics, lane, "websocket", output);
-						await deps.recordUsage?.(accountId, { ...model, id: body.model }, output.usage);
-						stream.push({ type: "done", reason: output.stopReason, message: output });
+						await deps.recordUsage?.(
+							accountId,
+							{ ...model, id: body.model },
+							output.usage,
+						);
+						stream.push({
+							type: "done",
+							reason: output.stopReason,
+							message: output,
+						});
 						return;
 					} catch (error) {
 						timing.finish(callerSignal?.aborted ? "aborted" : "failed");
 						if (callerSignal?.aborted) throw error;
+						const messageTooBig = error instanceof WebSocketMessageTooBigError;
+						if (
+							websocketOutputEmitted &&
+							(messageTooBig || isWebSocketSizeClose(error))
+						) {
+							recordFailure("websocket", error);
+							throw new NonRetryableProviderError(
+								"Codex stopped after output began because a WebSocket message was too large. The response was not replayed.",
+							);
+						}
 						const upgradeRequired = isWebSocketUpgradeRequiredError(error);
-						const messageTooBig = isWebSocketMessageTooBigError(error);
 						const unauthorized = isWebSocketUnauthorizedError(error);
-						const retryableWebSocketError = (isCodexApiError(error) || !isPermanentWebSocketError(error)) && isRetryableCodexStreamError(error);
-						const connectionFailure = !isCodexApiError(error) && isWebSocketConnectionError(error);
+						const retryableWebSocketError =
+							(isCodexApiError(error) || !isPermanentWebSocketError(error)) &&
+							isRetryableCodexStreamError(error);
+						const connectionFailure =
+							!isCodexApiError(error) && isWebSocketConnectionError(error);
+						if (
+							recovery.expired() &&
+							!retryableWebSocketError &&
+							(error instanceof CodexProtocolError || isCodexApiError(error))
+						)
+							throw error;
+						if (!recovery.expired())
+							recovery.recordTransportFailure(
+								retryableWebSocketError &&
+									connectionFailure &&
+									!upgradeRequired &&
+									!messageTooBig &&
+									!unauthorized
+									? error
+									: undefined,
+							);
 						if (retryableWebSocketError && connectionFailure) {
 							recovery.start();
 						}
 						const retryPlan = recovery.planRetry(error, attempt + 1);
-						const websocketRecoveryExhausted = recovery.expired()
-							|| (retryableWebSocketError && (websocketRecoveryRetries >= MAX_WEBSOCKET_RECOVERY_RETRIES
-								|| (recovery.recoveryDeadlineAt !== undefined && retryPlan.delayMs !== undefined
-									&& retryPlan.delayMs >= recovery.recoveryDeadlineAt - performance.now())));
-						const overloadBudgetExhausted = retryPlan.overload && retryPlan.delayMs === undefined;
+						const websocketRecoveryExhausted =
+							recovery.expired() ||
+							(retryableWebSocketError &&
+								(websocketRecoveryRetries >= MAX_WEBSOCKET_RECOVERY_RETRIES ||
+									(recovery.recoveryDeadlineAt !== undefined &&
+										retryPlan.delayMs !== undefined &&
+										retryPlan.delayMs >=
+											recovery.recoveryDeadlineAt - performance.now())));
+						const overloadBudgetExhausted =
+							retryPlan.overload && retryPlan.delayMs === undefined;
 						const adviceBudgetExhausted = retryPlan.adviceBudgetExhausted;
-						const immediateFallback = !(error instanceof CodexProtocolError) && (upgradeRequired || messageTooBig || unauthorized);
-						const fallbackArmed = immediateFallback || websocketRecoveryExhausted
-							|| (retryableWebSocketError && (attempt >= streamMaxRetries || overloadBudgetExhausted));
+						const immediateFallback =
+							!(error instanceof CodexProtocolError) &&
+							(upgradeRequired || messageTooBig || unauthorized);
+						const fallbackArmed =
+							immediateFallback ||
+							websocketRecoveryExhausted ||
+							(retryableWebSocketError &&
+								(attempt >= streamMaxRetries || overloadBudgetExhausted));
 						appendAssistantMessageDiagnostic(
 							output,
-							createAssistantMessageDiagnostic(retryableWebSocketError ? "provider_transport_failure" : "provider_stream_failure", error, {
-								configuredTransport: preferredTransport,
-								...(fallbackArmed ? { fallbackTransport: "sse" } : {}),
-								eventsEmitted: websocketStarted,
-								phase: websocketStarted ? "after_message_stream_start" : "before_message_stream_start",
-								requestBytes: new TextEncoder().encode(bodyJson).byteLength,
-							}),
+							createAssistantMessageDiagnostic(
+								retryableWebSocketError
+									? "provider_transport_failure"
+									: "provider_stream_failure",
+								error,
+								{
+									configuredTransport: preferredTransport,
+									...(fallbackArmed ? { fallbackTransport: "sse" } : {}),
+									eventsEmitted: websocketStarted,
+									phase: websocketStarted
+										? "after_message_stream_start"
+										: "before_message_stream_start",
+									...(requestBytes === undefined ? {} : { requestBytes }),
+								},
+							),
 						);
-						if (!immediateFallback && !websocketRecoveryExhausted
-							&& retryableWebSocketError && attempt < streamMaxRetries && !overloadBudgetExhausted && !adviceBudgetExhausted) {
+						if (
+							!immediateFallback &&
+							!websocketRecoveryExhausted &&
+							retryableWebSocketError &&
+							attempt < streamMaxRetries &&
+							!overloadBudgetExhausted &&
+							!adviceBudgetExhausted
+						) {
 							diagnostics?.({
 								type: "retry",
 								lane,
 								transport: "websocket",
 								attempt: requestTiming.nextAttempt,
-								...(retryPlan.delayMs !== undefined ? { delayMs: retryPlan.delayMs } : {}),
+								...(retryPlan.delayMs !== undefined
+									? { delayMs: retryPlan.delayMs }
+									: {}),
 								failure: codexDiagnosticsFailure(error),
 							});
 							try {
-								await recovery.waitBeforeRetry(error, attempt + 1, retryPlan, true);
+								await recovery.waitBeforeRetry(
+									error,
+									attempt + 1,
+									retryPlan,
+									true,
+								);
 								continue;
 							} catch (waitError) {
-								if (callerSignal?.aborted || !recovery.expired()) throw waitError;
+								if (callerSignal?.aborted || !recovery.expired())
+									throw waitError;
 							}
 						}
 						if (adviceBudgetExhausted && retryableWebSocketError) {
@@ -164,18 +330,29 @@ export function createCodexTransportStream<TApi extends Api>(
 						}
 						if (!fallbackArmed && !recovery.expired()) {
 							recordFailure("websocket", error);
-							if (websocketStarted && !(error instanceof CodexProtocolError) && !isCodexApiError(error)) {
-								throw new NonRetryableProviderError("Codex stream ended after output began and cannot be continued from its incomplete response.");
+							if (
+								websocketStarted &&
+								!(error instanceof CodexProtocolError) &&
+								!isCodexApiError(error)
+							) {
+								throw new NonRetryableProviderError(
+									"Codex stream ended after output began and cannot be continued from its incomplete response.",
+								);
 							}
 							throw error;
 						}
 						// A transport switch is still another request to the same backend.
 						// SSE gets its own bounded window, never the exhausted WebSocket signal.
 						recovery.start(true);
-						if (!immediateFallback && (retryPlan.serverDirected || retryPlan.overload)) await recovery.waitBeforeRetry(error, attempt + 1, retryPlan);
+						if (
+							!immediateFallback &&
+							(retryPlan.serverDirected || retryPlan.overload)
+						)
+							await recovery.waitBeforeRetry(error, attempt + 1, retryPlan);
 						// A transient failure says nothing about the next request's connectivity.
 						// Only known WebSocket incompatibilities justify session-wide fallback.
-						if (upgradeRequired || messageTooBig) recordWebSocketSseFallback(effectiveOptions?.sessionId);
+						if (upgradeRequired || messageTooBig)
+							recordWebSocketSseFallback(effectiveOptions?.sessionId);
 						diagnostics?.({
 							type: "fallback",
 							lane,
@@ -197,13 +374,23 @@ export function createCodexTransportStream<TApi extends Api>(
 				}
 			}
 
-			const sseIdleTimeoutMs = normalizeTimeoutMs(effectiveOptions?.timeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS, "timeoutMs");
+			// Successful WebSocket requests never need a full HTTP payload.
+			const bodyJson = serializeCodexRequest(body);
+			const compressedBody = compressRequestBodyZstd(bodyJson);
+			if (compressedBody) baseSseHeaders.set("content-encoding", "zstd");
+			const sseBody = compressedBody ?? bodyJson;
+			const sseIdleTimeoutMs = normalizeTimeoutMs(
+				effectiveOptions?.timeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS,
+				"timeoutMs",
+			);
 			for (let attempt = 0; attempt <= streamMaxRetries; attempt++) {
 				if (attempt > 0) output = createInitialAssistantMessage(model);
 				if (callerSignal?.aborted) throw new Error("Request was aborted");
 				if (recovery.expired()) throw recovery.deadlineError();
 				const sseSignal = recovery.signal();
-				const sseOptions = sseSignal ? { ...effectiveOptions, signal: sseSignal.signal } : effectiveOptions;
+				const sseOptions = sseSignal
+					? { ...effectiveOptions, signal: sseSignal.signal }
+					: effectiveOptions;
 				const responseItems: unknown[] = [];
 				let timing: CodexAttemptTiming | undefined;
 				try {
@@ -217,25 +404,39 @@ export function createCodexTransportStream<TApi extends Api>(
 							sentInputItems: body.input.length,
 						});
 					}
-					const response = await openCodexSSE(model, sseBody, baseSseHeaders, sseOptions, deps.turnState, () => {
-						timing = requestTiming.start(lane, "sse");
-						diagnostics?.({
-							type: "request",
-							lane,
-							transport: "sse",
-							attempt: timing.attempt,
-							requestMetadata: codexRequestDiagnostics(body, baseSseHeaders),
-							fullInputItems: body.input.length,
-							sentInputItems: body.input.length,
-							model: body.model,
-							...(canonicalHistory ? { canonicalHistory } : {}),
-							...(effectiveOptions?.compactionDiagnostics ? { compaction: structuredClone(effectiveOptions.compactionDiagnostics) } : {}),
-						});
-						return timing;
-					}, () => {
-						recovery.start();
-						return recovery.recoveryController?.signal;
-					});
+					const response = await openCodexSSE(
+						model,
+						sseBody,
+						baseSseHeaders,
+						sseOptions,
+						deps.turnState,
+						() => {
+							timing = requestTiming.start(lane, "sse");
+							diagnostics?.({
+								type: "request",
+								lane,
+								transport: "sse",
+								attempt: timing.attempt,
+								requestMetadata: codexRequestDiagnostics(body, baseSseHeaders),
+								fullInputItems: body.input.length,
+								sentInputItems: body.input.length,
+								model: body.model,
+								...(canonicalHistory ? { canonicalHistory } : {}),
+								...(effectiveOptions?.compactionDiagnostics
+									? {
+											compaction: structuredClone(
+												effectiveOptions.compactionDiagnostics,
+											),
+										}
+									: {}),
+							});
+							return timing;
+						},
+						() => {
+							recovery.start();
+							return recovery.recoveryController?.signal;
+						},
+					);
 					if (!response.body) throw new Error("No response body");
 					if (!streamStarted) {
 						streamStarted = true;
@@ -251,62 +452,102 @@ export function createCodexTransportStream<TApi extends Api>(
 							onOutputItemDone: (item) => responseItems.push(item),
 							onProviderStreamEvent: (event, eventModel) => {
 								timing?.observe(event);
-								return effectiveOptions?.onProviderStreamEvent?.(event, eventModel);
+								return effectiveOptions?.onProviderStreamEvent?.(
+									event,
+									eventModel,
+								);
 							},
 						},
 					);
 					finalizeUsage(output);
 					if (callerSignal?.aborted) throw new Error("Request was aborted");
+					assertSuccessfulCodexOutput(output);
 					if (recovery.expired()) {
 						const error = recovery.deadlineError();
 						recordFailure("sse", error);
 						throw error;
 					}
-					assertSuccessfulCodexOutput(output);
 					timing?.finish("completed");
 					recordUsage(diagnostics, lane, "sse", output);
-					await deps.recordUsage?.(accountId, { ...model, id: body.model }, output.usage);
-					for (const item of responseItems) effectiveOptions?.onOutputItemDone?.(item);
-					if (!effectiveOptions?.canonicalCompaction) recordCanonicalSessionResponse({
-						sessionId: effectiveOptions?.sessionId,
-						url: resolveCodexWebSocketUrl(model.baseUrl),
+					await deps.recordUsage?.(
 						accountId,
-						requestBody: body,
-						reconstructedRequestBody: reconstructedBody,
-						responseItems,
-						token: canonicalSessionToken,
+						{ ...model, id: body.model },
+						output.usage,
+					);
+					for (const item of responseItems)
+						effectiveOptions?.onOutputItemDone?.(item);
+					if (!effectiveOptions?.canonicalCompaction)
+						recordCanonicalSessionResponse({
+							sessionId: effectiveOptions?.sessionId,
+							url: resolveCodexWebSocketUrl(model.baseUrl),
+							accountId,
+							requestBody: body,
+							reconstructedRequestBody: reconstructedBody,
+							responseItems,
+							token: canonicalSessionToken,
+						});
+					stream.push({
+						type: "done",
+						reason: output.stopReason,
+						message: output,
 					});
-					stream.push({ type: "done", reason: output.stopReason, message: output });
 					return;
 				} catch (error) {
 					timing?.finish(callerSignal?.aborted ? "aborted" : "failed");
 					if (callerSignal?.aborted) throw error;
+					const retryable =
+						!(error instanceof NonRetryableProviderError) &&
+						isRetryableCodexStreamError(error);
+					// Recovery-triggered aborts must not replace the failure that started it.
+					if (!recovery.expired() || isCodexApiError(error) || !retryable) {
+						recovery.recordTransportFailure(
+							retryable && !isCodexApiError(error) ? error : undefined,
+						);
+					}
 					if (recovery.expired()) {
+						// A completed terminal response wins over an older transport failure.
+						if (!retryable) throw error;
 						const deadlineError = recovery.deadlineError();
 						recordFailure("sse", deadlineError);
 						throw deadlineError;
 					}
-					const retryable = !(error instanceof NonRetryableProviderError) && isRetryableCodexStreamError(error);
 					if (retryable) recovery.start();
 					const retryPlan = recovery.planRetry(error, attempt + 1);
-					const overloadBudgetExhausted = retryPlan.overload && retryPlan.delayMs === undefined;
+					const overloadBudgetExhausted =
+						retryPlan.overload && retryPlan.delayMs === undefined;
 					const adviceBudgetExhausted = retryPlan.adviceBudgetExhausted;
 					appendAssistantMessageDiagnostic(
 						output,
-						createAssistantMessageDiagnostic(retryable ? "provider_transport_failure" : "provider_stream_failure", error, {
-							configuredTransport: preferredTransport,
-							eventsEmitted: output.content.length > 0,
-							phase: output.content.length > 0 ? "after_message_stream_start" : "before_message_stream_start",
-							requestBytes: new TextEncoder().encode(bodyJson).byteLength,
-						}),
+						createAssistantMessageDiagnostic(
+							retryable
+								? "provider_transport_failure"
+								: "provider_stream_failure",
+							error,
+							{
+								configuredTransport: preferredTransport,
+								eventsEmitted: output.content.length > 0,
+								phase:
+									output.content.length > 0
+										? "after_message_stream_start"
+										: "before_message_stream_start",
+								requestBytes: Buffer.byteLength(bodyJson, "utf8"),
+							},
+						),
 					);
-					if (retryable && attempt < streamMaxRetries && !overloadBudgetExhausted && !adviceBudgetExhausted) {
+					if (
+						retryable &&
+						attempt < streamMaxRetries &&
+						!overloadBudgetExhausted &&
+						!adviceBudgetExhausted
+					) {
 						diagnostics?.({
 							type: "retry",
 							lane,
 							transport: "sse",
 							attempt: requestTiming.nextAttempt,
-							...(retryPlan.delayMs !== undefined ? { delayMs: retryPlan.delayMs } : {}),
+							...(retryPlan.delayMs !== undefined
+								? { delayMs: retryPlan.delayMs }
+								: {}),
 							failure: codexDiagnosticsFailure(error),
 						});
 						await recovery.waitBeforeRetry(error, attempt + 1, retryPlan);
@@ -316,19 +557,34 @@ export function createCodexTransportStream<TApi extends Api>(
 						throw retryAdviceRecoveryBudgetError(error);
 					}
 					recordFailure("sse", error);
-					if (retryable) throw new NonRetryableProviderError("Codex stream retry budget was exhausted before a response completed.");
+					if (retryable)
+						throw recovery.exhaustedError(
+							"Codex stream retry budget was exhausted before a response completed.",
+						);
 					throw error;
 				} finally {
 					sseSignal?.cleanup();
 				}
 			}
 		} catch (error) {
-			if (!diagnosticsFailureRecorded) recordFailure(effectiveTransport === "sse" ? "sse" : "websocket", error);
-			output.content = output.content.filter(block => block.type !== "toolCall");
+			if (!diagnosticsFailureRecorded)
+				recordFailure(
+					effectiveTransport === "sse" ? "sse" : "websocket",
+					error,
+				);
+			output.content = output.content.filter(
+				(block) => block.type !== "toolCall",
+			);
 			stream.push({
 				type: "error",
-				reason: (effectiveOptions?.signal?.aborted ? "aborted" : "error") as "aborted" | "error",
-				error: createErrorMessage(output, error, !!effectiveOptions?.signal?.aborted),
+				reason: (effectiveOptions?.signal?.aborted ? "aborted" : "error") as
+					| "aborted"
+					| "error",
+				error: createErrorMessage(
+					output,
+					error,
+					!!effectiveOptions?.signal?.aborted,
+				),
 			});
 		} finally {
 			recoveryForCleanup?.close();

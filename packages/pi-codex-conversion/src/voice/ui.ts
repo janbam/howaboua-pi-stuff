@@ -121,13 +121,15 @@ export function registerCodexVoiceRenderer(pi: ExtensionAPI): void {
 					: typeof entry.data?.input === "string"
 						? entry.data.input
 						: "Voice delegation unavailable.";
-			const error = typeof entry.data?.error === "string"
-				? `\n\nNot sent: ${entry.data.error}`
-				: "";
+			const error =
+				typeof entry.data?.error === "string"
+					? `\n\nNot sent: ${entry.data.error}`
+					: "";
 			// Distinguish the backend's request from the rewritten message actually submitted to Pi.
-			const body = options.expanded && typeof entry.data?.originalDelegation === "string"
-				? `Original Codex Live delegation\n${entry.data.originalDelegation}\n\nMessage sent to Pi\n${input}`
-				: input;
+			const body =
+				options.expanded && typeof entry.data?.originalDelegation === "string"
+					? `Original Codex Live delegation\n${entry.data.originalDelegation}\n\nMessage sent to Pi\n${input}`
+					: input;
 			return voiceBox(
 				theme,
 				error ? "Voice delegation" : "Task for Pi",
@@ -155,10 +157,15 @@ export function registerCodexVoiceRenderer(pi: ExtensionAPI): void {
 						? "Starting context provided. Expand to inspect."
 						: "No voice context summary.";
 			// Include startup wrappers and refresh carryover without changing the summary preview.
-			const input = options.expanded && typeof entry.data?.input === "string"
-				? entry.data.input
-				: summary;
-			return voiceBox(theme, options.expanded ? "Sent to voice · Starting context" : "Voice Context", input);
+			const input =
+				options.expanded && typeof entry.data?.input === "string"
+					? entry.data.input
+					: summary;
+			return voiceBox(
+				theme,
+				options.expanded ? "Sent to voice · Starting context" : "Voice Context",
+				input,
+			);
 		},
 	);
 	pi.registerEntryRenderer<VoiceCommunicationDetails>(
@@ -166,8 +173,15 @@ export function registerCodexVoiceRenderer(pi: ExtensionAPI): void {
 		(entry, options, theme) => {
 			// Keep the transcript compact; expansion reveals the complete submitted text.
 			const recipient = entry.data?.recipient === "pi" ? "Pi" : "Codex Live";
-			const content = typeof entry.data?.content === "string" ? entry.data.content : "Context unavailable.";
-			return voiceBox(theme, `Sent to ${recipient}`, options.expanded ? content : "");
+			const content =
+				typeof entry.data?.content === "string"
+					? entry.data.content
+					: "Context unavailable.";
+			return voiceBox(
+				theme,
+				`Sent to ${recipient}`,
+				options.expanded ? content : "",
+			);
 		},
 	);
 	pi.registerMessageRenderer<CodexVoiceModeMessageDetails>(
@@ -177,7 +191,11 @@ export function registerCodexVoiceRenderer(pi: ExtensionAPI): void {
 				message.details?.mode === "dictation" ? "dictation" : "realtime";
 			const state = message.details?.state === "ended" ? "ended" : "started";
 			// Realtime lifecycle messages also deliver instructions to Pi; dictation entries do not.
-			if (mode === "realtime" && options.expanded && typeof message.content === "string")
+			if (
+				mode === "realtime" &&
+				options.expanded &&
+				typeof message.content === "string"
+			)
 				return voiceBox(theme, "Sent to Pi · Voice session", message.content);
 			return voiceBox(
 				theme,

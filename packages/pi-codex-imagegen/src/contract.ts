@@ -1,49 +1,108 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import {
+	arr,
+	bool,
+	int,
+	nul,
+	obj,
+	oneOf,
+	opt,
+	str,
+	union,
+} from "@earendil-works/pi-schema";
 import type { CodexToolProvider } from "./codex-runtime/types.js";
 
 export const IMAGE_GENERATION_TOOL_NAME = "imagegen";
+const SELECTOR_GUIDANCE =
+	"Stateless: omit selectors to generate. For edits, supply either local paths or a recent image count";
 export const IMAGE_GENERATION_UNSUPPORTED_MESSAGE =
 	"imagegen requires an image-capable OpenAI Codex-compatible Responses provider";
 export const IMAGE_MODEL = "gpt-image-2.5";
 export const MAX_EDIT_IMAGES = 5;
+const OUTPUT_FORMATS = ["png", "jpeg", "webp", "gif", "svg"] as const;
+export type OutputFormat = (typeof OUTPUT_FORMATS)[number];
 
-export const IMAGE_GENERATION_PARAMETERS = Type.Object(
-	{
-		prompt: Type.String({
-			description: "Include target aspect ratio and quality",
+const IMAGE_GENERATION_PROPERTIES = {
+	prompt: str({
+		description: "Include target aspect ratio and quality",
+	}),
+	output_format: opt({
+		...oneOf(OUTPUT_FORMATS, {
+			description: "GIF/SVG generation only",
 		}),
-		transparent_background: Type.Optional(
-			Type.Boolean({
-				description:
-					"True for transparency or cutouts; for edits preserve existing transparency unless asked to change it",
+		type: "string",
+	}),
+	size: opt(
+		str({
+			description: "auto or WIDTHxHEIGHT, multiples of 16",
+		}),
+	),
+	gif: opt(
+		obj(
+			{
+				frame_count: opt(int({ minimum: 2, maximum: 64 })),
+				frame_duration_ms: opt(
+					int({ minimum: 20, maximum: 2000, multipleOf: 10 }),
+				),
+			},
+			{
+				open: false,
+				description: "Animated GIF; omit controls for API defaults",
+			},
+		),
+	),
+	transparent_background: opt(
+		bool({
+			description:
+				"True for transparency or cutouts; for edits preserve existing transparency unless asked to change it",
+		}),
+	),
+	referenced_image_paths: opt(
+		union([
+			arr(str(), {
+				description: "Local edit targets",
+				maxItems: MAX_EDIT_IMAGES,
 			}),
-		),
-		referenced_image_paths: Type.Optional(
-			Type.Union([
-				Type.Array(Type.String(), {
-					description: "Local edit targets",
-					maxItems: MAX_EDIT_IMAGES,
-				}),
-				Type.Null(),
-			]),
-		),
-		num_last_images_to_include: Type.Optional(
-			Type.Union([
-				Type.Integer({
-					description: "Smallest recent edit count",
-					minimum: 1,
-					maximum: MAX_EDIT_IMAGES,
-				}),
-				Type.Null(),
-			]),
-		),
+			nul(),
+		]),
+	),
+	num_last_images_to_include: opt(
+		union([
+			int({
+				description: "Smallest recent edit count",
+				minimum: 1,
+				maximum: MAX_EDIT_IMAGES,
+			}),
+			nul(),
+		]),
+	),
+};
+
+const IMAGE_GENERATION_PARAMETERS = obj(IMAGE_GENERATION_PROPERTIES, {
+	description: SELECTOR_GUIDANCE,
+});
+const CODEX_IMAGE_GENERATION_PARAMETERS = obj(
+	{
+		prompt: IMAGE_GENERATION_PROPERTIES.prompt,
+		transparent_background: IMAGE_GENERATION_PROPERTIES.transparent_background,
+		referenced_image_paths: IMAGE_GENERATION_PROPERTIES.referenced_image_paths,
+		num_last_images_to_include:
+			IMAGE_GENERATION_PROPERTIES.num_last_images_to_include,
 	},
-	{ additionalProperties: false },
+	{ description: SELECTOR_GUIDANCE },
 );
+
+export function imageGenerationParameters(access: "codex" | "openai") {
+	return access === "openai"
+		? IMAGE_GENERATION_PARAMETERS
+		: CODEX_IMAGE_GENERATION_PARAMETERS;
+}
 
 export interface ImagegenArgs {
 	prompt: string;
+	output_format?: OutputFormat;
+	size?: string;
+	gif?: { frame_count?: number; frame_duration_ms?: number };
 	transparent_background?: boolean;
 	referenced_image_paths?: string[] | null;
 	num_last_images_to_include?: number | null;

@@ -1,5 +1,17 @@
 # @howaboua/pi-suggestions
 
+## 0.0.4
+
+- Disabled suggestions no longer scan conversation history. Enabled suggestions scan it once per request.
+- Suggestion requests no longer repeat the draft instruction on every turn.
+
+## 0.0.3
+
+- Requires Pi 1.5 or newer.
+  - Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`.
+  - Fixed ghost suggestions in empty editors with decorated prompt prefixes, including `pi-powerline-footer`.
+  - Added an off-by-default chat model fallback for unavailable or failed suggestion models.
+
 ## 0.0.2
 
 - Added editable Markdown instructions in /suggestions, with defaults favouring productive next actions and avoiding repeated requests or completed work.

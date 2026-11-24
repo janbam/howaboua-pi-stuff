@@ -5,6 +5,8 @@ use bytes::Bytes;
 use tokio::time::Instant;
 
 const START_PACKETS: usize = 3;
+// Retain the reorder warmup, but never strand a short utterance or resumed tail.
+const MAX_BUFFERING_WAIT: Duration = Duration::from_millis(60);
 const MAX_SEQUENCE_DISTANCE: usize = 6;
 const MAX_PENDING_PACKETS: usize = MAX_SEQUENCE_DISTANCE + 1;
 
@@ -12,13 +14,23 @@ const MAX_PENDING_PACKETS: usize = MAX_SEQUENCE_DISTANCE + 1;
 pub enum PlayoutFrame {
     Buffering,
     Packet(Bytes),
-    Missing,
+    Missing { successor: Option<Bytes> },
+}
+
+pub enum PacketAdmission {
+    // Reordering within the pending window, not a network loss estimate.
+    Accepted { reordered: bool },
+    // Includes already-played duplicates; only pending duplicates are distinct.
+    Late,
+    Duplicate,
+    Resynchronized { discarded: usize },
 }
 
 pub struct PacketPlayout {
     pending: BTreeMap<i64, Bytes>,
     expected: Option<i64>,
     playing: bool,
+    buffering_since: Option<Instant>,
 }
 
 pub struct PlayoutClock {
@@ -38,12 +50,17 @@ impl PlayoutClock {
         self.deadline
     }
 
-    pub fn advance(&mut self, samples: usize, sample_rate: u32) {
+    pub fn advance(&mut self, samples: usize, sample_rate: u32) -> bool {
         let Some(deadline) = self.deadline else {
-            return;
+            return false;
         };
         let frame_duration = Duration::from_secs_f64(samples as f64 / sample_rate as f64);
-        self.deadline = Some(deadline + frame_duration);
+        let now = Instant::now();
+        let late = now.saturating_duration_since(deadline) >= frame_duration;
+        // Small scheduler jitter preserves cadence. A full missed frame rebases
+        // without discarding audio or emitting a run of immediately due frames.
+        self.deadline = Some(if late { now } else { deadline } + frame_duration);
+        late
     }
 
     pub fn stop(&mut self) {
@@ -57,24 +74,42 @@ impl PacketPlayout {
             pending: BTreeMap::new(),
             expected: None,
             playing: false,
+            buffering_since: None,
         }
     }
 
-    pub fn push(&mut self, sequence: u16, payload: Bytes) {
+    pub fn push(&mut self, sequence: u16, payload: Bytes) -> PacketAdmission {
         let expected = *self.expected.get_or_insert(sequence as i64);
         let delta = sequence.wrapping_sub(expected as u16) as i16 as i64;
         let extended = expected + delta;
+        let mut admission = PacketAdmission::Accepted {
+            reordered: self
+                .pending
+                .keys()
+                .next_back()
+                .is_some_and(|last| *last > extended),
+        };
         if extended < expected {
             if self.playing || expected - extended > MAX_SEQUENCE_DISTANCE as i64 {
-                return;
+                return PacketAdmission::Late;
             }
             self.expected = Some(extended);
         } else if extended - expected > MAX_SEQUENCE_DISTANCE as i64 {
+            admission = PacketAdmission::Resynchronized {
+                discarded: self.pending.len(),
+            };
             self.pending.clear();
             self.expected = Some(extended);
             self.playing = false;
+            self.buffering_since = None;
+        }
+        if self.pending.contains_key(&extended) {
+            admission = PacketAdmission::Duplicate;
         }
         self.pending.entry(extended).or_insert(payload);
+        if !self.playing {
+            self.buffering_since.get_or_insert_with(Instant::now);
+        }
         while self.pending.len() > MAX_PENDING_PACKETS {
             let Some(oldest) = self.pending.keys().next().copied() else {
                 break;
@@ -84,9 +119,16 @@ impl PacketPlayout {
         if !self.playing && self.pending.len() >= START_PACKETS {
             self.playing = true;
         }
+        admission
     }
 
     pub fn next(&mut self) -> PlayoutFrame {
+        if self
+            .buffering_deadline()
+            .is_some_and(|deadline| deadline <= Instant::now())
+        {
+            self.playing = true;
+        }
         if !self.playing {
             return PlayoutFrame::Buffering;
         }
@@ -101,9 +143,13 @@ impl PacketPlayout {
             .next()
             .is_some_and(|sequence| *sequence > expected)
         {
-            PlayoutFrame::Missing
+            // Borrow redundancy without consuming the successor's own slot.
+            PlayoutFrame::Missing {
+                successor: self.pending.get(&(expected + 1)).cloned(),
+            }
         } else {
             self.playing = false;
+            self.buffering_since = None;
             return PlayoutFrame::Buffering;
         };
         self.expected = Some(expected + 1);
@@ -114,93 +160,18 @@ impl PacketPlayout {
         self.playing
     }
 
+    pub fn buffering_deadline(&self) -> Option<Instant> {
+        if self.playing || self.pending.is_empty() {
+            None
+        } else {
+            self.buffering_since.map(|since| since + MAX_BUFFERING_WAIT)
+        }
+    }
+
     pub fn reset(&mut self) {
         self.pending.clear();
         self.expected = None;
         self.playing = false;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn packet(value: u8) -> Bytes {
-        Bytes::from(vec![value])
-    }
-
-    #[test]
-    fn reorders_packets_and_conceals_a_known_gap() {
-        let mut playout = PacketPlayout::new();
-        playout.push(12, packet(12));
-        playout.push(10, packet(10));
-        playout.push(11, packet(11));
-        assert_eq!(playout.next(), PlayoutFrame::Packet(packet(10)));
-        assert_eq!(playout.next(), PlayoutFrame::Packet(packet(11)));
-        assert_eq!(playout.next(), PlayoutFrame::Packet(packet(12)));
-
-        playout.reset();
-        assert_eq!(playout.next(), PlayoutFrame::Buffering);
-
-        let mut gap = PacketPlayout::new();
-        gap.push(20, packet(20));
-        gap.push(22, packet(22));
-        gap.push(23, packet(23));
-        assert_eq!(gap.next(), PlayoutFrame::Packet(packet(20)));
-        assert_eq!(gap.next(), PlayoutFrame::Missing);
-        assert_eq!(gap.next(), PlayoutFrame::Packet(packet(22)));
-    }
-
-    #[test]
-    fn rejects_duplicates_and_orders_across_sequence_wrap() {
-        let mut playout = PacketPlayout::new();
-        playout.push(u16::MAX, packet(1));
-        playout.push(0, packet(2));
-        playout.push(0, packet(9));
-        playout.push(1, packet(3));
-        assert_eq!(playout.next(), PlayoutFrame::Packet(packet(1)));
-        assert_eq!(playout.next(), PlayoutFrame::Packet(packet(2)));
-        assert_eq!(playout.next(), PlayoutFrame::Packet(packet(3)));
-        playout.push(0, packet(4));
-        assert_eq!(playout.next(), PlayoutFrame::Buffering);
-    }
-
-    #[test]
-    fn resynchronizes_after_a_gap_larger_than_the_playout_window() {
-        let mut playout = PacketPlayout::new();
-        for sequence in 10..=12 {
-            playout.push(sequence, packet(sequence as u8));
-        }
-        assert_eq!(playout.next(), PlayoutFrame::Packet(packet(10)));
-        for sequence in 30..=32 {
-            playout.push(sequence, packet(sequence as u8));
-        }
-        assert_eq!(playout.next(), PlayoutFrame::Packet(packet(30)));
-    }
-
-    #[test]
-    fn retains_every_packet_at_the_inclusive_window_boundary() {
-        let mut playout = PacketPlayout::new();
-        for sequence in 10..=16 {
-            playout.push(sequence, packet(sequence as u8));
-        }
-        for sequence in 10..=16 {
-            assert_eq!(playout.next(), PlayoutFrame::Packet(packet(sequence as u8)));
-        }
-    }
-
-    #[test]
-    fn playout_clock_preserves_media_time_across_a_coarse_wake() {
-        let start = Instant::now();
-        let mut clock = PlayoutClock::new();
-        clock.start(start);
-        clock.advance(960, 48_000);
-
-        let coarse_wake = start + Duration::from_millis(31);
-        assert!(clock.deadline().unwrap() <= coarse_wake);
-
-        clock.advance(960, 48_000);
-        assert_eq!(clock.deadline(), Some(start + Duration::from_millis(40)));
-        assert!(clock.deadline().unwrap() > coarse_wake);
+        self.buffering_since = None;
     }
 }

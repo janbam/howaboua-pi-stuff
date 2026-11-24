@@ -31,7 +31,7 @@ await tools.skills(
 );
 ```
 
-The tool scans the standard global `skills/` directory under Pi's agent directory and `$PWD/.pi/skills/`, then overlays Pi's loaded catalog. Loaded skills win name collisions without hiding filesystem skills when Pi loads only part of the catalog, including `--no-skills` sessions. A loaded skill with `disable-model-invocation` removes that name. Skill reads include absolute package paths for later reference, script, or asset access.
+Better Skills overlays Pi's loaded catalog on the global `skills/` directory and trusted project skills, including when Pi loads only some skills. Loaded skills win name collisions, and a loaded skill with `disable-model-invocation` hides that name. The tool excludes the user's `~/.agents/skills/`. Skills from a trusted project's `.agents/skills/` appear under Session alongside `.pi/skills/`. Skill reads include absolute package paths for references, scripts, and assets.
 
 After the initial skill, an exact skill name adds that full skill package. Reference shorthand resolves within the most recently selected skill first, then across the visible catalog. A unique reference can come from another skill. An ambiguous global reference requires a skill-qualified name such as `communication/references/conversation` or an absolute source path. A read with only references still returns only the requested Markdown and source paths, without repeating the initial package inventory.
 

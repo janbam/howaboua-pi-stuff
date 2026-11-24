@@ -1,9 +1,10 @@
 import {
+	defineTool,
 	type ExtensionAPI,
 	withFileMutationQueue,
 } from "@earendil-works/pi-coding-agent";
+import { compile, obj, opt, str } from "@earendil-works/pi-schema";
 import { Text } from "@earendil-works/pi-tui";
-import { Type } from "typebox";
 import registerPackageChangelog from "../changelog.js";
 import {
 	appendProjectVentEntry,
@@ -12,13 +13,15 @@ import {
 } from "./storage.js";
 
 /** Model-facing input contract for one workflow-friction entry. */
-const ventSchema = Type.Object(
+const ventSchema = obj(
 	{
-		thought: Type.String(),
-		trigger: Type.Optional(Type.String({ description: "Short trigger label" })),
+		thought: str(),
+		trigger: opt(str({ description: "Short trigger label" })),
 	},
-	{ additionalProperties: false },
+	{ open: false },
 );
+/** Validate and narrow Pi's schema-erased tool arguments at the persistence boundary. */
+const checkVent = compile(ventSchema).check;
 
 /** Normalize user-provided entry text for Markdown storage. */
 function clean(input: string): string {
@@ -38,7 +41,7 @@ export default function ventExtension(pi: ExtensionAPI) {
 		);
 	});
 
-	pi.registerTool({
+	const tool = defineTool({
 		name: "vent",
 		label: "vent",
 		description: "Append workflow-friction feedback to VENT.md",
@@ -52,6 +55,7 @@ export default function ventExtension(pi: ExtensionAPI) {
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			// Normalize the entry before deriving any persisted or returned values.
+			if (!checkVent(params)) throw new Error("Invalid vent arguments");
 			const thought = clean(params.thought);
 			if (!thought) throw new Error("vent.thought must not be empty");
 
@@ -93,10 +97,15 @@ export default function ventExtension(pi: ExtensionAPI) {
 		},
 
 		renderCall(args, theme, _context) {
-			const trigger =
-				typeof args?.trigger === "string" && args.trigger.trim()
-					? ` ${args.trigger.trim()}`
+			// Pi can render streaming arguments before the complete schema is available.
+			const label =
+				args &&
+				typeof args === "object" &&
+				"trigger" in args &&
+				typeof args.trigger === "string"
+					? args.trigger.trim()
 					: "";
+			const trigger = label ? ` ${label}` : "";
 			return new Text(
 				`${theme.fg("toolTitle", theme.bold("vent"))}${theme.fg("muted", trigger)}`,
 				0,
@@ -119,4 +128,5 @@ export default function ventExtension(pi: ExtensionAPI) {
 			return new Text(text, 0, 0);
 		},
 	});
+	pi.registerTool(tool);
 }

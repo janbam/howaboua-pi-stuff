@@ -13,7 +13,9 @@ function flush(): Promise<void> {
 	return new Promise((resolve) => yieldImmediate(resolve));
 }
 
-function notifyContext(seen: Array<{ message: string; kind: string }>): ExtensionContext {
+function notifyContext(
+	seen: Array<{ message: string; kind: string }>,
+): ExtensionContext {
 	return {
 		ui: {
 			notify: (message: string, kind: string) => {
@@ -39,9 +41,12 @@ test("prepareCodeModeHost stays silent when a stale host download is aborted", a
 	// A mode switch aborts the previous host startup; the wrapped AbortError
 	// must not surface as a "Code Mode host setup failed" notification.
 	const abort = new DOMException("This operation was aborted", "AbortError");
-	const wrapped = new Error(`failed to download https://example.invalid/host.tar.gz: ${abort.message}`, {
-		cause: abort,
-	});
+	const wrapped = new Error(
+		`failed to download https://example.invalid/host.tar.gz: ${abort.message}`,
+		{
+			cause: abort,
+		},
+	);
 	const seen: Array<{ message: string; kind: string }> = [];
 	prepareCodeModeHost(registrationFor(wrapped), notifyContext(seen));
 	await flush();

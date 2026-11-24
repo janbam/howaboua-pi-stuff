@@ -1,4 +1,7 @@
-import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+	type ExtensionAPI,
+	type ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { readEffectiveCodexConversionConfig } from "../adapter/activation/config-store.ts";
 import { readSessionAdapterEnabled } from "../adapter/activation/session-state.ts";
 import { syncAdapter } from "../adapter/activation/activation.ts";
@@ -11,16 +14,19 @@ import { maybeWarnLocalCheckoutVersion } from "../adapter/local-version-warning.
 import { clearApplyPatchRenderState } from "../tools/apply-patch/tool.ts";
 import type { CodeModeRegistration } from "../tools/code-mode/tools.ts";
 import { initializeBashParser } from "../shell/bash.ts";
-import { appendNotebookTreeEpoch, notebookSessionIdentity } from "../tools/notebook-mode/session-identity.ts";
-import { activateNotebookCheckpoint, type NotebookCheckpointActivity } from "../tools/notebook-mode/checkpoint-activity.ts";
-import { resolveNotebookProject } from "../tools/notebook-mode/project-identity.ts";
-import { scheduleNotebookStorageMaintenance } from "../tools/notebook-mode/storage-retention.ts";
+import { appendNotebookTreeEpoch } from "../tools/code-mode/session-identity.ts";
 import type { CodexExtensionRuntime } from "./runtime.ts";
 import type { CodexToolRegistration } from "./tools.ts";
 import type { CodexUiController } from "./ui.ts";
 import { registerCodexDeveloperMessageBroker } from "../developer-messages.ts";
 import { registerCodexContextBriefingHost } from "../context-briefings.ts";
-import type { ExtensionHandler, SessionStartEvent, ModelSelectEvent, SessionTreeEvent, SessionShutdownEvent, } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionHandler,
+	SessionStartEvent,
+	ModelSelectEvent,
+	SessionTreeEvent,
+	SessionShutdownEvent,
+} from "@earendil-works/pi-coding-agent";
 
 /** Own session restoration, provider activation, navigation, and shutdown. */
 export function createCodexSessionLifecycle(
@@ -35,24 +41,14 @@ export function createCodexSessionLifecycle(
 ) {
 	const { state, tracker, sessions } = runtime;
 	let activeContext: ExtensionContext | undefined;
-	let checkpointActivity: NotebookCheckpointActivity | undefined;
-	let checkpointSession: string | undefined;
-	const trackCheckpoint = async (ctx: ExtensionContext): Promise<void> => {
-		checkpointActivity?.release();
-		checkpointSession = notebookSessionIdentity(ctx);
-		checkpointActivity = await activateNotebookCheckpoint({
-			project: resolveNotebookProject(ctx.cwd), session: checkpointSession, agentDir: getAgentDir(),
-		});
-		scheduleNotebookStorageMaintenance(getAgentDir());
-	};
 	let pendingExtensionToolRefresh = false;
 	const unregisterContextBriefingHost = registerCodexContextBriefingHost(pi);
 	const unregisterDeveloperMessageBroker = registerCodexDeveloperMessageBroker(
 		pi,
-		() => Boolean(
-			activeContext &&
-			supportsCodexDeveloperMessages(activeContext, state),
-		),
+		() =>
+			Boolean(
+				activeContext && supportsCodexDeveloperMessages(activeContext, state),
+			),
 	);
 	const unregisterExtensionToolRefresh = onCodeModeExtensionToolsRefresh(
 		pi,
@@ -67,7 +63,6 @@ export function createCodexSessionLifecycle(
 		},
 	);
 	const activate = (ctx: ExtensionContext): void => {
-		if (checkpointSession === notebookSessionIdentity(ctx)) checkpointActivity?.touch();
 		activeContext = ctx;
 		pendingExtensionToolRefresh = false;
 	};
@@ -80,7 +75,6 @@ export function createCodexSessionLifecycle(
 
 	return {
 		start: async (event, ctx) => {
-			await trackCheckpoint(ctx);
 			activate(ctx);
 			state.notebookStatusMessageId = undefined;
 			ui.invalidateUsageStatus();
@@ -95,6 +89,7 @@ export function createCodexSessionLifecycle(
 			state.config = readEffectiveCodexConversionConfig({
 				cwd: ctx.cwd,
 				projectTrusted: ctx.isProjectTrusted(),
+				upgradeSettings: true,
 			});
 			// Restore the session toggle before activating provider and tool overlays.
 			state.adapterEnabled = readSessionAdapterEnabled(ctx);
@@ -102,13 +97,6 @@ export function createCodexSessionLifecycle(
 			codexProvider.applyEnabled(state.adapterEnabled);
 			proxyProvider.applyConfig(state.config, ctx.modelRegistry);
 			state.promptSkills = extractPiPromptSkills(ctx.getSystemPrompt());
-			if (!state.adapterEnabled || state.config.voiceFeaturesOnly) {
-				clearApplyPatchRenderState();
-				ui.clearBackgroundWidget();
-				syncAdapter(pi, ctx, state);
-				await runtime.configureDiagnostics(ctx);
-				return;
-			}
 			sessions.setBaseEnv(runtime.execEnv());
 			tracker.clear();
 			clearApplyPatchRenderState();
@@ -117,7 +105,7 @@ export function createCodexSessionLifecycle(
 			// A fresh worker may adopt its family before its first prepared turn.
 			await runtime.configureDiagnostics(ctx);
 			void ui.refreshUsageStatus(ctx);
-			prepareCodeModeHost(codeMode, ctx);
+			if (state.adapterEnabled) prepareCodeModeHost(codeMode, ctx);
 			if (event.reason === "startup") await maybeWarnLocalCheckoutVersion(ctx);
 		},
 		modelSelected: async (_event, ctx) => {
@@ -128,32 +116,26 @@ export function createCodexSessionLifecycle(
 			state.cwd = ctx.cwd;
 			state.promptSkills = extractPiPromptSkills(ctx.getSystemPrompt());
 			proxyProvider.applyConfig(state.config, ctx.modelRegistry);
-			if (!state.adapterEnabled || state.config.voiceFeaturesOnly) {
-				ui.clearBackgroundWidget();
-				syncAdapter(pi, ctx, state);
-				await runtime.configureDiagnostics(ctx);
-				return;
-			}
 			syncAdapter(pi, ctx, state);
 			// Keep existing window state, but leave initial creation to the first prepared turn.
 			await runtime.configureDiagnostics(ctx);
 			void ui.refreshUsageStatus(ctx);
-			prepareCodeModeHost(codeMode, ctx);
+			if (state.adapterEnabled) prepareCodeModeHost(codeMode, ctx);
 		},
-		tree: async (_event, ctx) => {
+		tree: async (event, ctx) => {
 			activate(ctx);
-			const previousMode = state.executionMode;
+			if (event.oldLeafId !== event.newLeafId)
+				runtime.voice.resetVoiceBranch(ctx);
 			runtime.resetTransport(ctx.sessionManager.getSessionId());
 			// Internal rollover preserves the admission that requested it.
 			state.notebookStatusMessageId = undefined;
-			const stateful = previousMode === "notebook" || previousMode === "ts" || previousMode === "js"
-				|| state.executionMode === "notebook" || state.executionMode === "ts" || state.executionMode === "js";
+			const stateful =
+				state.executionMode === "ts" || state.executionMode === "vm";
 			if (stateful) appendNotebookTreeEpoch(pi);
 			await codeMode.shutdownHost();
 			// Reconcile every session-local adapter surface against the newly selected branch.
 			state.adapterEnabled = readSessionAdapterEnabled(ctx);
 			codexProvider.applyEnabled(state.adapterEnabled);
-			await trackCheckpoint(ctx);
 			proxyProvider.applyConfig(state.config, ctx.modelRegistry);
 			await runtime.configureDiagnostics(ctx);
 			ui.applyAdapterEnabled(ctx);
@@ -161,10 +143,12 @@ export function createCodexSessionLifecycle(
 			// Reapply the current mode while retaining non-adapter tool selections.
 			delete state.appliedRuntimeKind;
 			syncAdapter(pi, ctx, state);
-			if (state.adapterEnabled && !state.config.voiceFeaturesOnly)
-				prepareCodeModeHost(codeMode, ctx);
+			if (state.adapterEnabled) prepareCodeModeHost(codeMode, ctx);
 			if (stateful) {
-				ctx.ui.notify(`${state.executionMode === "js" ? "JS Notebook" : state.executionMode === "ts" ? "TS" : "Notebook"} state reset after conversation-tree navigation`, "info");
+				ctx.ui.notify(
+					`${state.executionMode === "vm" ? "VM Code bindings" : "TS Notebook state"} reset after conversation-tree navigation`,
+					"info",
+				);
 			}
 		},
 		shutdown: async (_event, ctx) => {
@@ -173,22 +157,26 @@ export function createCodexSessionLifecycle(
 			await runShutdownStep(failures, unregisterExtensionToolRefresh);
 			await runShutdownStep(failures, () => ui.invalidateBackgroundWidget());
 			await runShutdownStep(failures, () => runtime.lanVoice.stop(ctx));
-			await runShutdownStep(failures, () => runtime.voice.stop({ announce: true }));
+			await runShutdownStep(failures, () =>
+				runtime.voice.stop({ announce: true }),
+			);
 			// Voice's persisted end policy still needs the active developer broker.
 			activeContext = undefined;
 			await runShutdownStep(failures, unregisterDeveloperMessageBroker);
 			await runShutdownStep(failures, unregisterContextBriefingHost);
-			await runShutdownStep(failures, () => runtime.shutdownTransport(ctx.sessionManager.getSessionId()));
+			await runShutdownStep(failures, () =>
+				runtime.shutdownTransport(ctx.sessionManager.getSessionId()),
+			);
 			await runShutdownStep(failures, () => runtime.shutdownDiagnostics());
 			await runShutdownStep(failures, () => sessions.shutdown());
 			await runShutdownStep(failures, () => tools.shutdown());
 			await runShutdownStep(failures, () => proxyProvider.shutdown());
 			await runShutdownStep(failures, () => codexProvider.shutdown());
 			await runShutdownStep(failures, () => codeMode.shutdown());
-			await runShutdownStep(failures, () => checkpointActivity?.release());
 			state.developerMessages.clear();
 			if (failures.length === 1) throw failures[0];
-			if (failures.length > 1) throw new AggregateError(failures, "Codex extension shutdown failed");
+			if (failures.length > 1)
+				throw new AggregateError(failures, "Codex extension shutdown failed");
 		},
 		activate,
 		flushToolRefresh,
@@ -220,14 +208,23 @@ function isAbortError(error: unknown): boolean {
 }
 
 /** Prepare the host asynchronously, reporting setup failures but not cancellation. */
-export function prepareCodeModeHost(codeMode: CodeModeRegistration, ctx: ExtensionContext): void {
+export function prepareCodeModeHost(
+	codeMode: CodeModeRegistration,
+	ctx: ExtensionContext,
+): void {
 	void codeMode.prepare(ctx)?.catch((error: unknown) => {
 		if (isAbortError(error)) return;
-		ctx.ui.notify(`Code Mode host setup failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+		ctx.ui.notify(
+			`Code Mode host setup failed: ${error instanceof Error ? error.message : String(error)}`,
+			"error",
+		);
 	});
 }
 
-async function runShutdownStep(failures: unknown[], action: () => unknown): Promise<void> {
+async function runShutdownStep(
+	failures: unknown[],
+	action: () => unknown,
+): Promise<void> {
 	try {
 		await action();
 	} catch (error) {

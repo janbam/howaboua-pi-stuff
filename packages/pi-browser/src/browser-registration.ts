@@ -1,5 +1,5 @@
 import type { defineTool, ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { Type } from "typebox";
+import type { obj, opt, str } from "@earendil-works/pi-schema";
 import { BrowserRoutes, loadBrowserRoutes } from "./browser/routes.js";
 import { BrowserRuntime } from "./browser/runtime.js";
 import { registerBrowserCommand } from "./browser/settings.js";
@@ -13,7 +13,12 @@ const CODE_MODE_MODULE = `${CODE_MODE_PACKAGE}/code-mode`;
 
 export default async function browserExtension(
 	pi: ExtensionAPI,
-	sdk: { defineTool: typeof defineTool; Type: typeof Type },
+	sdk: {
+		defineTool: typeof defineTool;
+		obj: typeof obj;
+		opt: typeof opt;
+		str: typeof str;
+	},
 ): Promise<void> {
 	let configError: string | undefined;
 	let routes: BrowserRoutes;
@@ -24,31 +29,9 @@ export default async function browserExtension(
 		configError = error instanceof Error ? error.message : String(error);
 	}
 	const runtime = new BrowserRuntime(routes);
-	let gpt = false;
-	const tool = createBrowserTool(sdk, runtime, () => gpt);
+	const tool = createBrowserTool(sdk, runtime);
 	registerBrowserCommand(pi);
 	pi.registerTool(tool);
-	try {
-		const { registerGptPromptMode } = await import(
-			"@howaboua/pi-codex-conversion/prompt-mode"
-		);
-		registerGptPromptMode(pi, (active) => {
-			gpt = active;
-			return [tool];
-		});
-	} catch (error) {
-		if (
-			!(error instanceof Error) ||
-			!("code" in error) ||
-			![
-				"ERR_MODULE_NOT_FOUND",
-				"MODULE_NOT_FOUND",
-				"ERR_PACKAGE_PATH_NOT_EXPORTED",
-			].includes(String(error.code)) ||
-			!error.message.includes(CODE_MODE_PACKAGE)
-		)
-			throw error;
-	}
 
 	const registration = await registerBrowserInCodeMode(pi, tool, sdk);
 	pi.on("session_shutdown", async () => {
@@ -65,7 +48,7 @@ export default async function browserExtension(
 async function registerBrowserInCodeMode(
 	pi: ExtensionAPI,
 	tool: ReturnType<typeof createBrowserTool>,
-	sdk: { Type: typeof Type },
+	sdk: { obj: typeof obj },
 ) {
 	try {
 		const { adaptToolForCodeMode, registerCodeModeExtensionTools } =
@@ -74,7 +57,7 @@ async function registerBrowserInCodeMode(
 			adaptToolForCodeMode(
 				{
 					...tool,
-					parameters: sdk.Type.Object({}, { additionalProperties: true }),
+					parameters: sdk.obj({}, { open: true }),
 				},
 				{
 					prepareInput: prepareBrowserInput,

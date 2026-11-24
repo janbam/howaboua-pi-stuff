@@ -1,5 +1,4 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import registerPackageChangelog from "./changelog.js";
 import { isBlockingAgentsCall } from "./src/agents-contract.js";
 import { acceptFocus, registerFocusArrivals } from "./src/agents-focus.js";
 import { createAgentsTool } from "./src/agents-tool.js";
@@ -11,7 +10,6 @@ import { AgentFleet } from "./src/fleet/index.js";
 import { registerAgentEventRenderer } from "./src/messages/render.js";
 import { createPeerCommands } from "./src/peer-commands.js";
 import { registerPeerInbox } from "./src/peer-inbox.js";
-import { registerProfilePrompt } from "./src/profile-prompt.js";
 import { installAgentProfiles } from "./src/profiles.js";
 import { registerSharedAgentContext } from "./src/shared-context-host.js";
 import { registerVoiceFocusReceiver } from "./src/voice-handoff.js";
@@ -26,10 +24,13 @@ export default async function shepherdrExtension(
 ): Promise<void> {
 	registerCoreStatus(pi);
 	const workerRole = registerWorkerRole(pi);
-	registerPackageChangelog(pi);
 
 	await installAgentProfiles();
-	registerProfilePrompt(pi);
+	// Older saved launch commands may still carry this flag. It no longer pins a role.
+	pi.registerFlag("shepherdr-profile-prompt", {
+		type: "string",
+		description: "Legacy worker profile option (ignored)",
+	});
 	registerDeveloperDelivery(pi);
 	const peerCommands = createPeerCommands(pi);
 	const fleet = new AgentFleet(pi);
@@ -38,39 +39,19 @@ export default async function shepherdrExtension(
 		acceptFocus(pi, ctx, fleet, pane, request),
 	);
 	const board = AgentBoard.create(pi, fleet);
-	registerPeerInbox(pi, peerCommands, fleet, (ctx) => board.promptCatchup(ctx));
 	const sharedContext = await registerSharedAgentContext(pi, fleet, board);
-	registerWorkerService(pi, fleet, sharedContext, board, workerRole);
-	let promptMode: { readonly active: boolean } | undefined;
-	const tool = createAgentsTool(
-		fleet,
-		sharedContext,
-		board,
+	registerPeerInbox(
 		pi,
 		peerCommands,
-		() => promptMode?.active ?? false,
+		fleet,
+		(ctx) => board.promptCatchup(ctx),
+		(ctx) => workerRole.isWorker(ctx.sessionManager),
 	);
+	registerWorkerService(pi, fleet, sharedContext, board, workerRole);
+	const tool = createAgentsTool(fleet, sharedContext, board, pi, peerCommands);
 
 	registerAgentEventRenderer(pi);
 	pi.registerTool(tool);
-	try {
-		const { registerGptPromptMode } = await import(
-			"@howaboua/pi-codex-conversion/prompt-mode"
-		);
-		promptMode = registerGptPromptMode(pi, () => [tool]);
-	} catch (error) {
-		if (
-			!(error instanceof Error) ||
-			!("code" in error) ||
-			![
-				"ERR_MODULE_NOT_FOUND",
-				"MODULE_NOT_FOUND",
-				"ERR_PACKAGE_PATH_NOT_EXPORTED",
-			].includes(String(error.code)) ||
-			!error.message.includes(CODE_MODE_PACKAGE)
-		)
-			throw error;
-	}
 	await registerAgentsInCodeMode(pi, tool);
 	registerAgentController(pi, fleet, peerCommands);
 }

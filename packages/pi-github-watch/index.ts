@@ -1,10 +1,9 @@
-import { StringEnum } from "@earendil-works/pi-ai";
 import {
 	defineTool,
 	type ExtensionAPI,
 	type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import { compile, obj, oneOf, opt, str } from "@earendil-works/pi-schema";
 import { deliver, feedbackMessage } from "./src/delivery.js";
 import type { ThreadSnapshot } from "./src/feedback.js";
 import {
@@ -14,32 +13,42 @@ import {
 	type WorkflowRun,
 } from "./src/github.js";
 
+const WatchParameters = obj({
+	action: opt({
+		...oneOf(["help", "watch", "status", "cancel"]),
+		type: "string",
+	}),
+	thread: opt(str()),
+});
+const checkParameters = compile(WatchParameters).check;
 interface Watch {
 	thread: WatchTarget;
 	seen: ThreadSnapshot;
+	headSha: string | undefined;
 	controller: AbortController;
 	timer?: ReturnType<typeof setTimeout>;
 	state: "watching" | "paused";
 	nextCheck: number;
 }
-const MINUTE = 60_000;
+const MINUTE = 60000;
 const AUTOMATIC_UPDATES =
-	"Updates arrive automatically; no polling or gh run watch needed.";
+	"Updates arrive automatically; no polling or gh run watch needed";
 const HELP =
-	"watch: {action: 'watch', thread: issue/PR URL | Actions run URL | owner/repo#123 | issue/PR number}. status: {action: 'status'}. cancel: {action: 'cancel', thread: reference}; omit thread to cancel all offline. Issues/runs check each minute; PRs after 7 minutes, then each minute. PRs surface unresolved review threads, including existing ones; unchanged lists stay quiet. Conversation comments and standalone reviews notify on changes, excluding the authenticated gh user. PR watches stop on closure or merge; closed PRs return immediately. Issue watches continue. Runs follow the latest attempt, notify on completion and stop; completed runs return immediately. Metadata only, no comment bodies/logs. Cancellation/session switch/reload/shutdown ends watches. Failed checks pause; watch again to retry.";
-
-const GPT_HELP =
-	"watch:{action:'watch',thread:issue/PR URL|Actions run URL|owner/repo#123|issue/PR number}; status:{action:'status'}; cancel:{action:'cancel',thread:reference}, omit thread=cancel all offline. Issues/runs:1min; PRs:7min then1min. PR unresolved review threads INCLUDING existing; unchanged=quiet. Conversation comments/standalone reviews notify changes EXCEPT authenticated gh user. PR closed/merged→stop; already closed→return. Issues continue. Runs latest attempt; completed→notify+stop; already completed→return. Metadata ONLY; NO comment bodies/logs. Cancel/session switch/reload/shutdown→end watches. Check failure→pause; retry→watch again.";
+	"action: watch, status, cancel. watch thread: issue/PR or Actions run URL, owner/repo#123, number for current repo's GitHub origin. status→list; cancel same thread or omit→cancel all offline. Checks every minute; PR first after 7min. Conversation/standalone review changes except authenticated gh account's; PR head changes and existing/updated unresolved threads. PR closed/merged or latest run attempt complete→report+stop; already terminal→report immediately. Fetch bodies/logs separately. Session switch/reload/shutdown→end watches. Check failure→pause; watch again→resume";
 
 function runResult(
 	run: WorkflowRun,
-	snapshot: Extract<RunSnapshot, { completed: true }>,
+	snapshot: Extract<
+		RunSnapshot,
+		{
+			completed: true;
+		}
+	>,
 ): string {
 	return `GitHub Actions: ${snapshot.conclusion} (attempt ${snapshot.attempt}) at ${run.url}. Read details with gh run view ${run.number} --repo ${run.repo}.`;
 }
 
 export default async function (pi: ExtensionAPI) {
-	let promptMode: { readonly active: boolean } | undefined;
 	const watches = new Map<string, Watch>();
 	let generation = 0;
 	const clear = () => {
@@ -55,6 +64,7 @@ export default async function (pi: ExtensionAPI) {
 
 	function schedule(watch: Watch, ctx: ExtensionContext, delay: number) {
 		watch.nextCheck = Date.now() + delay;
+		// oxlint-disable-next-line typescript/no-misused-promises -- Polling catches failures, pauses the watch and reports recovery instructions.
 		watch.timer = setTimeout(async () => {
 			try {
 				const client = githubClient(pi, ctx.cwd, watch.controller.signal);
@@ -70,11 +80,14 @@ export default async function (pi: ExtensionAPI) {
 					schedule(watch, ctx, MINUTE);
 					return;
 				}
-				if (watch.thread.kind === "pr") {
-					const state = await client.prState(watch.thread);
+				const pr =
+					watch.thread.kind === "pr"
+						? await client.prSnapshot(watch.thread)
+						: undefined;
+				if (pr) {
 					if (watch.controller.signal.aborted) return;
-					if (state !== "open") {
-						deliver(pi, `${watch.thread.url}: PR ${state}. Watch stopped.`);
+					if (pr.state !== "open") {
+						deliver(pi, `${watch.thread.url}: PR ${pr.state}. Watch stopped.`);
 						watches.delete(watch.thread.url);
 						watch.controller.abort();
 						return;
@@ -85,13 +98,35 @@ export default async function (pi: ExtensionAPI) {
 				const conversationChanges = [...seen.conversation].filter(
 					([id, version]) => watch.seen.conversation.get(id) !== version,
 				).length;
+				if (
+					[...seen.userNotices].some(
+						([id, version]) => watch.seen.userNotices.get(id) !== version,
+					)
+				)
+					ctx.ui.notify(
+						`Automated review reached a usage limit: ${watch.thread.url}`,
+						"warning",
+					);
 				const reviewChanged = [...seen.unresolved].some(
 					([id, item]) =>
 						watch.seen.unresolved.get(id)?.version !== item.version,
 				);
-				if (conversationChanges || reviewChanged)
-					deliver(pi, feedbackMessage(watch.thread, seen, conversationChanges));
+				const headChange =
+					pr && watch.headSha && pr.headSha !== watch.headSha
+						? { before: watch.headSha, after: pr.headSha }
+						: undefined;
+				if (conversationChanges || reviewChanged || headChange)
+					deliver(
+						pi,
+						feedbackMessage(
+							watch.thread,
+							seen,
+							conversationChanges,
+							headChange,
+						),
+					);
 				watch.seen = seen;
+				watch.headSha = pr?.headSha;
 				schedule(watch, ctx, MINUTE);
 			} catch {
 				if (watch.controller.signal.aborted) return;
@@ -116,30 +151,25 @@ export default async function (pi: ExtensionAPI) {
 		name: "github_watch",
 		label: "GitHub watch",
 		description:
-			"Watch selected GitHub threads for comments or Actions runs for completion in this session",
-		parameters: Type.Object(
-			{
-				action: Type.Optional(
-					StringEnum(["help", "watch", "status", "cancel"]),
-				),
-				thread: Type.Optional(Type.String()),
-			},
-			{ additionalProperties: false },
-		),
+			"Watch GitHub feedback, PR commits or Actions completion in this session",
+		parameters: WatchParameters,
 		async execute(_id, args, signal, _update, ctx) {
+			if (!checkParameters(args))
+				throw new Error(
+					"Invalid arguments; call github_watch with no arguments for help",
+				);
 			const result = (text: string) => ({
 				content: [{ type: "text" as const, text }],
 				details: {},
 			});
 			const action = args.action ?? "help";
-			if (action === "help")
-				return result(promptMode?.active ? GPT_HELP : HELP);
+			if (action === "help") return result(HELP);
 			if (action === "status") {
 				if (!watches.size) return result("No active watches.");
 				const current = [...watches.values()];
 				const lines = current.map(
 					(w) =>
-						`${w.thread.url} ${w.state}${w.state === "watching" ? `; next check ${new Date(w.nextCheck).toISOString()}` : "; watch again to resume"}`,
+						`${w.thread.url} ${w.state}${w.state === "watching" ? `; next check ${new Date(w.nextCheck).toISOString().slice(0, 16)}Z` : "; watch again to resume"}`,
 				);
 				if (current.some((w) => w.state === "watching"))
 					lines.push(AUTOMATIC_UPDATES);
@@ -147,7 +177,7 @@ export default async function (pi: ExtensionAPI) {
 			}
 			if (action === "cancel" && !args.thread?.trim()) {
 				clear();
-				return result("All watches cancelled.");
+				return result("OK");
 			}
 			if (!args.thread?.trim())
 				throw new Error(
@@ -175,13 +205,14 @@ export default async function (pi: ExtensionAPI) {
 				return result(`${thread.url}: already watching. ${AUTOMATIC_UPDATES}`);
 			let seen: ThreadSnapshot = {
 				conversation: new Map(),
+				userNotices: new Map(),
 				unresolved: new Map(),
 			};
 			const runSnapshot =
 				thread.kind === "run" ? await client.runSnapshot(thread) : undefined;
-			const prState =
-				thread.kind === "pr" ? await client.prState(thread) : undefined;
-			if (thread.kind !== "run" && (!prState || prState === "open"))
+			const pr =
+				thread.kind === "pr" ? await client.prSnapshot(thread) : undefined;
+			if (thread.kind !== "run" && (!pr || pr.state === "open"))
 				seen = await client.snapshot(thread);
 			if (generation !== epoch || signal?.aborted)
 				throw new Error(
@@ -190,9 +221,9 @@ export default async function (pi: ExtensionAPI) {
 			if (watches.get(thread.url)?.state === "watching")
 				return result(`${thread.url}: already watching. ${AUTOMATIC_UPDATES}`);
 			previous?.controller.abort();
-			if (prState && prState !== "open") {
+			if (pr && pr.state !== "open") {
 				watches.delete(thread.url);
-				return result(`${thread.url}: PR ${prState}. No watch started.`);
+				return result(`${thread.url}: PR ${pr.state}. No watch started.`);
 			}
 			if (thread.kind === "run" && runSnapshot?.completed) {
 				watches.delete(thread.url);
@@ -200,9 +231,11 @@ export default async function (pi: ExtensionAPI) {
 			}
 			const watch: Watch = {
 				thread,
+				headSha: previous?.headSha ?? pr?.headSha,
 				// Baseline conversation history, but surface existing unresolved threads on the first check.
 				seen: previous?.seen ?? {
 					conversation: seen.conversation,
+					userNotices: seen.userNotices,
 					unresolved: new Map(),
 				},
 				controller: new AbortController(),
@@ -212,28 +245,11 @@ export default async function (pi: ExtensionAPI) {
 			watches.set(thread.url, watch);
 			schedule(watch, ctx, thread.kind === "pr" ? 7 * MINUTE : MINUTE);
 			return result(
-				`${thread.url}: watching; first check ${new Date(watch.nextCheck).toISOString()}. ${AUTOMATIC_UPDATES}`,
+				`${thread.url}: watching; first check ${new Date(watch.nextCheck).toISOString().slice(0, 16)}Z. ${AUTOMATIC_UPDATES}`,
 			);
 		},
 	});
 	pi.registerTool(tool);
-	try {
-		const module = "@howaboua/pi-codex-conversion/prompt-mode";
-		const { registerGptPromptMode } = await import(module);
-		promptMode = registerGptPromptMode(pi, () => [tool]);
-	} catch (error) {
-		if (
-			!(error instanceof Error) ||
-			!("code" in error) ||
-			![
-				"ERR_MODULE_NOT_FOUND",
-				"MODULE_NOT_FOUND",
-				"ERR_PACKAGE_PATH_NOT_EXPORTED",
-			].includes(String(error.code)) ||
-			!error.message.includes("@howaboua/pi-codex-conversion")
-		)
-			throw error;
-	}
 	try {
 		const { adaptToolForCodeMode, registerCodeModeExtensionTools } =
 			await import("@howaboua/pi-codex-conversion/code-mode");

@@ -1,4 +1,4 @@
-import { keyHint, type ToolRenderers } from "@earendil-works/pi-coding-agent";
+import type { ToolRenderers } from "@earendil-works/pi-coding-agent";
 import {
 	type Component,
 	Container,
@@ -15,6 +15,7 @@ export function renderResultFallback(
 	result: Parameters<NonNullable<ToolRenderers["renderResult"]>>[0],
 	expanded: boolean,
 	theme: RenderTheme,
+	keyHint: Parameters<CallRenderer>[2]["keyHint"],
 ): Component {
 	const output = result.content
 		.filter((block) => block.type === "text")
@@ -39,14 +40,14 @@ export function renderActivityHeading(
 	outputPad = 1,
 ): Component {
 	const container = new (class extends Container {
-		private cached: { width: number; lines: string[] } | undefined;
+		private cached: { width: number; lines: readonly string[] } | undefined;
 
 		override invalidate(): void {
 			this.cached = undefined;
 			super.invalidate();
 		}
 
-		override render(width: number): string[] {
+		override render(width: number): readonly string[] {
 			if (this.cached?.width !== width) {
 				this.cached = { width, lines: super.render(width) };
 			}

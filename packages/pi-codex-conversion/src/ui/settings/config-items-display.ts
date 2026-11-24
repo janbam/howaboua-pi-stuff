@@ -1,4 +1,7 @@
-import { type CodexConversionConfig, normalizeCompactToolsMode } from "../../adapter/activation/config.ts";
+import {
+	type CodexConversionConfig,
+	normalizeToolDetailsMode,
+} from "../../adapter/activation/config.ts";
 import { type ConfigSetting, setting, toggle } from "./config-items-shared.ts";
 
 export function buildDisplaySettings(
@@ -23,30 +26,25 @@ export function buildDisplaySettings(
 				...current,
 				ui: { ...current.ui, toolRenaming: enabled },
 			}),
-			"Rename tool calls to user-friendly names.",
+			"Use custom labels and output for shell commands and image viewing. Does not rename tools for the agent.",
 		),
 		setting(
 			{
-				id: "compactTools",
-				label: "Compact tool output",
-				currentValue: config.ui.compactTools,
-				values: ["off", "on", "minimal"],
-				description: "On hides collapsed patch diffs. Minimal also replaces Code / Notebook text previews with an expand hint; nested tool output stays visible.",
+				id: "toolDetails",
+				label: "Tool details",
+				currentValue: config.ui.toolDetails,
+				values: ["minimal", "compact", "preview"],
+				description:
+					"Folded view: Minimal keeps nested calls and patch summaries. Compact adds a cell output preview. Preview also shows source and patch diffs. Expand for full details in any mode.",
 			},
 			(value, current) => ({
 				...current,
-				ui: { ...current.ui, compactTools: normalizeCompactToolsMode(value) ?? current.ui.compactTools },
+				ui: {
+					...current.ui,
+					toolDetails:
+						normalizeToolDetailsMode(value) ?? current.ui.toolDetails,
+				},
 			}),
-		),
-		toggle(
-			"codeModeDetails",
-			"Code / Notebook details",
-			config.ui.codeModeDetails,
-			(enabled, current) => ({
-				...current,
-				ui: { ...current.ui, codeModeDetails: enabled },
-			}),
-			"Show Code and Notebook source previews and execution output alongside nested tool results.",
 		),
 		toggle(
 			"backgroundShellWidget",

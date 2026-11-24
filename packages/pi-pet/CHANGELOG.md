@@ -1,5 +1,20 @@
 # @howaboua/pi-pet
 
+## 0.1.10
+
+- The pet authoring guide clarifies reference-image requirements and when generation jobs are complete.
+
+## 0.1.9
+
+- The animated pet canvas now exposes its accessible name to screen readers.
+
+## 0.1.8
+
+- Requires Pi 1.5 or newer and Node.js 22.19 or newer.
+  - Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`.
+  - Pet-authoring metadata now records UTC timestamps to the minute.
+  - Removed the TypeBox installation requirement.
+
 ## 0.1.7
 
 - Added empty-call reaction discovery, including when no pet is connected, and deferred Code and Notebook help.

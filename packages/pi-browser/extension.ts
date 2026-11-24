@@ -1,5 +1,5 @@
 import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import { obj, opt, str } from "@earendil-works/pi-schema";
 import {
 	readBrowserRouteConfig,
 	readBrowserVoiceOnly,
@@ -28,8 +28,7 @@ export default async function browserExtension(
 		}
 		return;
 	}
-	const { default: registerBrowser } = await import(
-		"./src/browser-registration.js"
-	);
-	await registerBrowser(pi, { defineTool, Type });
+	const { default: registerBrowser } =
+		await import("./src/browser-registration.js");
+	await registerBrowser(pi, { defineTool, obj, opt, str });
 }

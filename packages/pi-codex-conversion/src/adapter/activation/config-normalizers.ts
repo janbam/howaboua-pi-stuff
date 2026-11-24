@@ -3,7 +3,7 @@ import {
 	type CacheDiagnosticsMode,
 	type CodexVerbosity,
 	type CompactionMethod,
-	type CompactToolsMode,
+	type ToolDetailsMode,
 	DEFAULT_VOICE_CONTEXT_REASONING,
 	type DictationShortcutMode,
 	LUNA_CACHE_KEEPALIVE_MINUTES_OPTIONS,
@@ -23,23 +23,38 @@ export function normalizeAllProvidersMode(
 ): AllProvidersMode | undefined {
 	if (value === true) return "on";
 	if (value === false) return "off";
-	return value === "off" || value === "on" || value === "extras" || value === "codex-plus-extras"
+	return value === "off" ||
+		value === "on" ||
+		value === "extras" ||
+		value === "codex-plus-extras"
 		? value
 		: undefined;
 }
 
-export function normalizeCompactToolsMode(
+export function normalizeToolDetailsMode(
 	value: unknown,
-): CompactToolsMode | undefined {
-	if (value === true) return "on";
-	if (value === false) return "off";
-	return value === "off" || value === "on" || value === "minimal"
+): ToolDetailsMode | undefined {
+	return value === "minimal" || value === "compact" || value === "preview"
 		? value
 		: undefined;
 }
 
-export function normalizeCompactionMethod(value: unknown): CompactionMethod | undefined {
-	return value === "pi" || value === "v2" || value === "both" ? value : undefined;
+export function resolveLegacyToolDetails(
+	compact: unknown,
+	details: unknown,
+): ToolDetailsMode {
+	if (compact === "minimal") return "minimal";
+	if (details === true && compact !== "on" && compact !== true)
+		return "preview";
+	return "compact";
+}
+
+export function normalizeCompactionMethod(
+	value: unknown,
+): CompactionMethod | undefined {
+	return value === "pi" || value === "v2" || value === "both"
+		? value
+		: undefined;
 }
 
 export function normalizeCodexVerbosity(

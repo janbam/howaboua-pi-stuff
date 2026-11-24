@@ -1,5 +1,9 @@
 import { dirname } from "node:path";
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionCommandContext,
+	ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import type { CodexConversionConfig } from "../../adapter/activation/config.ts";
 import { FAST_MODE_FAMILIES } from "../../adapter/activation/config-contract.ts";
 import { allModelsFastModeState } from "../../adapter/activation/fast-mode.ts";
@@ -23,7 +27,11 @@ import type { AdapterState } from "../../adapter/activation/state.ts";
 import type { CodexVoiceController } from "../../voice/controller.ts";
 import { createCodexVoiceControls } from "../../voice/controls.ts";
 import type { CodexLanVoiceServerController } from "../../voice/lan/controller.ts";
-import { ROUTABLE_SETTINGS_TABS, parseSettingsTab, type SettingsTab } from "./tabs.ts";
+import {
+	ROUTABLE_SETTINGS_TABS,
+	parseSettingsTab,
+	type SettingsTab,
+} from "./tabs.ts";
 import { hasRealtimeWebSearch } from "../../voice/realtime-web-search.ts";
 import { openCodexSettingsScreen } from "./screen.ts";
 import { COMPACTION_METHOD_LABELS } from "./config-items-context.ts";
@@ -32,20 +40,45 @@ import { startUsageAnalysis } from "../../codex-usage/report.ts";
 import { isStandardCodexSubscriptionModel } from "../../adapter/prompt/codex-model.ts";
 import { NONSTANDARD_CODEX_USAGE_WARNING } from "../../codex-usage/format.ts";
 
-const VOICE_ACTIONS = ["voice realtime", "voice mute", "voice dictation", "voice stop", "voice server", "voice server ensure", "voice server status", "voice server connect", "voice setup"] as const;
-const CODEX_COMMAND_COMPLETIONS = [...ROUTABLE_SETTINGS_TABS.map(({ id }) => id), ...VOICE_ACTIONS, "usage analyse"];
-const CODEX_USAGE = "Usage: /codex [context|tools|openai|display|voice [realtime|mute|dictation|stop|server [ensure|status [UUIDv4]|connect <browser-route> <UUIDv4> [url]]|setup]|usage [analyse]|about]";
+const VOICE_ACTIONS = [
+	"voice realtime",
+	"voice mute",
+	"voice dictation",
+	"voice stop",
+	"voice server",
+	"voice server ensure",
+	"voice server status",
+	"voice server connect",
+	"voice setup",
+] as const;
+const CODEX_COMMAND_COMPLETIONS = [
+	...ROUTABLE_SETTINGS_TABS.map(({ id }) => id),
+	...VOICE_ACTIONS,
+	"usage analyse",
+];
+const CODEX_USAGE =
+	"Usage: /codex [context|tools|openai|display|voice [realtime|mute|dictation|stop|server [ensure|status [UUIDv4]|connect <browser-route> <UUIDv4> [url]]|setup]|usage [analyse]|about]";
 
 export function registerCodexCommand(
 	pi: ExtensionAPI,
 	state: AdapterState,
 	voice: CodexVoiceController,
 	lanVoice: CodexLanVoiceServerController,
-	onConfigApplied?: (config: CodexConversionConfig, ctx: ExtensionContext, previousConfig: CodexConversionConfig) => void,
-	onAdapterEnabledChanged?: (enabled: boolean, ctx: ExtensionContext, previousEnabled: boolean) => void,
+	onConfigApplied?: (
+		config: CodexConversionConfig,
+		ctx: ExtensionContext,
+		previousConfig: CodexConversionConfig,
+	) => void,
+	onAdapterEnabledChanged?: (
+		enabled: boolean,
+		ctx: ExtensionContext,
+		previousEnabled: boolean,
+	) => void,
 ): void {
 	let pendingApplication: object | undefined;
-	const cancelPendingApplication = () => { pendingApplication = undefined; };
+	const cancelPendingApplication = () => {
+		pendingApplication = undefined;
+	};
 	pi.on("session_start", cancelPendingApplication);
 	pi.on("session_shutdown", cancelPendingApplication);
 
@@ -71,7 +104,10 @@ export function registerCodexCommand(
 	}
 
 	function reportApplicationError(ctx: ExtensionContext, error: unknown): void {
-		ctx.ui.notify(`Could not apply saved settings: ${error instanceof Error ? error.message : String(error)}; reload to retry.`, "error");
+		ctx.ui.notify(
+			`Could not apply saved settings: ${error instanceof Error ? error.message : String(error)}; reload to retry.`,
+			"error",
+		);
 	}
 
 	function applyEffectiveConfig(ctx: ExtensionCommandContext): void {
@@ -80,8 +116,11 @@ export function registerCodexCommand(
 			applySavedConfig(ctx);
 			return;
 		}
-		const pending = pendingApplication = {};
-		ctx.ui.notify("Settings saved; changes will apply when the current run settles.", "info");
+		const pending = (pendingApplication = {});
+		ctx.ui.notify(
+			"Settings saved; changes will apply when the current run settles.",
+			"info",
+		);
 		// Wait past settled handlers that can start successors, and past manual compaction.
 		void (async () => {
 			try {
@@ -103,75 +142,124 @@ export function registerCodexCommand(
 		scope: CodexConversionConfigScope,
 		nextConfig: CodexConversionConfig,
 	): boolean {
-		const path = scope === "folder"
-			? getProjectCodexConversionConfigPath(ctx.cwd)
-			: getCodexConversionConfigPath();
-		const writeResult = writeCodexConversionConfig(nextConfig, path, scope === "folder");
+		const path =
+			scope === "folder"
+				? getProjectCodexConversionConfigPath(ctx.cwd)
+				: getCodexConversionConfigPath();
+		const writeResult = writeCodexConversionConfig(
+			nextConfig,
+			path,
+			scope === "folder",
+		);
 		if (!writeResult.ok) {
-			ctx.ui.notify(`Failed to save Codex settings: ${writeResult.error}`, "error");
+			ctx.ui.notify(
+				`Failed to save Codex settings: ${writeResult.error}`,
+				"error",
+			);
 			return false;
 		}
-		if (writeResult.warning) ctx.ui.notify(writeResult.warning, "warning");
 		applyEffectiveConfig(ctx);
 		return true;
 	}
 
-	const voiceControls = createCodexVoiceControls({ pi, state, voice, lanVoice });
+	const voiceControls = createCodexVoiceControls({
+		pi,
+		state,
+		voice,
+		lanVoice,
+	});
 
-	async function openSettings(ctx: ExtensionCommandContext, tab: SettingsTab): Promise<void> {
+	async function openSettings(
+		ctx: ExtensionCommandContext,
+		tab: SettingsTab,
+	): Promise<void> {
 		if (!ctx.hasUI) {
 			if (tab === "usage") {
 				const [{ fetchCodexUsage }, { formatCodexUsage }] = await Promise.all([
 					import("../../codex-usage/client.ts"),
 					import("../../codex-usage/format.ts"),
 				]);
-				let nonstandard = ctx.model?.api === "openai-codex-responses" && !isStandardCodexSubscriptionModel(ctx.model);
+				let nonstandard =
+					ctx.model?.api === "openai-codex-responses" &&
+					!isStandardCodexSubscriptionModel(ctx.model);
 				try {
-					const usage = await fetchCodexUsage(ctx, (_key, custom) => { nonstandard = custom; });
-					const lines = await captureSpendReport(usage, {
-						sessionDir: ctx.sessionManager.getSessionDir(), signal: ctx.signal,
+					const usage = await fetchCodexUsage(ctx, (_key, custom) => {
+						nonstandard = custom;
 					});
-					if (nonstandard && !lines.includes(NONSTANDARD_CODEX_USAGE_WARNING)) lines.unshift(NONSTANDARD_CODEX_USAGE_WARNING, "");
-					ctx.ui.notify([...lines, "", formatCodexUsage(usage)].join("\n"), "info");
+					const lines = await captureSpendReport(usage, {
+						sessionDir: ctx.sessionManager.getSessionDir(),
+						signal: ctx.signal,
+					});
+					if (nonstandard && !lines.includes(NONSTANDARD_CODEX_USAGE_WARNING))
+						lines.unshift(NONSTANDARD_CODEX_USAGE_WARNING, "");
+					ctx.ui.notify(
+						[...lines, "", formatCodexUsage(usage)].join("\n"),
+						"info",
+					);
 				} catch (error) {
-					ctx.ui.notify([...(nonstandard ? [NONSTANDARD_CODEX_USAGE_WARNING] : []), error instanceof Error ? error.message : String(error)].join("\n"), "error");
+					ctx.ui.notify(
+						[
+							...(nonstandard ? [NONSTANDARD_CODEX_USAGE_WARNING] : []),
+							error instanceof Error ? error.message : String(error),
+						].join("\n"),
+						"error",
+					);
 				}
 				return;
 			}
-			ctx.ui.notify(formatCodexSettings(state.config, state.adapterEnabled), "info");
+			ctx.ui.notify(
+				formatCodexSettings(state.config, state.adapterEnabled),
+				"info",
+			);
 			return;
 		}
-		let configScope: CodexConversionConfigScope = hasFolderCodexConversionConfig(
-			ctx.cwd,
-			ctx.isProjectTrusted(),
-		) ? "folder" : "global";
+		let configScope: CodexConversionConfigScope =
+			hasFolderCodexConversionConfig(ctx.cwd, ctx.isProjectTrusted())
+				? "folder"
+				: "global";
 		if (configScope === "folder") {
-			const materialized = materializeFolderCodexConversionConfig(ctx.cwd, true);
+			const materialized = materializeFolderCodexConversionConfig(
+				ctx.cwd,
+				true,
+			);
 			if (!materialized.ok) {
-				ctx.ui.notify(`Could not materialize folder Codex settings: ${materialized.error}`, "error");
+				ctx.ui.notify(
+					`Could not materialize folder Codex settings: ${materialized.error}`,
+					"error",
+				);
 				return;
 			}
 		}
 		const readSelectedConfig = () => {
 			const effective = effectiveConfig(ctx);
-			const selected = configScope === "folder"
-				? readLayeredCodexConversionConfig({ cwd: ctx.cwd, projectTrusted: true })
-				: readCodexConversionConfig();
+			const selected =
+				configScope === "folder"
+					? readLayeredCodexConversionConfig({
+							cwd: ctx.cwd,
+							projectTrusted: true,
+						})
+					: readCodexConversionConfig();
 			return {
 				...selected,
 				openai: {
 					...selected.openai,
 					lunaCacheKeepaliveMinutes: effective.openai.lunaCacheKeepaliveMinutes,
-					lunaCacheKeepaliveIntervalMinutes: effective.openai.lunaCacheKeepaliveIntervalMinutes,
+					lunaCacheKeepaliveIntervalMinutes:
+						effective.openai.lunaCacheKeepaliveIntervalMinutes,
 					cacheKeepalive: effective.openai.cacheKeepalive,
-					cacheKeepaliveIntervalMinutes: effective.openai.cacheKeepaliveIntervalMinutes,
+					cacheKeepaliveIntervalMinutes:
+						effective.openai.cacheKeepaliveIntervalMinutes,
 				},
 			};
 		};
 		await openCodexSettingsScreen(ctx, {
-			setModel: model => pi.setModel(model),
+			setModel: (model) => pi.setModel(model),
 			hasWebSearch: () => hasRealtimeWebSearch(pi),
-			waitForIdle: async () => { do { await ctx.waitForIdle(); } while (!ctx.isIdle()); },
+			waitForIdle: async () => {
+				do {
+					await ctx.waitForIdle();
+				} while (!ctx.isIdle());
+			},
 			initialConfig: readSelectedConfig(),
 			initialTab: tab,
 			adapterEnabled: {
@@ -186,30 +274,34 @@ export function registerCodexCommand(
 				},
 			},
 			onChange: (config) => saveAndApply(ctx, configScope, config),
-			onGlobalNotebookJournals: (journals) => {
-				const global = readCodexConversionConfig();
-				if (!saveAndApply(ctx, "global", { ...global, notebook: { ...global.notebook, journals } })) return undefined;
-				return readSelectedConfig();
-			},
-			onGlobalNotebookCheckpointCleanup: (checkpointCleanup) => {
-				const global = readCodexConversionConfig();
-				if (!saveAndApply(ctx, "global", { ...global, notebook: { ...global.notebook, checkpointCleanup } })) return undefined;
-				return readSelectedConfig();
-			},
 			onGlobalLunaCacheKeepalive: (minutes, interval) => {
-				const result = setGlobalCodexLunaCacheKeepalive(minutes, undefined, interval);
+				const result = setGlobalCodexLunaCacheKeepalive(
+					minutes,
+					undefined,
+					interval,
+				);
 				if (!result.ok) {
-					ctx.ui.notify(`Failed to save global Luna cache keepalive: ${result.error}`, "error");
+					ctx.ui.notify(
+						`Failed to save global Luna cache keepalive: ${result.error}`,
+						"error",
+					);
 					return undefined;
 				}
-				if (result.warning) ctx.ui.notify(result.warning, "warning");
 				applyEffectiveConfig(ctx);
 				return readSelectedConfig();
 			},
 			onProjectCacheKeepalive: (enabled, interval) => {
-				const result = setProjectCodexCacheKeepalive(ctx.cwd, ctx.isProjectTrusted(), enabled, interval);
+				const result = setProjectCodexCacheKeepalive(
+					ctx.cwd,
+					ctx.isProjectTrusted(),
+					enabled,
+					interval,
+				);
 				if (!result.ok) {
-					ctx.ui.notify(`Failed to save project cache keepalive: ${result.error}`, "error");
+					ctx.ui.notify(
+						`Failed to save project cache keepalive: ${result.error}`,
+						"error",
+					);
 					return undefined;
 				}
 				applyEffectiveConfig(ctx);
@@ -218,16 +310,27 @@ export function registerCodexCommand(
 			configScope: {
 				current: () => configScope,
 				canUseFolder: ctx.isProjectTrusted(),
-				path: () => configScope === "folder"
-					? getProjectCodexConversionConfigPath(ctx.cwd)
-					: getCodexConversionConfigPath(),
+				path: () =>
+					configScope === "folder"
+						? getProjectCodexConversionConfigPath(ctx.cwd)
+						: getCodexConversionConfigPath(),
 				reload: readSelectedConfig,
 				set: (scope) => {
-					const result = scope === "folder"
-						? materializeFolderCodexConversionConfig(ctx.cwd, ctx.isProjectTrusted())
-						: clearFolderCodexConversionConfig(ctx.cwd, ctx.isProjectTrusted());
+					const result =
+						scope === "folder"
+							? materializeFolderCodexConversionConfig(
+									ctx.cwd,
+									ctx.isProjectTrusted(),
+								)
+							: clearFolderCodexConversionConfig(
+									ctx.cwd,
+									ctx.isProjectTrusted(),
+								);
 					if (!result.ok) {
-						ctx.ui.notify(`Could not change Codex settings scope: ${result.error}`, "error");
+						ctx.ui.notify(
+							`Could not change Codex settings scope: ${result.error}`,
+							"error",
+						);
 						return undefined;
 					}
 					configScope = scope;
@@ -237,7 +340,8 @@ export function registerCodexCommand(
 			},
 			lanVoiceServer: {
 				status: () => lanVoice.status(),
-				setEnabled: (enabled) => setLanVoiceServerEnabled(lanVoice, enabled, ctx),
+				setEnabled: (enabled) =>
+					setLanVoiceServerEnabled(lanVoice, enabled, ctx),
 			},
 		});
 	}
@@ -245,12 +349,20 @@ export function registerCodexCommand(
 	pi.registerCommand("codex", {
 		description: "Configure Codex adapter settings",
 		getArgumentCompletions: (prefix) =>
-			CODEX_COMMAND_COMPLETIONS.filter((item) => item.startsWith(prefix.trim().toLowerCase())).map((value) => ({ label: value, value })),
+			CODEX_COMMAND_COMPLETIONS.filter((item) =>
+				item.startsWith(prefix.trim().toLowerCase()),
+			).map((value) => ({ label: value, value })),
 		handler: async (args, ctx) => {
 			const arg = args.trim().toLowerCase();
 			if (/^voice\s+server\s+/i.test(args.trim())) {
-				const { runLanVoiceCommand } = await import("../../voice/lan/command.ts");
-				await runLanVoiceCommand(args.trim().replace(/^voice\s+server\s+/i, ""), ctx, lanVoice, dirname(getCodexConversionConfigPath()));
+				const { runLanVoiceCommand } =
+					await import("../../voice/lan/command.ts");
+				await runLanVoiceCommand(
+					args.trim().replace(/^voice\s+server\s+/i, ""),
+					ctx,
+					lanVoice,
+					dirname(getCodexConversionConfigPath()),
+				);
 				return;
 			}
 			if (arg === "usage analyse") {
@@ -265,29 +377,50 @@ export function registerCodexCommand(
 			}
 
 			if (arg === "voice realtime" || arg === "voice dictation") {
-				if (ctx.mode !== "tui") { ctx.ui.notify("Codex voice requires interactive TUI mode", "error"); return; }
+				if (ctx.mode !== "tui") {
+					ctx.ui.notify("Codex voice requires interactive TUI mode", "error");
+					return;
+				}
 				await ctx.waitForIdle();
-				await voiceControls.start(arg === "voice dictation" ? "dictation" : "realtime", ctx);
+				await voiceControls.start(
+					arg === "voice dictation" ? "dictation" : "realtime",
+					ctx,
+				);
 				return;
 			}
 			if (arg === "voice stop") {
-				if (ctx.mode !== "tui") { ctx.ui.notify("Codex voice requires interactive TUI mode", "error"); return; }
+				if (ctx.mode !== "tui") {
+					ctx.ui.notify("Codex voice requires interactive TUI mode", "error");
+					return;
+				}
 				await voiceControls.stop(ctx);
 				return;
 			}
 			if (arg === "voice mute") {
-				if (ctx.mode !== "tui") { ctx.ui.notify("Codex voice requires interactive TUI mode", "error"); return; }
+				if (ctx.mode !== "tui") {
+					ctx.ui.notify("Codex voice requires interactive TUI mode", "error");
+					return;
+				}
 				voiceControls.toggleInputMute(ctx);
 				return;
 			}
 			if (arg === "voice server") {
-				if (ctx.mode !== "tui") { ctx.ui.notify("LAN voice server requires interactive TUI mode", "error"); return; }
+				if (ctx.mode !== "tui") {
+					ctx.ui.notify(
+						"LAN voice server requires interactive TUI mode",
+						"error",
+					);
+					return;
+				}
 				const enabled = !lanVoice.status().running;
 				try {
 					await lanVoice.setEnabled(enabled, ctx);
 					if (!enabled) ctx.ui.notify("LAN voice server stopped", "info");
 				} catch (error) {
-					ctx.ui.notify(`Could not ${enabled ? "start" : "stop"} LAN voice: ${error instanceof Error ? error.message : String(error)}`, "error");
+					ctx.ui.notify(
+						`Could not ${enabled ? "start" : "stop"} LAN voice: ${error instanceof Error ? error.message : String(error)}`,
+						"error",
+					);
 				}
 				return;
 			}
@@ -302,26 +435,45 @@ export function registerCodexCommand(
 	});
 }
 
-async function setLanVoiceServerEnabled(lanVoice: CodexLanVoiceServerController, enabled: boolean, ctx: ExtensionContext) {
+async function setLanVoiceServerEnabled(
+	lanVoice: CodexLanVoiceServerController,
+	enabled: boolean,
+	ctx: ExtensionContext,
+) {
 	try {
 		return await lanVoice.setEnabled(enabled, ctx);
 	} catch (error) {
-		ctx.ui.notify(`Could not ${enabled ? "start" : "stop"} LAN voice: ${error instanceof Error ? error.message : String(error)}`, "error");
+		ctx.ui.notify(
+			`Could not ${enabled ? "start" : "stop"} LAN voice: ${error instanceof Error ? error.message : String(error)}`,
+			"error",
+		);
 		throw error;
 	}
 }
 
-function formatAllProvidersMode(value: CodexConversionConfig["scope"]["allProviders"]): string {
+function formatAllProvidersMode(
+	value: CodexConversionConfig["scope"]["allProviders"],
+): string {
 	if (value === "extras") return "only extras";
 	if (value === "codex-plus-extras") return "Codex + Extra tools";
-	return value;
+	return value === "on" ? "all providers" : "Codex and configured";
 }
 
 /** Summarize persisted settings and the session-local adapter switch outside the TUI. */
-function formatCodexSettings(config: CodexConversionConfig, adapterEnabled: boolean): string {
-	const fast = [`all models ${allModelsFastModeState(config.openai.fast)}`,
-		...FAST_MODE_FAMILIES.map((family) => `${family} ${config.openai.fast[family] === "ultrafast" ? "ultrafast" : config.openai.fast[family] ? "on" : "off"}`)].join(", ");
+function formatCodexSettings(
+	config: CodexConversionConfig,
+	adapterEnabled: boolean,
+): string {
+	const fast = [
+		`all models ${allModelsFastModeState(config.openai.fast)}`,
+		...FAST_MODE_FAMILIES.map(
+			(family) =>
+				`${family} ${config.openai.fast[family] === "ultrafast" ? "ultrafast" : config.openai.fast[family] ? "on" : "off"}`,
+		),
+	].join(", ");
 	const accessProgram = config.openai.daybreak ? "on" : "off";
-	const promptOverwrite = config.prompt.heavySystemPromptOverwrite === "gpt" ? "GPT" : config.prompt.heavySystemPromptOverwrite ? "on" : "off";
-	return `Codex settings: adapter ${adapterEnabled ? "enabled" : "disabled"}, extension ${config.voiceFeaturesOnly ? "voice only" : "adapter and voice"}, execution ${config.executionMode}, providers ${formatAllProvidersMode(config.scope.allProviders)}, Rust binaries ${config.tools.customRustBinariesDir || "bundled"}, heavy prompt overwrite ${promptOverwrite}, Codex prompt appendix ${config.prompt.appendSystemPromptFile ? "on" : "off"}, harness identifier ${config.openai.harnessIdentifierHeader ? "on" : "off"}, Proxy Responses Lite ${config.openai.proxyResponsesLite ? "on" : "off"}, compaction method ${COMPACTION_METHOD_LABELS[config.compaction.method]}, preserved user messages (V2 only) ${config.compaction.v2UserMessageRetention}k, Luna cache keepalive ${config.openai.lunaCacheKeepaliveMinutes === 0 ? "off" : `${config.openai.lunaCacheKeepaliveMinutes} mins duration, ${config.openai.lunaCacheKeepaliveIntervalMinutes} mins request interval`}, Astra/Sol/Terra cache keepalive ${config.openai.cacheKeepalive ? `${config.openai.cacheKeepaliveIntervalMinutes} mins request interval` : "off"}, cache diagnostics ${config.openai.cacheDiagnostics}, Daybreak ${accessProgram}, Fast Mode ${fast}, verbosity ${config.openai.verbosity}`;
+	const promptOverwrite = config.prompt.heavySystemPromptOverwrite
+		? "on"
+		: "off";
+	return `Codex settings: adapter ${adapterEnabled ? "enabled" : "disabled"}, execution ${config.executionMode}, providers ${formatAllProvidersMode(config.scope.allProviders)}, Rust binaries ${config.tools.customRustBinariesDir || "bundled"}, heavy prompt overwrite ${promptOverwrite}, Codex prompt appendix ${config.prompt.appendSystemPromptFile ? "on" : "off"}, Proxy Responses Lite ${config.openai.proxyResponsesLite ? "on" : "off"}, compaction method ${COMPACTION_METHOD_LABELS[config.compaction.method]}, preserved user messages (V2 only) ${config.compaction.v2UserMessageRetention}k, Luna cache keepalive ${config.openai.lunaCacheKeepaliveMinutes === 0 ? "off" : `${config.openai.lunaCacheKeepaliveMinutes} mins duration, ${config.openai.lunaCacheKeepaliveIntervalMinutes} mins request interval`}, Astra/Sol/Terra cache keepalive ${config.openai.cacheKeepalive ? `${config.openai.cacheKeepaliveIntervalMinutes} mins request interval` : "off"}, cache diagnostics ${config.openai.cacheDiagnostics}, Daybreak ${accessProgram}, Fast Mode ${fast}, verbosity ${config.openai.verbosity}`;
 }

@@ -1,5 +1,74 @@
 # @howaboua/pi-shepherdr
 
+## 1.0.4
+
+- Shared Notes and Board recovery messages direct users to Agent Comms.
+- Shepherdr settings distinguish delegation guidance from starting workers and explain what adding an SSH connection does.
+- Agent discovery shows and accepts the local Herdr Core name. For remote machines, use the label or ID from `list`, not the hostname.
+- Agent help uses compact wording and separates terminal commands from Herdr window controls.
+
+## 1.0.3
+
+- Shortened delegation guidance without repeating the task in the worker's instructions.
+- Clarified agent tool help for replies, sharing and closing sessions.
+- Fixed outdated attachments blocking notes and history lookups for unrelated agents.
+
+## 1.0.2
+
+- Fixed resumed workers failing to start or losing completion reports after crashes or restarts.
+- Fixed agent launches and window focus in standalone Bun builds of Pi.
+- Sender labels now show machine, full agent address and terminal without repeated labels.
+- Empty turns from unassigned workers no longer trigger completion notices.
+- Agent guidance now favours outcome-focused delegation, actionable handoffs and fewer duplicate completion messages.
+- Tool examples no longer prescribe `await`.
+- New general profiles use GPT-6.2 Sol.
+
+## 1.0.1
+
+- Reduce CPU use when monitoring long sessions.
+
+## 1.0.0
+
+### Breaking changes
+
+- Removed the legacy Herdr backend and SSH bridge. Requires Herdr Core 0.1.18+, Pi 1.5+ and Node.js 22.19+. Legacy Herdr TUI is unsupported. Its last supported release, Shepherdr 0.2.27, is unmaintained, with [source available for forks](https://github.com/IgorWarzocha/howaboua-pi-stuff/tree/5ede06bdc32da2b513f0709966af1f32908f243c/packages/pi-shepherdr). Update and restart controllers and workers together. Start fresh Core terminals for older Herdr sessions and reselect watches when changing Core namespaces. Replace pane placement with terminal, new-tab or new-workspace placement.
+  - Shepherdr now runs without other extensions. Optional sharing supports Agent Comms or standalone Notes Compaction and Agent Board, preserving saved notes and boards.
+  - Agent calls now accept current Core machine names or stable IDs. Saved routes and watches survive renames. Connections adds machines through `hc machine add`.
+  - Remote supervision and sharing now use persistent Core attachments. Saved checkpoints remain readable after workers and intermediate controllers close, including older sessions across connected machines.
+  - Concurrent Pi sessions now share machine-local launch and saved-session read limits, with calls remaining pending until their normal result is available.
+  - Ordinary workers now end with their parent's program. Active remote connections enforce cross-machine cleanup. Detached workers remain independent.
+  - Added a public worker API with saved-session reuse and caller-selected detached lifetime.
+  - `/root` now follows saved spawn ancestry independently of sharing. Older workers without saved ancestry must use exact session references.
+  - Sending or assigning work to a closed, owned worker now resumes its saved Pi session before delivery.
+  - The widget now shows watched peers without repeating supervised workers. Monitoring warnings remain visible. Shells retaining old Pi labels no longer appear as live agents.
+  - Fixed completed replies being hidden by empty notice turns, and closed agents causing collection warnings or settlement retries.
+  - Agent replies now return when the extension accepts the answer instead of blocking later questions until resumed work finishes.
+  - Attachment and detachment now accept context or Board sharing independently. Incoming messages identify sender access, distinguishing machine IDs from Pi agent references.
+  - Monitoring notices now describe delayed or unavailable agent updates and automatic retry without duplicate internal errors during Core restarts.
+  - Agent help now asks callers to trust worker judgement instead of over-prescribing restrictions or narrowing the task unnecessarily.
+  - Worker profiles now brief only the initial assignment instead of pinning restrictions in the standing prompt. Later assignments and model-role changes can reuse the same agent and its notes.
+  - Agent help now keeps each agent available until its task is verified complete, with corrections returned to the same agent before closing it.
+  - Agent help now directs callers to skip acknowledgements, status-only updates and standby reminders that needlessly wake idle agents.
+  - Removed the TypeBox installation requirement.
+
+## 0.2.27
+
+- New remote workers retain their Core parent link for sidebar nesting.
+- Agent guidance now requires the agents tool for supported local and remote operations, including after failures, instead of bypassing it with shell commands.
+
+## 0.2.26
+
+- Requires Pi 1.5 or newer.
+
+  Update and restart controllers and workers together for shared Notes and boards.
+  - `spawn` and `assign` now return after task submission by default. Set `blocking: true` to wait for the result. A profile's `blocking` setting still overrides `spawn`.
+  - Agent references now use Pi session IDs across delegation, Notes and boards. Spawn returns one `agent` reference and sharing flags instead of separate context and board references.
+  - Attached Notes reads keep alias paths and read-only warnings consistent across native, Code and Notebook results.
+  - Rollover briefings now retain initial scope and the latest instruction without accumulating every message. Full messages remain in session history.
+  - Fixed repeated writes of unchanged agent snapshots.
+  - Closed workers no longer trigger a misleading notices-unavailable reconnect warning.
+  - Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`.
+
 ## 0.2.25
 
 - When switching from the older Herdr TUI or another Core instance, reselect local watches.

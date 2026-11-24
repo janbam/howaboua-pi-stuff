@@ -6,7 +6,9 @@ import { resolve } from "node:path";
 
 const packageArgument = process.argv[2];
 if (!packageArgument) {
-	console.error("Usage: node scripts/build-extension-changelog.mjs <package-dir>");
+	console.error(
+		"Usage: node scripts/build-extension-changelog.mjs <package-dir>",
+	);
 	process.exit(1);
 }
 

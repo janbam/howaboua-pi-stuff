@@ -1,0 +1,8 @@
+---
+"@howaboua/pi-codex-guardian": patch
+---
+
+Requires Pi 1.5 or newer.
+
+- Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`.
+- Clarified when an action review must deny execution.

@@ -28,6 +28,7 @@ const packageSpecs = [
 	["@earendil-works/pi-tui", "tui"],
 	["@earendil-works/pi-coding-agent", "coding-agent"],
 	["@earendil-works/pi-codemode", "codemode"],
+	["@earendil-works/pi-schema", "schema"],
 ];
 
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
@@ -90,12 +91,23 @@ if (
 }
 
 // Every workspace must resolve its declared Pi peers to the same checkout, not a mixed SDK graph.
-const roots = [repoRoot, ...readdirSync(join(repoRoot, "packages"), { withFileTypes: true })
-	.filter(entry => entry.isDirectory() && existsSync(join(repoRoot, "packages", entry.name, "package.json")))
-	.map(entry => join(repoRoot, "packages", entry.name))];
-const plans = roots.flatMap(root => {
+const roots = [
+	repoRoot,
+	...readdirSync(join(repoRoot, "packages"), { withFileTypes: true })
+		.filter(
+			(entry) =>
+				entry.isDirectory() &&
+				existsSync(join(repoRoot, "packages", entry.name, "package.json")),
+		)
+		.map((entry) => join(repoRoot, "packages", entry.name)),
+];
+const plans = roots.flatMap((root) => {
 	const manifest = readJson(join(root, "package.json"));
-	const dependencies = { ...manifest.dependencies, ...manifest.devDependencies, ...manifest.peerDependencies };
+	const dependencies = {
+		...manifest.dependencies,
+		...manifest.devDependencies,
+		...manifest.peerDependencies,
+	};
 	return packageSpecs
 		.filter(([name]) => Object.hasOwn(dependencies, name))
 		.map(([name]) => ({

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { Static } from "@earendil-works/pi-schema";
 import { Container, Text } from "@earendil-works/pi-tui";
 import { codexLoginDiagnostic } from "./codex-runtime/auth-diagnostics.js";
 import {
@@ -11,36 +12,7 @@ import {
 	executeCodexWebSearch,
 	supportsExecutableWebSearch,
 } from "./execute.js";
-import { renderToolCell } from "./render.js";
-
-function firstString(value: unknown, key: string): string | undefined {
-	if (!value || typeof value !== "object") return undefined;
-	const field = (value as Record<string, unknown>)[key];
-	return typeof field === "string" && field.trim() ? field.trim() : undefined;
-}
-
-function webSearchCallDetail(
-	params: Record<string, unknown>,
-): string | undefined {
-	const search = Array.isArray(params["search_query"])
-		? params["search_query"][0]
-		: undefined;
-	const image = Array.isArray(params["image_query"])
-		? params["image_query"][0]
-		: undefined;
-	const open = Array.isArray(params["open"]) ? params["open"][0] : undefined;
-	const click = Array.isArray(params["click"]) ? params["click"][0] : undefined;
-	const find = Array.isArray(params["find"]) ? params["find"][0] : undefined;
-	const query = firstString(search, "q") ?? firstString(image, "q");
-	if (query) return query;
-	const opened =
-		firstString(open, "url") ??
-		firstString(open, "ref_id") ??
-		firstString(click, "ref_id");
-	if (opened) return opened;
-	const pattern = firstString(find, "pattern");
-	return pattern ? "'" + pattern + "'" : undefined;
-}
+import { renderWebSearchCall } from "./render.js";
 
 export function createWebSearchTool(
 	name: string = WEB_SEARCH_TOOL_NAME,
@@ -55,12 +27,18 @@ export function createWebSearchTool(
 			? {}
 			: { promptSnippet: "Explicit args" }),
 		promptGuidelines: [
-			"web_run: Calls use returned turn refs; final answers use Markdown result URLs, never refs or cite….",
+			"web_run: navigation→returned ref_ids; cite only Markdown links to result URLs",
 		],
 		parameters: WEB_SEARCH_PARAMETERS,
 		prepareArguments: (args) =>
 			args && typeof args === "object" ? (args as Record<string, unknown>) : {},
-		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+		async execute(
+			_toolCallId,
+			params: Static<typeof WEB_SEARCH_PARAMETERS>,
+			signal,
+			_onUpdate,
+			ctx,
+		) {
 			if (!supportsExecutableWebSearch(ctx.model, toolOptions))
 				throw new Error(codexLoginDiagnostic());
 			const output = await executeCodexWebSearch(
@@ -77,13 +55,7 @@ export function createWebSearchTool(
 		...(toolOptions.customRendering === false
 			? {}
 			: {
-					renderCall(args, theme) {
-						return renderToolCell(
-							"Searched the web",
-							webSearchCallDetail(args as Record<string, unknown>),
-							theme,
-						);
-					},
+					renderCall: renderWebSearchCall,
 					renderResult(result, { expanded }, theme) {
 						if (!expanded) return new Container();
 						const textBlock = result.content.find(

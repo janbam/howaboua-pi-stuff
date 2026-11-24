@@ -3,10 +3,9 @@ import type { FocusRequest } from "../types.js";
 function focusOrigin({ source }: FocusRequest) {
 	return {
 		host: source.host,
-		session: source.session,
-		...(source.backend === "core"
-			? { terminal: source.terminal }
-			: { pane: source.pane }),
+		machine: source.session,
+		...(source.agent ? { agent: source.agent } : {}),
+		terminal: source.terminal,
 	};
 }
 
@@ -17,23 +16,20 @@ export function focusArrivalContent(
 ) {
 	const returnFocus = {
 		action: "focus",
-		target:
-			request.source.backend === "core"
-				? request.source.terminal
-				: request.source.pane!,
+		target: request.source.terminal,
 		machine,
 		voice: request.voice === true,
 	};
 	const args = JSON.stringify(returnFocus);
-	const callable = codeMode ? `await tools.agents(${args})` : `agents ${args}`;
+	const callable = codeMode ? `tools.agents(${args})` : `agents ${args}`;
 	return {
 		returnFocus,
-		content: `User arrived from ${JSON.stringify({ ...focusOrigin(request), machine })}\nReturn: ${callable}${request.voice ? "\nVoice transfer pending" : ""}${request.handoff ? `\nHandoff from that session:\n${request.handoff}` : ""}`,
+		content: `User arrived from ${JSON.stringify(focusOrigin(request))}\nReturn: ${callable}${request.voice ? "\nVoice transfer pending" : ""}${request.handoff ? `\nHandoff from that agent:\n${request.handoff}` : ""}`,
 	};
 }
 
 export function voiceFocusContinuity(request: FocusRequest): string {
-	return `User transferring voice from ${JSON.stringify(focusOrigin(request))}${request.handoff ? `\nHandoff from that session:\n${request.handoff}` : ""}`;
+	return `User transferring voice from ${JSON.stringify(focusOrigin(request))}${request.handoff ? `\nHandoff from that agent:\n${request.handoff}` : ""}`;
 }
 
 export function voiceFocusReport(

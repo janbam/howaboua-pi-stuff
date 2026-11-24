@@ -1,0 +1,4 @@
+- Agent Comms owns Notes and Board. No separate snapshots. Shared `pi-agent-comms.json`, unchanged data paths and persisted protocols. Remove only Board section from legacy Shepherdr settings. Trusted folder migration in place, no cross-project scans.
+- `src/guidance.ts`: standalone names only enabled feature, mixed divides responsibilities. Route on enablement, not native selection: Code/Notebook may hide callable tools. Notes carriers own recovery. Keep Board's optional host briefing hook, no host-owned routing or recovery.
+- Each feature owns activation/state. Settings share navigation only. Viewer explicit. Inactive features preserve membership without reviving retired context.
+- Lightweight public imports. Hosts discover loaded owner and handle late activation, never instantiate engines or fallback owners.

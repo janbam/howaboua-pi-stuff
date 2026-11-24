@@ -52,7 +52,7 @@ export interface NormalRuntimePlan extends RuntimePlanBase {
 	transport: "responses";
 }
 
-/** Projects only the explicitly selected standalone tools without prompt or provider overlays. */
+/** Projects the selected standalone tools without rewriting the prompt or request. */
 export interface ExtrasRuntimePlan extends RuntimePlanBase {
 	kind: "extras";
 	prompt: undefined;

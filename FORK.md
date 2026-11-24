@@ -14,7 +14,7 @@ Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist ups
 
 - Upstream release: `@howaboua/pi-stuff@0.0.118` (`c4f48525`, upstream #615). Keep merge ancestry when landing the fork's integration PR.
 - Follow upstream's Auto Trees and Smart BTW retirements and migrate standalone Notes Compaction and Agent Board to Agent Comms. Use current upstream release metadata, the Pi 1.6.0 schema package, and upstream's formatter and linter for shared workspaces.
-- Keep PCC's session adapter toggle, prompt appendix, mixed provider scope, standalone patch and image tool settings, usage footer, shortcut disabling and expanded voice/patch diagnostics. Adopt the upstream VM Code, TS Notebook, tool-details presets and config upgrade paths. A standalone extra tool does not activate the prompt or provider overlay.
+- Keep PCC's session adapter toggle, prompt appendix, mixed provider scope, standalone patch and image tool settings, usage footer, shortcut disabling and expanded voice/patch diagnostics. Adopt the upstream VM Code, TS Notebook, tool-details presets and config upgrade paths. A standalone extra tool does not activate prompt or request rewriting.
 - Preserve Ask notifications, the Skills catalog overlay, and private Vent and Memories. Vent uses Pi schema builders. The lockfile adds only the two private workspaces and uses upstream-pinned dependency versions. Generated changelog files remain limited to those private packages. Both release jobs are upstream-only.
 - Files: `AGENTS.md`, `.github/workflows/{release,dev-publish}.yml`, `bun.lock`, `scripts/{link-pi-checkout,build-extension-changelog,require-changeset}.mjs`, `packages/{pi-ask,pi-better-skills-tool,pi-codex-conversion,pi-memories,pi-vent}`.
 

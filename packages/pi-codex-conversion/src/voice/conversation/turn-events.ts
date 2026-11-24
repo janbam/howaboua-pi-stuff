@@ -52,8 +52,9 @@ export class ConversationTurns {
 		);
 		this.handoff = new RealtimeDelegationHandoff({
 			isActive: () => this.isActive(),
+			// Pi's transcript already contains the content forwarded by its agent turn.
 			onContext: (target, channel, content) =>
-				this.sendContext(target, channel, content),
+				this.sendContext(target, channel, content, "forwarding"),
 			onSettled: (id) => this.turnTracker.delegationSettled(id),
 		});
 	}
@@ -258,10 +259,12 @@ export class ConversationTurns {
 		if (completed) this.callbacks.onTurn(completed);
 	}
 
+	/** Submit context chunks and expose hidden controls through the display-only audit. */
 	sendContext(
 		target: RealtimeHandoffTarget,
 		channel: RealtimeHandoffChannel,
 		content: string,
+		source: "control" | "forwarding" = "control",
 	): void {
 		try {
 			if (channel === "speakable") {
@@ -285,10 +288,10 @@ export class ConversationTurns {
 									content: [{ type: "input_text", text }],
 								},
 					);
-					submitted.push(text);
+					if (source === "control") submitted.push(text);
 				}
 			} finally {
-				// Audit logical updates, retaining only the prefix submitted if transport fails mid-update.
+				// If transport fails mid-update, reveal only the prefix sent to the peer.
 				if (submitted.length)
 					this.callbacks.onContextSubmitted?.(submitted.join(""));
 			}

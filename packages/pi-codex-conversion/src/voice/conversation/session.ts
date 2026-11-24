@@ -39,7 +39,7 @@ export interface CodexConversationCallbacks {
 	onUserTranscript(transcript: string): void;
 	onTranscriptTail(transcriptDelta: string): void;
 	onEvent?(event: RealtimeVoiceEventDetails): void;
-	/** Observe context text submitted to Codex Live, excluding its system prompt. */
+	/** Observe hidden controls submitted to Codex Live for display in expanded audit cards. */
 	onContextSubmitted?(content: string): void;
 }
 

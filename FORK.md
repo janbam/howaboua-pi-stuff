@@ -128,6 +128,12 @@ Paths below are relative to `packages/pi-codex-conversion/`.
 - Behavior: expanded Voice Context includes the exact startup text and refresh carryover. Compact Sent to Codex Live entries expose submitted Pi updates and control messages; voice-session cards expose instructions sent to Pi, and Sent to Pi entries reveal leftover transcript context. Audit entries are display-only, do not invalidate context refresh and omit the Live system prompt, model metadata and rewrite internals. Existing task and speech-transcript displays remain unchanged.
 - Files: `src/voice/{message-types,ui,session-messages}.ts`, `src/voice/controller/{context,sessions,start}.ts`, `src/voice/conversation/{session,turn-events}.ts`, `README.md`
 
+### Hide redundant Codex Live forwarding audits
+
+- Source: fork WIP `59c22aa0`, refs #36. Upstream #575 supplies the equivalent deduplication of identical same-turn handoffs.
+- Behavior: forward Pi's typed input, progress and replies to Codex Live without adding extra audit cards for that content. Hidden controls, exact startup context, and original pre-rewrite delegation text remain inspectable. Existing saved audits keep their renderers.
+- Files: `src/voice/conversation/{session,turn-events}.ts`, `README.md`
+
 ### Leading system message ordering
 
 - Commit: `ecd31dbd` (PR #17)

@@ -246,13 +246,15 @@ Codex Live and dictation use OAuth through `/login openai-codex`. Selecting an A
 
 Codex Live rewrites the current voice conversation interval into a self-contained task before sending it to Pi. **Task delegation model** shows the configured model without a picker. Change `voice.taskDelegationModel` in the JSON configuration to use another `provider/model` value. The default is `openai-codex/gpt-6-luna`. Choose **Task delegation reasoning** separately in terminal or LAN settings. It defaults to `low` and is independent of voice context summarisation. These settings apply only to Codex Live; GPT-Realtime still sends tasks directly through `send_task`.
 
+Repeated identical handoffs within one identified Codex Live user turn produce a single Pi task. A new user turn or changed request remains actionable.
+
 GPT Live 1.1 on the API uses the current Pi model to prepare voice requests before sending them to Pi. The **Default** context summarisation setting also uses the current Pi model for API Live.
 
 Realtime models use `send_task` to send Pi a self-contained task with relevant voice-discussion decisions and constraints. Busy Pi sessions receive it as steering, with existing tools and confirmations preserved. Realtime models can also use developer-registered voice tools. For optional search, load `@howaboua/pi-codex-web-run`, configure its access and enable **Realtime web search**. Search uses Web Run's configured provider and credentials.
 
 Expand a **Task for Pi** card with **Ctrl+O** to see the complete message submitted to Pi, including any attached transcript context. Codex Live cards also show the original delegation text before rewriting in a separately labelled section. That original text is for inspection, not additional input to Pi. The collapsed card keeps the prepared task text. Older cards show only the information saved with them.
 
-Expanded **Voice Context** shows the exact starting context sent to voice, including its summary wrapper and any refresh carryover. **Sent to Codex Live** entries reveal later Pi updates and control instructions when expanded. Expand realtime voice-session cards to inspect their instructions to Pi; **Sent to Pi** entries show any leftover transcript context. These display-only records preserve the submitted text without exposing Codex Live's system prompt, model metadata or the rewriting process.
+Expanded **Voice Context** shows the exact starting context sent to voice, including its generated summary and any refresh carryover. **Sent to Codex Live** entries reveal hidden controls when expanded. Pi replies, progress, reasoning summaries and typed input continue reaching voice without adding duplicate audit cards. Expand realtime voice-session cards to inspect their instructions to Pi. **Sent to Pi** entries show any leftover transcript context. Existing session recordings retain the audits they already saved.
 
 | Shortcut | Action |
 | --- | --- |

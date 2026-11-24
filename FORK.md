@@ -5,10 +5,18 @@ Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist ups
 - Entry = one feature: commits/PRs, behavior, files touched. Tests and changelogs are omitted; `git show --stat <commit>` has the full list.
 - In-code divergences in shared files may carry `// FORK_MOD: <why>` comments; `rg FORK_MOD packages` lists them. Conflicts on those lines keep the fork side.
 - Upstream status is "not proposed" unless stated.
-- Upstream baseline: `@howaboua/pi-stuff@0.0.110` (`e4aa5bb4`), including `@howaboua/pi-codex-conversion@4.0.7`, `@howaboua/pi-notes-compaction@0.0.13` and `@howaboua/pi-observatory@0.0.3`. Development links Pi 1.4.0 from a local Pi checkout. Root, PCC and Vent retain Pi's TypeBox pin, `1.3.27`, rather than upstream extensions' `1.4.3`, so PCC declarations share Pi's schema identity.
+- Upstream baseline: `@howaboua/pi-stuff@0.0.118` (`c4f48525`), including `@howaboua/pi-codex-conversion@5.1.0`, `@howaboua/pi-agent-comms@0.0.5` and `@howaboua/pi-shepherdr@1.0.4`. Development uses the released Pi 1.6.0 SDK, including `@earendil-works/pi-schema`.
 - Version policy: package versions follow the upstream release being merged. Fork-only changes are documented here, not in Changesets or upstream changelogs. This fork does not create versioning PRs, publish npm packages or create package releases; do not run the retained upstream release commands locally.
 
 ## Repo
+
+### Upstream 5.1.0 integration
+
+- Upstream release: `@howaboua/pi-stuff@0.0.118` (`c4f48525`, upstream #615). Keep merge ancestry when landing the fork's integration PR.
+- Follow upstream's Auto Trees and Smart BTW retirements and migrate standalone Notes Compaction and Agent Board to Agent Comms. Use current upstream release metadata, the Pi 1.6.0 schema package, and upstream's formatter and linter for shared workspaces.
+- Keep PCC's session adapter toggle, prompt appendix, mixed provider scope, standalone patch and image tool settings, usage footer, shortcut disabling and expanded voice/patch diagnostics. Adopt the upstream VM Code, TS Notebook, tool-details presets and config upgrade paths. A standalone extra tool does not activate prompt or request rewriting.
+- Preserve Ask notifications, the Skills catalog overlay, and private Vent and Memories. Vent uses Pi schema builders. The lockfile adds only the two private workspaces and uses upstream-pinned dependency versions. Generated changelog files remain limited to those private packages. Both release jobs are upstream-only.
+- Files: `AGENTS.md`, `.github/workflows/{release,dev-publish}.yml`, `bun.lock`, `scripts/{link-pi-checkout,build-extension-changelog,require-changeset}.mjs`, `packages/{pi-ask,pi-better-skills-tool,pi-codex-conversion,pi-memories,pi-vent}`.
 
 ### Upstream 4.0.7 integration
 
@@ -55,7 +63,7 @@ Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist ups
 ### Generated `changelog.js` handling
 
 - Commits: `f987721`, `e340b30`, PR #27
-- Behavior: `changelog.js` is ignored once at the repo root instead of per package, and every package `biome.json` excludes it so local lint passes once it is generated. Knip explicitly includes source changelog entry points whose generated imports are ignored, plus the retained skills contract tests.
+- Behavior: `changelog.js` is ignored at the repo root. Since upstream switched to Pi's built-in changelog handling, only private Vent and Memories still generate the module. The Biome and Knip exclusions for removed shared changelog entry points are historical.
 - Files: `.gitignore`, `packages/pi-codex-conversion/.gitignore` (entry removed), `packages/*/biome.json`, `knip.jsonc`
 
 ## pi-ask
@@ -73,7 +81,7 @@ Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist ups
 ### Centralized vent logs
 
 - Commit: `f75e2b8`
-- Ownership: retained as a private fork-owned package after upstream removed Vent in `9c5167e4`. Keep its last upstream version, `0.2.11`, without publishing it. Development dependencies follow Pi 1.4.0 and its TypeBox 1.3.27 pin.
+- Ownership: retained as a private fork-owned package after upstream removed Vent in `9c5167e4`. Keep its last upstream version, `0.2.11`, without publishing it. Development dependencies follow Pi 1.6.0; the tool schema uses `@earendil-works/pi-schema`.
 - Behavior: vent logs live outside project repos, isolated per project via Pi's session-path encoding. A repo-local `VENT.md` is migrated on first use (moved, or appended to existing central history).
 - Fork-only files: `packages/pi-vent/extensions/storage.ts`
 - Shared files: `extensions/vent.ts`, `README.md`, `package.json`
@@ -84,7 +92,7 @@ Ledger of behavior carried in `janbam/howaboua-pi-stuff` that does not exist ups
 ### Fork-owned shutdown memory distiller
 
 - PR: #31
-- Ownership: retained as a private fork-owned package after upstream removed Memories in `9c5167e4`. Keep its last upstream version, `0.1.5`, without publishing it. Development dependencies follow Pi 1.4.0.
+- Ownership: retained as a private fork-owned package after upstream removed Memories in `9c5167e4`. Keep its last upstream version, `0.1.5`, without publishing it. Development dependencies follow Pi 1.6.0.
 - Behavior: on `quit`, distil the newest compaction summary plus the following conversation through `ctx.modelRegistry.streamSimple` and append candidates to `memory-inbox.md`. `/memory-review` remains the manual promotion step. Failures go to `pi-memories.log`, not the inbox. The retired `includeProjectContext` option is ignored.
 - Rationale: the retired child-process bridge stopped injecting the distillation prompt, so agent replies to the trigger sentence were written into the inbox. The direct request removes both the provider-payload rewrite and the child Pi process.
 - Files: `packages/pi-memories/{index.ts,package.json,README.md,AGENTS.md}`, `bun.lock`
@@ -119,6 +127,12 @@ Paths below are relative to `packages/pi-codex-conversion/`.
 - PR: #35
 - Behavior: expanded Voice Context includes the exact startup text and refresh carryover. Compact Sent to Codex Live entries expose submitted Pi updates and control messages; voice-session cards expose instructions sent to Pi, and Sent to Pi entries reveal leftover transcript context. Audit entries are display-only, do not invalidate context refresh and omit the Live system prompt, model metadata and rewrite internals. Existing task and speech-transcript displays remain unchanged.
 - Files: `src/voice/{message-types,ui,session-messages}.ts`, `src/voice/controller/{context,sessions,start}.ts`, `src/voice/conversation/{session,turn-events}.ts`, `README.md`
+
+### Hide redundant Codex Live forwarding audits
+
+- Source: fork WIP `59c22aa0`, refs #36. Upstream #575 supplies the equivalent deduplication of identical same-turn handoffs.
+- Behavior: forward Pi's typed input, progress and replies to Codex Live without adding extra audit cards for that content. Hidden controls, exact startup context, and original pre-rewrite delegation text remain inspectable. Existing saved audits keep their renderers.
+- Files: `src/voice/conversation/{session,turn-events}.ts`, `README.md`
 
 ### Leading system message ordering
 

@@ -1,0 +1,5 @@
+- Manual Save and Restore. No shutdown watchers, polling or auto-continuation. Resume exact native session only. No terminal typing or latest-session fallback. Preserve busy panes and unfinished input.
+- Read inventory per Core, not incomplete aggregates. Snapshots machine-owned. No remote layout addresses in local launches.
+- Cross-Core launch through parent's Core with `caller` and `on`. Target-side `parent` can bind wrong same-number terminal. Fabricated qualified caller lacks reverse route.
+- Disposable Core sessions, scratch XDG paths. No live Restore or reboot tests. Real model calls require approval.
+- Relocation: retarget installed capture links and hook commands. Desktop mods are separate installed copies.

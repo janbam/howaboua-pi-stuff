@@ -1,10 +1,9 @@
-import { hostname } from "node:os";
-import { getCurrentPane, getSnapshot } from "../herdr.js";
-import type { HerdrConnection } from "../herdr-client.js";
+import { getCurrentPane } from "../core/agents.js";
+import type { CoreConnection } from "../core/backend.js";
 import type { PaneInfo, PeerMessage } from "../types.js";
 
 const DELEGATED_WORKER_GUIDANCE =
-	"If blocked mid-run, use a question-asking tool, not peer messages. Without one, end with the blocker. Finish with an assistant reply, not a separate send report; never watch your parent.";
+	"Your final assistant reply automatically reports the result or blocker to the parent. End the turn instead of sending a separate completion message. If blocked mid-run, use a question-asking tool, not peer messages. Without one, end with the blocker. Never watch your parent.";
 
 export function xml(value: string): string {
 	return value
@@ -26,9 +25,7 @@ export function agentSource(
 ): Record<string, string | undefined> {
 	const paneName = agent.label || agent.title;
 	return {
-		...(agent.backend === "core"
-			? { terminal: agent.terminal_id }
-			: { pane: agent.pane_id }),
+		terminal: agent.terminal_id,
 		...(agent.workspace_id ? { workspace: agent.workspace_id } : {}),
 		...(agent.tab_id ? { tab: agent.tab_id } : {}),
 		...(agent.name ? { name: agent.name } : {}),
@@ -51,34 +48,32 @@ export function sourceAttributes(
 }
 
 export async function attributeAgentPrompt(
-	client: HerdrConnection,
+	client: CoreConnection,
+	sessionId: string,
 	message: string,
 	kind: "message" | "task",
+	initialProfile?: string,
 ): Promise<PeerMessage> {
-	const [pane, snapshot] = await Promise.all([
+	const [pane, identity] = await Promise.all([
 		getCurrentPane(client),
-		getSnapshot(client),
+		client.machineIdentity(),
 	]);
-	const workspace = snapshot.workspaces.find(
-		(workspace) => workspace.workspace_id === pane.workspace_id,
-	)?.label;
-	const tab = snapshot.tabs.find((tab) => tab.tab_id === pane.tab_id)?.label;
 	const source = {
 		kind,
-		...(pane.backend === "core"
-			? await client.machineIdentity()
-			: {
-					host: hostname(),
-					session: process.env["HERDR_SESSION"] || "default",
-				}),
-		...agentSource(pane, {
-			...(workspace ? { workspace } : {}),
-			...(tab ? { tab } : {}),
-		}),
+		machine: identity.session,
+		agent: `/${sessionId}`,
+		terminal: pane.terminal_id,
 	};
 	return {
 		sender: `<herdr_sender ${sourceAttributes(source)} />`,
 		text: message,
-		...(kind === "task" ? { context: DELEGATED_WORKER_GUIDANCE } : {}),
+		context: [
+			...(initialProfile
+				? [
+						`<initial_worker_profile>\n${initialProfile}\n</initial_worker_profile>`,
+					]
+				: []),
+			...(kind === "task" ? [DELEGATED_WORKER_GUIDANCE] : []),
+		].join("\n\n"),
 	};
 }

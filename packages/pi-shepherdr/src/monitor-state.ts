@@ -1,18 +1,11 @@
 import { randomUUID } from "node:crypto";
-import {
-	activityForPanel,
-	activityTask,
-	isSettledStatus,
-	sameAgentActivity,
-} from "./activity.js";
+import { activityForPanel, activityTask, isSettledStatus } from "./activity.js";
 import {
 	parseMonitoredAgent,
 	recordForPanel,
 	sameMonitorRecord,
 } from "./monitor-record.js";
 import type {
-	AgentActivity,
-	AgentStatus,
 	MonitoredAgent,
 	PaneInfo,
 	SessionSnapshot,
@@ -35,11 +28,6 @@ interface ReconcileResult {
 	changed: boolean;
 	completions: CompletionCandidate[];
 	removed: MonitoredAgent[];
-}
-
-interface StatusResult {
-	changed: boolean;
-	completion?: CompletionCandidate;
 }
 
 export class MonitorState {
@@ -126,6 +114,9 @@ export class MonitorState {
 			...(existing?.instructions
 				? { instructions: existing.instructions }
 				: {}),
+			...(existing?.latestInstruction
+				? { latestInstruction: existing.latestInstruction }
+				: {}),
 			...recordForPanel(
 				panel,
 				activity,
@@ -185,11 +176,19 @@ export class MonitorState {
 	noteMessage(paneId: string, message: string): boolean {
 		const record = this.byPane(paneId);
 		if (!record) return false;
-		const prior = record.instructions ?? activityTask(record.activity);
+		const instructions =
+			record.instructions ?? activityTask(record.activity) ?? message;
+		const latestInstruction = message !== instructions ? message : undefined;
+		const { latestInstruction: previousInstruction, ...prior } = record;
+		if (
+			record.instructions === instructions &&
+			previousInstruction === latestInstruction
+		)
+			return false;
 		this.agents.set(record.terminalId, {
-			...record,
-			instructions:
-				prior && prior !== message ? `${prior}\n\n${message}` : message,
+			...prior,
+			instructions,
+			...(latestInstruction ? { latestInstruction } : {}),
 		});
 		return true;
 	}
@@ -237,79 +236,6 @@ export class MonitorState {
 			activity: record.activity.previous,
 		});
 		return true;
-	}
-
-	applyStatus(paneId: string, status: AgentStatus): StatusResult {
-		const record = this.byPane(paneId);
-		if (!record) return { changed: false };
-		// Submission owns the transaction until its receipt decides whether this
-		// is delegated work at all. The caller reconciles after accepting it.
-		if (
-			record.activity.phase === "submitting" &&
-			this.pendingSubmissions.has(record.activity.attemptId)
-		)
-			return { changed: false };
-		if (status === "working") {
-			const task = activityTask(record.activity);
-			const attemptId =
-				record.activity.phase === "settled"
-					? undefined
-					: record.activity.attemptId;
-			const expectedUserAfter =
-				record.activity.phase === "settled"
-					? undefined
-					: record.activity.expectedUserAfter;
-			const next: AgentActivity = {
-				phase: "working",
-				...(attemptId ? { attemptId } : {}),
-				...(expectedUserAfter !== undefined ? { expectedUserAfter } : {}),
-				...(task ? { task } : {}),
-			};
-			const changed = !sameAgentActivity(record.activity, next);
-			this.agents.set(record.terminalId, { ...record, activity: next });
-			return { changed };
-		}
-		if (
-			status === "blocked" &&
-			record.activity.phase === "settled" &&
-			record.activity.status !== "blocked"
-		) {
-			const observed = {
-				...record,
-				activity: {
-					attemptId: randomUUID(),
-					phase: "working",
-				} as const,
-			};
-			this.agents.set(record.terminalId, observed);
-			return {
-				changed: true,
-				completion: {
-					record: observed,
-					requireNewReply: false,
-					status,
-				},
-			};
-		}
-		if (isSettledStatus(status) && record.activity.phase !== "settled") {
-			const task = activityTask(record.activity);
-			return {
-				changed: false,
-				completion: {
-					record,
-					requireNewReply: record.activity.phase === "submitting",
-					status,
-					...(task ? { task } : {}),
-				},
-			};
-		}
-		if (status === "unknown" && record.activity.phase !== "settled") {
-			return { changed: false };
-		}
-		const next: AgentActivity = { phase: "settled", status };
-		const changed = !sameAgentActivity(record.activity, next);
-		this.agents.set(record.terminalId, { ...record, activity: next });
-		return { changed };
 	}
 
 	reconcile(
@@ -390,6 +316,9 @@ export class MonitorState {
 
 			const updated = {
 				...(record.instructions ? { instructions: record.instructions } : {}),
+				...(record.latestInstruction
+					? { latestInstruction: record.latestInstruction }
+					: {}),
 				...recordForPanel(
 					panel,
 					activity,
@@ -406,21 +335,6 @@ export class MonitorState {
 			if (completion) completions.push({ ...completion, record: updated });
 		}
 		return { changed, completions, removed };
-	}
-
-	movePane(
-		previousPaneId: string,
-		pane: { pane_id: string; tab_id?: string; workspace_id?: string },
-	): boolean {
-		const record = this.byPane(previousPaneId);
-		if (!record) return false;
-		this.agents.set(record.terminalId, {
-			...record,
-			paneId: pane.pane_id,
-			...(pane.workspace_id ? { workspaceId: pane.workspace_id } : {}),
-			...(pane.tab_id ? { tabId: pane.tab_id } : {}),
-		});
-		return true;
 	}
 
 	complete(

@@ -4,14 +4,76 @@ This is the maintainer checklist for syncing the bundled provider with Pi and Op
 
 ## Reference baseline
 
-- Pi SDK baseline: published `0.99.2`
-- Stock provider comparison: published Pi `0.99.2` (2026-10-01)
+- Pi SDK baseline: published `1.6.0`
+- Stock provider comparison: published Pi `1.6.0` (2026-11-20)
 - Codex checkout reviewed through: `1b1835f751ebdc0cfc50b3fe55d4571dbb294563` (2026-09-28)
 - WebSocket/session review: `ecc78e4cf5607ecf5f080d682eae0ecb650868ae` (2026-10-01)
 - Exact apply-patch source revision: [`src/tools/rust/UPSTREAM.apply-patch`](src/tools/rust/UPSTREAM.apply-patch)
 - Exact image utility source revision: [`src/tools/rust/crates/codex-utils-image/UPSTREAM`](src/tools/rust/crates/codex-utils-image/UPSTREAM)
 - Standalone web search: [`../pi-codex-web-run/UPSTREAM_SYNC.md`](../pi-codex-web-run/UPSTREAM_SYNC.md)
 - Standalone image generation: [`../pi-codex-imagegen/UPSTREAM_SYNC.md`](../pi-codex-imagegen/UPSTREAM_SYNC.md)
+
+## November 21 WebSocket message limits
+
+Adapted Codex [#60841](https://github.com/openai/codex/pull/60841) and [#60840](https://github.com/openai/codex/pull/60840). PCC checks the exact UTF-8 size of each response request, including continuations and warmups, against the limit advertised by that connection. An oversized request or a 1009 close before the first text frame switches the session to HTTP. A 1009 close after output begins ends the incomplete response without replay. Released Pi 1.6.0 does not use the advertised limit or distinguish 1009 by when text arrives.
+
+## Pi 1.6 compatibility
+
+Pi now supplies the GPT-6.2 Sol and Astra catalogue entries. PCC uses them when present and retains its fallbacks for Pi 1.5. PCC already places the leading system prompt in a developer input item and carries reasoning changes in chronological configuration updates, so it does not also add Pi's reasoning replay mechanism.
+
+PCC follows [Codex CLI](https://github.com/openai/codex/blob/rust-v0.171.0/codex-rs/core/tests/suite/client_websockets.rs#L2033-L2063) and reconnects on the server's WebSocket lifetime-limit error. Pi's 45-minute preemptive rotation is not part of that policy.
+
+## November 19 Responses Lite images
+
+Matched the unified image budget in Codex `rust-v0.170.0` and `39c29c3bb6`: up to 6,000 pixels on the longest side and 10,000 tiles of 32×32 pixels. This changes the images sent to Responses Lite, not Pi's saved originals. PCC prepares them after Pi's payload hooks so history rewrites remain authoritative. Unlike Codex's history admission, PCC serializes cold resizes per request and caches successful preparation within a bounded session budget.
+
+## November 17 GPT-6.2
+
+The authenticated Codex catalogue advertises GPT-6.2 Sol with a 500K context and Astra with a 272K context, both supporting Responses Lite and live reasoning updates. Supplemental registrations fill the released Pi 1.5.2 catalogue gap without replacing future upstream entries. Pi's supported reasoning selectors map to `low` through `max`; backend-only `ultra` is not exposed.
+
+API-equivalent pricing follows the published [Sol](https://developers.openai.com/api/docs/models/gpt-6.2-sol) and [Astra](https://developers.openai.com/api/docs/models/gpt-6.2-astra) specifications, including the tier above 272K input tokens. Their Ultrafast multiplier is 3 through February 28, 2027, then 6 from March 1 at midnight Pacific. This does not change the older models' multiplier.
+
+Reviewed Codex `c08843a5bd` and stable `rust-v0.169.0`. The Code host remains pinned to `0.167.0`: the native `content()` helper does not replace Pi's content adaptation, and the lazy catalogue, catalogue reuse and WebSocket size preflight changes are not in that stable release. `interrupt_on_cancel` remains disabled upstream, matching PCC.
+
+## November 12 QuickJS Code
+
+QuickJS Code replaces JS Notebook. It uses the released Pi codemode 1.5.2 WASM loader and QuickJS WASI 3.6.3, with a fresh VM per call in reusable Node workers. Pi's public sandbox interface does not expose PCC's synchronous output bridge, so PCC keeps its own bridge and existing tool delegation. No upstream runtime is patched. Old snapshot files are neither loaded nor deleted.
+
+## November 11 mixed content
+
+Adapted Codex `733a1cca06` (#60665): `content()` emits one MCP content block or an iterable in order across Code, Notebook, TS and JS Notebook. Text and images use the existing output paths; resources remain JSON text. Audio and encrypted text are rejected explicitly. The official Code host remains pinned to 0.167.0. The helper is supplied by PCC's cell integration and notebook runtimes without modifying that host or invalidating existing JS snapshots.
+
+## November 11 terminal rejections
+
+Reviewed Codex `e58bf8f523` for `codex-api/src/error.rs` and `codex-api/src/api_bridge.rs` rejection handling (#60479, #60480, #60481, #60511). PCC now stops retries for statusless content-policy, inference-hook and access-program rejections, plus recognised inference-hook, access-program and workspace 403s. Workspace HTTP parsing follows `detail.code`, `error.code`, then the base64 `x-error-json` header. Other statuses retain PCC's existing retry policy, including transient 503s carrying rejection codes. Request rejection does not mark the session unavailable.
+
+Pi still classifies outer automatic retries from final error text. Ordinary denial messages remain intact and do not trigger that heuristic. Pi exposes no structured terminal-rejection override, so denial text that itself resembles a transient error remains subject to Pi's heuristic.
+
+## Pi 1.5.1 compatibility
+
+Compared the released `v1.5.0` to `v1.5.1` delta. The stock Codex provider's only transport change removes abort listeners after SSE retry delays. PCC already removes those listeners. Its `session-id` headers also already use the spelling corrected in Pi's OpenAI Responses provider.
+
+Pi's native cache warmer remains disabled for Codex and Responses Lite because those routes cannot honour its one-token output cap. Other providers inherit Pi's idle warming and Anthropic message threads. PCC's opt-in isolated Codex keepalive remains separate.
+
+Responses Lite proxies now honour `compat.promptCacheKeyMode: "disabled"` by omitting `prompt_cache_key` before the payload hook. Native Codex request shaping is unchanged.
+
+JS Notebook now pins Pi codemode `1.5.1`. It reuses that exact version when resolvable beside the extension, otherwise it installs on demand. A separate global Pi installation does not guarantee reuse. Pi `1.5.0` hosts remain supported but may need to download the newer runtime. PCC consumes its WASM loader, which is unchanged. The separately pinned QuickJS engine and local bridge are unchanged, so existing snapshots retain their fingerprint. Pi's declaration and one-shot prelude fixes do not alter PCC's independent tool contracts or persistent prelude.
+
+## Pi 1.5 adoption
+
+PCC requires Pi 1.5. Tool-call JSON now uses Pi's incremental parser, and grammar input is escaped by delta and closed only on finalisation. Stream scratch state stays outside transcript content. Adapter-owned nested tools use Pi's argument validator and coercion. Pi-routed tools leave preparation and validation to Pi's native execution pipeline.
+
+Pi's catalogue owns GPT-6 model pricing and context limits. PCC disables the catalogue's `off` option for GPT-6.1 Terra, GPT-6 Sol and GPT-6 Luna: the [Codex catalogue](https://github.com/openai/codex/blob/2e58636d16794a150e562cc34b63ca3035494e50/codex-rs/models-manager/models.json) starts at `low`, as it does for GPT-6 Astra and GPT-6.1 Sol. Codex maps Pi's `minimal` selector to `low`. Daybreak aliases, Reserve and the GPT-5.6 context clamp remain PCC-owned additions.
+
+The JS Notebook runtime pin is Pi codemode 1.5. Its runtime source and the separately pinned QuickJS WASM are unchanged, so existing snapshots retain their engine fingerprint.
+
+Pi now owns extension update notices. PCC's generated changelog renderer and state file are removed. Existing base-instruction placement, tool replay, namespace policy, request capture, continuation and transport-recovery differences remain intentional.
+
+## November 5 reasoning and cancellation
+
+Compared published Pi `1.5.0` for request shape, headers, reasoning, service tiers, retries and stream termination. The three Codex catalogue overrides above remove unsupported reasoning-off selections. Existing instruction placement, Lite requests, identity headers, service-tier pricing and transport-recovery differences remain intentional.
+
+Codex `2e58636d16794a150e562cc34b63ca3035494e50` still marks `interrupt_on_cancel` as under development with `default_enabled: false`. PCC includes dormant Responses Lite cancellation support behind a hard-disabled code guard, with no configuration switch. Cancellation still discards the connection and its continuation, as in stock Pi. Recheck the upstream default before the next PR. The dormant protocol path has not had live validation.
 
 ## October 23 continuity ownership
 
@@ -43,13 +105,13 @@ Compared the published SDK and stock Codex provider for request shape, headers, 
 - Browser OAuth callback errors settle login immediately. The new OpenAI API OAuth provider has separate credentials and does not replace this adapter's Codex backend.
 - Backend-reported `fast` uses the existing priority cost multiplier. Stock Pi's Codex provider still recognizes only `priority`; this is an intentional pricing correction.
 
-Pi's built-in GPT-6.1 Sol row maps `minimal` to `low`. Keep the adapter's `minimal: null` override rather than dropping it during catalogue consolidation.
+Pi 1.5 owns GPT-6.1 Sol's reasoning mapping, including the Codex `minimal` to `low` alias.
 
 ## GPT-6.1 Sol
 
-Model registration follows the [published model specification](https://developers.openai.com/api/docs/models/gpt-6.1-sol) and [Codex catalogue at `b1e72963c3b7`](https://github.com/openai/codex/blob/b1e72963c3b71a9265a551e54beff078384efed9/codex-rs/models-manager/models.json). The Codex catalogue confirms Responses Lite, native reasoning updates and a 272K default context window. Keep that default distinct from the public API's 1.05M window. API-equivalent pricing includes the 5% cache-read rate and long-context tier.
+Model registration follows Pi 1.5's catalogue, the [published model specification](https://developers.openai.com/api/docs/models/gpt-6.1-sol) and the [Codex catalogue](https://github.com/openai/codex/blob/b1e72963c3b71a9265a551e54beff078384efed9/codex-rs/models-manager/models.json). The current Codex context window is 500K, distinct from the public API's 1.05M window. Responses Lite and native reasoning updates remain supported. API-equivalent pricing includes the 5% cache-read rate and long-context tier.
 
-Pi exposes `low`, `medium`, `high`, `xhigh` and `max`, with neither `off` nor `minimal`. The catalogue's `ultra` automatic-delegation mode is not exposed through Pi's reasoning selector.
+Pi exposes `low`, `medium`, `high`, `xhigh` and `max`, with `minimal` mapped to `low` and no `off`. The catalogue's `ultra` automatic-delegation mode is not exposed through Pi's reasoning selector.
 
 ## September 28 transport sync
 

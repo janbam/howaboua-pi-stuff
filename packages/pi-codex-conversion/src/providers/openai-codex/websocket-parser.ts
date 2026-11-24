@@ -1,30 +1,47 @@
 import type { StreamEventShape, WebSocketLike } from "./types.ts";
 import { DEFAULT_WEBSOCKET_CLOSE_TIMEOUT_MS } from "./constants.ts";
-import { extractWebSocketCloseError, extractWebSocketError, isWebSocketMessageTooBigError } from "./websocket-connection.ts";
+import {
+	extractWebSocketCloseError,
+	extractWebSocketError,
+	isWebSocketSizeClose,
+} from "./websocket-connection.ts";
+import { WebSocketMessageTooBigError } from "./websocket-size.ts";
 import { extractCodexTurnStateFromWebSocketEvent } from "./turn-state.ts";
 
-async function decodeWebSocketData(data: unknown): Promise<string | null> {
+export async function decodeWebSocketData(
+	data: unknown,
+): Promise<string | null> {
 	if (typeof data === "string") return data;
 	if (data instanceof ArrayBuffer) {
 		return new TextDecoder().decode(new Uint8Array(data));
 	}
 	if (ArrayBuffer.isView(data)) {
-		return new TextDecoder().decode(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+		return new TextDecoder().decode(
+			new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
+		);
 	}
 	if (data && typeof data === "object" && "arrayBuffer" in data) {
-		const arrayBuffer = await (data as { arrayBuffer: () => Promise<ArrayBuffer> }).arrayBuffer();
+		const arrayBuffer = await (
+			data as { arrayBuffer: () => Promise<ArrayBuffer> }
+		).arrayBuffer();
 		return new TextDecoder().decode(new Uint8Array(arrayBuffer));
 	}
 	return null;
 }
 
-export async function* parseWebSocket(socket: WebSocketLike, signal: AbortSignal | undefined, idleTimeoutMs?: number, onTurnState?: (value: string) => void): AsyncIterable<StreamEventShape> {
+export async function* parseWebSocket(
+	socket: WebSocketLike,
+	signal: AbortSignal | undefined,
+	idleTimeoutMs?: number,
+	onTurnState?: (value: string) => void,
+): AsyncIterable<StreamEventShape> {
 	const queue: StreamEventShape[] = [];
 	let pending: (() => void) | null = null;
 	let done = false;
 	let failed: Error | null = null;
 	let closeError: Error | null = null;
 	let sawCompletion = false;
+	let receivedTextFrame = false;
 	let idleTimedOut = false;
 	let pendingMessages = 0;
 	let messageChain = Promise.resolve();
@@ -39,12 +56,14 @@ export async function* parseWebSocket(socket: WebSocketLike, signal: AbortSignal
 	};
 
 	const onMessage = (event: unknown) => {
+		if (!event || typeof event !== "object" || !("data" in event)) return;
+		const { data } = event;
+		if (typeof data === "string") receivedTextFrame = true;
 		pendingMessages++;
 		wake();
 		messageChain = messageChain
 			.then(async () => {
-				if (!event || typeof event !== "object" || !("data" in event)) return;
-				const text = await decodeWebSocketData((event as { data?: unknown | undefined }).data);
+				const text = await decodeWebSocketData(data);
 				if (!text) return;
 				let parsed: StreamEventShape;
 				try {
@@ -56,7 +75,11 @@ export async function* parseWebSocket(socket: WebSocketLike, signal: AbortSignal
 				const turnState = extractCodexTurnStateFromWebSocketEvent(parsed);
 				if (turnState) onTurnState?.(turnState);
 				const type = typeof parsed.type === "string" ? parsed.type : "";
-				if (type === "response.completed" || type === "response.done" || type === "response.incomplete") {
+				if (
+					type === "response.completed" ||
+					type === "response.done" ||
+					type === "response.incomplete"
+				) {
 					sawCompletion = true;
 					closeError = null;
 					done = true;
@@ -92,9 +115,11 @@ export async function* parseWebSocket(socket: WebSocketLike, signal: AbortSignal
 		}
 		if (!closeError) {
 			const error = extractWebSocketCloseError(event);
-			if (isWebSocketMessageTooBigError(error)) {
+			if (isWebSocketSizeClose(error)) {
 				failed = null;
-				closeError = error;
+				closeError = receivedTextFrame
+					? error
+					: new WebSocketMessageTooBigError(error.message, { cause: error });
 			} else if (socketError) {
 				failed = socketError;
 			} else {
@@ -133,7 +158,9 @@ export async function* parseWebSocket(socket: WebSocketLike, signal: AbortSignal
 				if (idleTimeoutMs && idleTimeoutMs > 0) {
 					timeout = setTimeout(() => {
 						idleTimedOut = true;
-						failed = new Error(`WebSocket idle timeout after ${idleTimeoutMs}ms`);
+						failed = new Error(
+							`WebSocket idle timeout after ${idleTimeoutMs}ms`,
+						);
 						done = true;
 						wake();
 					}, idleTimeoutMs);

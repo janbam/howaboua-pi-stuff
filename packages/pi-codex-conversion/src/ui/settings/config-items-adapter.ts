@@ -24,32 +24,24 @@ export function buildAdapterSettings(
 				label: "Adapter enabled",
 				currentValue: adapterEnabled ? "on" : "off",
 				values: ["off", "on"],
-				description: "Session-only. Off leaves voice and /codex available, but disables prompt and request conversion plus every adapter tool, including standalone extras.",
+				description:
+					"Session-only. Off leaves voice and /codex available, but disables prompt and request conversion plus every adapter tool, including standalone extras.",
 			},
 			action: "adapter-enabled",
 		},
 		setting(
 			{
-				id: "extensionMode",
-				description: "Voice only disables the prompt and tool adapter. Standalone tools remain controlled by Provider scope.",
-				label: "Extension mode",
-				currentValue: config.voiceFeaturesOnly
-					? "voice only"
-					: "adapter and voice",
-				values: ["adapter and voice", "voice only"],
-			},
-			(value, current) => ({
-				...current,
-				voiceFeaturesOnly: value === "voice only",
-			}),
-		),
-		setting(
-			{
 				id: "allProviders",
-				description: "Codex + Extra tools gives Codex and Responses-compatible Additional providers the full adapter, and other Additional providers only enabled standalone tools. Extra tools never replace the prompt.",
+				description:
+					"Codex + Extra tools gives Codex and Responses-compatible Additional providers the full adapter, and other Additional providers only enabled standalone tools. Extra tools never replace the prompt.",
 				label: "Provider scope",
 				currentValue: formatAllProvidersMode(config.scope.allProviders),
-				values: ["Codex and configured", "Codex + Extra tools", "all providers", "extra tools only"],
+				values: [
+					"Codex and configured",
+					"Codex + Extra tools",
+					"all providers",
+					"extra tools only",
+				],
 			},
 			(value, current) => ({
 				...current,
@@ -62,7 +54,8 @@ export function buildAdapterSettings(
 		setting(
 			{
 				id: "additionalProviders",
-				description: "Provider IDs that receive the full adapter when Responses-compatible, or standalone extras under Codex + Extra tools when using another API.",
+				description:
+					"Provider IDs that receive the full adapter when Responses-compatible, or standalone extras under Codex + Extra tools when using another API.",
 				label: "Additional providers",
 				currentValue: config.scope.additionalProviders.join(", "),
 				submenu: (currentValue, done) =>
@@ -86,20 +79,17 @@ export function buildAdapterSettings(
 		setting(
 			{
 				id: "heavySystemPromptOverwrite",
-				description: "On removes Pi's generic scaffold. GPT also compresses PCC's instructions; savings vary with execution mode and context. Other extensions' instructions are preserved.",
+				description:
+					"Replace Pi’s default instructions with compact guidance. Keeps instructions from other extensions.",
 				label: "Heavy system prompt overwrite",
-				currentValue: config.prompt.heavySystemPromptOverwrite === "gpt"
-					? "GPT (experimental)"
-					: config.prompt.heavySystemPromptOverwrite
-					? "on (40% smaller)"
-					: "off",
-				values: ["off", "on (40% smaller)", "GPT (experimental)"],
+				currentValue: config.prompt.heavySystemPromptOverwrite ? "on" : "off",
+				values: ["off", "on"],
 			},
 			(value, current) => ({
 				...current,
 				prompt: {
 					...current.prompt,
-					heavySystemPromptOverwrite: value === "GPT (experimental)" ? "gpt" : value !== "off",
+					heavySystemPromptOverwrite: value === "on",
 				},
 			}),
 		),
@@ -120,22 +110,28 @@ export function buildAdapterSettings(
 			{
 				id: "currentTimeReminderMinutes",
 				label: "Current time reminders",
-				description: "Include UTC time on the first inference and at the chosen interval. Never starts a turn.",
-				currentValue: config.prompt.currentTimeReminderMinutes === 0 ? "off" : `${config.prompt.currentTimeReminderMinutes} mins`,
+				description:
+					"Include UTC time on the first inference and at the chosen interval. Never starts a turn.",
+				currentValue:
+					config.prompt.currentTimeReminderMinutes === 0
+						? "off"
+						: `${config.prompt.currentTimeReminderMinutes} mins`,
 				values: ["off", "30 mins", "60 mins"],
 			},
 			(value, current) => ({
 				...current,
 				prompt: {
 					...current.prompt,
-					currentTimeReminderMinutes: value === "30 mins" ? 30 : value === "60 mins" ? 60 : 0,
+					currentTimeReminderMinutes:
+						value === "30 mins" ? 30 : value === "60 mins" ? 60 : 0,
 				},
 			}),
 		),
 		{
 			item: {
 				id: "editConfig",
-				description: "Open the selected scope's config file in your editor for settings not exposed here.",
+				description:
+					"Open the selected scope's config file in your editor for settings not exposed here.",
 				label: "Edit config",
 				currentValue: editorCommand()
 					? "Opens in default editor (please /reload)"

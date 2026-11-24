@@ -1,6 +1,3 @@
-import { ControllerConnection } from "./controller/connection.ts";
-import { ControllerAgent } from "./controller/agent.ts";
-import { ControllerState } from "./controller/state.ts";
 import type {
 	AssistantMessage,
 	AssistantMessageEvent,
@@ -12,18 +9,21 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { CodexConversionConfig } from "../adapter/activation/config.ts";
 import { ActiveVoiceGuard } from "./active-owner.ts";
-import { ControllerHandoff } from "./controller/handoff.ts";
-import { ControllerLifecycle } from "./controller/lifecycle.ts";
+import { ControllerAgent } from "./controller/agent.ts";
+import { ControllerConnection } from "./controller/connection.ts";
 import {
 	RealtimeContextRefresh,
-	replaceRealtimeContext,
 	type RealtimeContextRefreshOptions,
+	replaceRealtimeContext,
 } from "./controller/context.ts";
-import {
-	type PreparedRealtimeContext,
-	type RealtimePeerPlan,
-	type VoiceControllerRuntime,
+import { ControllerHandoff } from "./controller/handoff.ts";
+import { ControllerLifecycle } from "./controller/lifecycle.ts";
+import type {
+	PreparedRealtimeContext,
+	RealtimePeerPlan,
+	VoiceControllerRuntime,
 } from "./controller/start.ts";
+import { ControllerState } from "./controller/state.ts";
 import {
 	currentVoiceSession,
 	prepareRealtimeVoicePrompt,
@@ -31,6 +31,7 @@ import {
 } from "./controller/support.ts";
 import type { CodexRealtimeConversation } from "./conversation/session.ts";
 import type { CapturedHandoffAudio } from "./handoff-peer.ts";
+import type { LanPlaybackDiagnostics } from "./lan/browser-connections.ts";
 import type { CodexVoiceSessionMessages } from "./session-messages.ts";
 import type { CodexVoiceMode } from "./ui.ts";
 
@@ -187,8 +188,20 @@ export class CodexVoiceController {
 
 	resetSessionContext(): void {
 		this.contextRefresh.cancel();
+		this.runtime.voiceCallContext = undefined;
 		this.presentation.resetPrompts();
 		this.messages.resetSessionContext();
+	}
+	resetVoiceBranch(ctx: ExtensionContext): void {
+		if (
+			this.runtime.voiceCallContext?.sessionId !==
+			ctx.sessionManager.getSessionId()
+		)
+			return;
+		this.runtime.voiceCallContext = {
+			sessionId: ctx.sessionManager.getSessionId(),
+			through: ctx.sessionManager.getLeafId(),
+		};
 	}
 	announceDictation(ctx: ExtensionContext): void {
 		this.messages.setContext(ctx);
@@ -303,6 +316,11 @@ export class CodexVoiceController {
 	agentStarted(): void {
 		this.agent.agentStarted();
 	}
+
+	lanPlaybackDiagnostics(diagnostics: LanPlaybackDiagnostics): void {
+		this.messages.lanPlaybackDiagnostics(diagnostics);
+	}
+
 	filterContext(messages: ContextEvent["messages"]): ContextEvent["messages"] {
 		return this.agent.filterContext(messages);
 	}

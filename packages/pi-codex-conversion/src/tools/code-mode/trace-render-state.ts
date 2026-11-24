@@ -1,4 +1,5 @@
 import type { Component } from "@earendil-works/pi-tui";
+import type { RenderedImage } from "./render-content.js";
 import type { RuntimeToolTrace } from "./types.js";
 
 const MAX_NESTED_RENDER_STATES = 512;
@@ -9,12 +10,16 @@ export interface NestedRenderState {
 	state: Record<string, unknown>;
 	callComponent?: Component | undefined;
 	resultComponent?: Component | undefined;
+	images?: RenderedImage[];
+}
+
+interface CapturedRenderValues {
 	input?: unknown;
 	result?: RuntimeToolTrace["result"];
 }
 
 export class CodeModeNestedRenderStore {
-	private readonly states = new Map<string, NestedRenderState>();
+	private readonly states = new Map<string, CapturedRenderValues>();
 	private readonly weights = new Map<string, number>();
 	private retainedBytes = 0;
 	private readonly maxBytes: number;
@@ -23,14 +28,14 @@ export class CodeModeNestedRenderStore {
 		this.maxBytes = Math.max(0, maxBytes);
 	}
 
-	get(traceId: string): NestedRenderState {
+	get(traceId: string): CapturedRenderValues {
 		const existing = this.states.get(traceId);
 		if (existing) {
 			this.states.delete(traceId);
 			this.states.set(traceId, existing);
 			return existing;
 		}
-		const created = { state: {} };
+		const created = {};
 		this.states.set(traceId, created);
 		this.weights.set(traceId, 0);
 		this.trim();
@@ -52,7 +57,7 @@ export class CodeModeNestedRenderStore {
 		this.rebalance(traceId);
 	}
 
-	rebalance(traceId: string): void {
+	private rebalance(traceId: string): void {
 		const state = this.states.get(traceId);
 		if (!state) return;
 		const previous = this.weights.get(traceId) ?? 0;
@@ -87,7 +92,7 @@ export class CodeModeNestedRenderStore {
 }
 
 function retainedPayloadBytes(
-	state: NestedRenderState,
+	state: CapturedRenderValues,
 	limit: number,
 ): number {
 	const budget = {
@@ -97,7 +102,6 @@ function retainedPayloadBytes(
 	};
 	let bytes = retainedValueBytes(state.input, budget);
 	bytes += retainedValueBytes(state.result, budget);
-	bytes += retainedValueBytes(state.state, budget);
 	return Math.min(limit, bytes);
 }
 

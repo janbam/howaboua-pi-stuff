@@ -17,9 +17,10 @@ Read `references/pet-contract.md` and `references/animation-rows.md` before prep
 ## Visual capability
 
 Choose by capability, not vendor or tool name:
+
 1. Prefer an available image-generation capability that can accept prompts, reference images, and produce downloadable PNG/WebP files.
 2. Use one isolated generation worker per visual job when workers are available. Up to three independent standard-row jobs may run concurrently after the canonical base exists.
-3. Every row job must receive every `input_images` entry from `visual-jobs.json`. Only the base may be prompt-only.
+3. Every image job MUST receive each `input_images` entry from `visual-jobs.json` with its role. The base MAY be prompt-only when no references are supplied.
 4. Never ask a generator for the complete atlas. Generate the base, standard strips, cardinal strip, and two coherent look strips as separate jobs; deterministic scripts own extraction and assembly.
 5. If no native image generation exists, follow `references/visual-generation.md`. Offer a prompt-and-upload handoff for ChatGPT, Gemini, Grok Imagine, or another service. If authorized browser control is available, offer to operate the user's logged-in service without requesting credentials or purchasing anything.
 6. A missing generator is not permission to draw, tile, rotate, or procedurally synthesize the missing art. Prepare the run and exact handoff, then resume when images exist.
@@ -42,6 +43,7 @@ uv run --project "$HATCH_DIR" --locked python "$HATCH_DIR/scripts/prepare_pet_ru
 Omit flags that have no input. For a bare brand/product request, first research 2–4 preferably official sources and save a compact brief; do not copy logos, slogans, UI, or readable marks. Pass the brief and source URLs to `prepare_pet_run.py`.
 
 The command creates:
+
 - `pet_request.json`: identity, style, chroma key, geometry, and provenance inputs.
 - `visual-jobs.json`: dependency graph, prompts, references, output paths, and job status.
 - `prompts/`: service-neutral prompts.
@@ -79,6 +81,7 @@ Do not mark the job complete until deterministic inspection and a quick visual c
 ## Look directions
 
 Read `references/look-directions.md` before this stage.
+
 1. Write `qa/look-mechanics.md`: what anchors, what leads the gaze, what follows, eye construction, body deformation, and prop constraints.
 2. Generate one four-pose strip: `000 up`, `090 screen-right`, `180 down`, `270 screen-left`. Extract it with `extract_cardinal_anchors.py`, inspect at pet size, and compose `decoded/look-anchors-approved.png`. Regenerate an ambiguous cardinal before continuing. Complete the evidence gate only after those artifacts pass:
 
@@ -95,6 +98,7 @@ uv run --project "$HATCH_DIR" --locked python "$HATCH_DIR/scripts/approve_cardin
 ## Assemble and review
 
 Run the final commands in `references/final-assembly.md` in order:
+
 1. Assemble both look rows into the 8×11 atlas.
 2. Apply exactly one edge-local chroma despill pass.
 3. Validate geometry, alpha, used cells, transparent unused cells, and chroma contamination.

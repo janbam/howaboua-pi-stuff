@@ -1,8 +1,38 @@
 # @howaboua/pi-gippity-control
 
+## 0.0.34
+
+- GipPity settings explain how browser access, dropped-call recovery and voice context refresh work.
+- Bundled voice helpers use updated Rust dependencies.
+
+## 0.0.33
+
+- Added GPT Live 1.1 voice with an OpenAI API key. Codex login remains the default.
+- Streamlined voice routing, progress and task preparation instructions. Existing custom voice prompts are preserved.
+
+## 0.0.32
+
+- Voice task acknowledgements now omit unused task IDs.
+- Bundled voice helpers now use refreshed Rust dependencies.
+- Local voice tools now use Pi's native schema types instead of TypeBox.
+
+## 0.0.31
+
+- Requires Pi 1.5 or newer.
+  - Fixed duplicate voice task submissions from progress updates and repeated handoffs.
+  - Voice task preparation now preserves captured speech, tone and instructions without adding questions or next steps.
+  - Voice now recognises conversational wrap-ups and waits for LAN speaker playback before ending calls.
+  - Fixed stalled short audio tails, playback bursts and duplicated LAN audio. Codex Live now uses Opus packet repair.
+  - Added content-free connection and playback diagnostics without recording audio.
+  - Fixed generated task text appearing as user speech.
+  - LAN Stop now cancels pending task preparation. Herdr Disconnect also closes the listener.
+  - Added host-side voice settings without starting Pi or a call.
+  - Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`.
+
 ## 0.0.30
 
 - Updated package dependencies.
+
 ## 0.0.29
 
 - Added Realtime 2.1 and Realtime 2.1 Mini, with model-specific voices in terminal and LAN settings. Codex Live remains the default.

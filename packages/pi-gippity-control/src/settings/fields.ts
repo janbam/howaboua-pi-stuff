@@ -2,6 +2,7 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { SettingItem } from "@earendil-works/pi-tui";
 import {
 	GIPPITY_VOICE_MODELS,
+	GIPPITY_VOICE_MODEL_OPTIONS,
 	type GippityControlConfig,
 	normalizeRealtimeV3Voice,
 	normalizeVoiceContextReasoning,
@@ -25,29 +26,31 @@ export function buildGippitySettings(
 	tui: { requestRender(): void },
 	webSearchAvailable?: boolean,
 ): Setting[] {
+	const { kind } = GIPPITY_VOICE_MODEL_OPTIONS[config.voice.model];
+	const apiModel = kind !== "codex";
 	return [
-		...(["inputDevice", "outputDevice"] as const).map(
-			(key): Setting => ({
-				id: key,
-				label: key === "inputDevice" ? "Microphone" : "Speaker",
-				description:
-					"Native audio only; applies on the next local start. Browser and handed-off audio keep their own devices.",
-				currentValue: config.voice[key] ?? "System default",
-				submenu: (_value, back) =>
-					nativeDevicePicker(key, config.voice[key], back, theme, () =>
-						tui.requestRender(),
-					),
-				update: (value, current) => {
-					const voice = { ...current.voice, audioSetupCompleted: true };
-					if (value) voice[key] = value;
-					else delete voice[key];
-					return { ...current, voice };
-				},
-			}),
-		),
+		...(["inputDevice", "outputDevice"] as const).map((key): Setting => ({
+			id: key,
+			label: key === "inputDevice" ? "Microphone" : "Speaker",
+			description:
+				"Native audio only; applies on the next local start. Browser and handed-off audio keep their own devices.",
+			currentValue: config.voice[key] ?? "System default",
+			submenu: (_value, back) =>
+				nativeDevicePicker(key, config.voice[key], back, theme, () =>
+					tui.requestRender(),
+				),
+			update: (value, current) => {
+				const voice = { ...current.voice, audioSetupCompleted: true };
+				if (value) voice[key] = value;
+				else delete voice[key];
+				return { ...current, voice };
+			},
+		})),
 		{
 			id: "server",
 			label: "Control server",
+			description:
+				"Let browsers on your network control this Pi session without signing in. Stops when the Pi session changes.",
 			currentValue: lanVoice.status().running ? "on" : "off",
 			values: ["off", "on"],
 		},
@@ -66,27 +69,29 @@ export function buildGippitySettings(
 			id: "voiceModel",
 			label: "Voice model",
 			description:
-				"Codex Live uses your Codex login. GPT-Realtime requires an OpenAI API key, billed separately. Applies on the next call without restarting the current call.",
-			currentValue: formatVoiceModel(config.voice.model),
-			values: GIPPITY_VOICE_MODELS.map(formatVoiceModel),
+				"Codex Live uses your Codex login. API models require an API key and are billed separately. Applies on the next call.",
+			currentValue: GIPPITY_VOICE_MODEL_OPTIONS[config.voice.model].label,
+			values: GIPPITY_VOICE_MODELS.map(
+				(model) => GIPPITY_VOICE_MODEL_OPTIONS[model].label,
+			),
 			update: (value, current) => ({
 				...current,
 				voice: {
 					...current.voice,
 					model:
 						GIPPITY_VOICE_MODELS.find(
-							(model) => formatVoiceModel(model) === value,
+							(model) => GIPPITY_VOICE_MODEL_OPTIONS[model].label === value,
 						) ?? current.voice.model,
 				},
 			}),
 		},
-		...(config.voice.model !== "codex-live-1.1"
+		...(apiModel
 			? [
 					{
 						id: "apiProvider",
 						label: "API provider",
 						description:
-							"Exact Pi provider name. Uses its API key and endpoint on the next Realtime call. Default: openai.",
+							"Exact Pi provider name. Uses its API key and endpoint on the next call. Default: openai.",
 						currentValue: config.voice.apiProvider,
 						submenu: (value: string, back: (value?: string) => void) =>
 							new ApiProviderPicker(value, back, theme),
@@ -97,7 +102,7 @@ export function buildGippitySettings(
 					},
 				]
 			: []),
-		...(config.voice.model === "codex-live-1.1"
+		...(kind === "codex"
 			? [
 					{
 						id: "taskDelegationModel",
@@ -120,7 +125,6 @@ export function buildGippitySettings(
 				]
 			: []),
 		...(["primary", "alternate"] as const).map((role) => {
-			const apiModel = config.voice.model !== "codex-live-1.1";
 			const codexKey = role === "primary" ? "v3Voice" : "v3AlternateVoice";
 			const realtimeKey =
 				role === "primary" ? "realtimeVoice" : "realtimeAlternateVoice";
@@ -158,7 +162,7 @@ export function buildGippitySettings(
 			};
 			return { ...item, update };
 		}),
-		...(config.voice.model !== "codex-live-1.1"
+		...(kind === "realtime"
 			? [
 					{
 						id: "webSearch",
@@ -182,6 +186,8 @@ export function buildGippitySettings(
 		{
 			id: "autoResumeRealtime",
 			label: "Auto-resume realtime voice",
+			description:
+				"Try to start a replacement when an established voice call drops.",
 			currentValue: config.voice.autoResumeRealtime ? "on" : "off",
 			values: ["off", "on"],
 			update: (value, current) => ({
@@ -192,19 +198,25 @@ export function buildGippitySettings(
 				},
 			}),
 		},
-		{
-			id: "delegationAcknowledgements",
-			label: "Speak delegation acknowledgements",
-			currentValue: config.voice.delegationAcknowledgements ? "on" : "off",
-			values: ["off", "on"],
-			update: (value, current) => ({
-				...current,
-				voice: {
-					...current.voice,
-					delegationAcknowledgements: value === "on",
-				},
-			}),
-		},
+		...(kind === "codex"
+			? [
+					{
+						id: "delegationAcknowledgements",
+						label: "Speak delegation acknowledgements",
+						currentValue: config.voice.delegationAcknowledgements
+							? "on"
+							: "off",
+						values: ["off", "on"],
+						update: (value: string, current: GippityControlConfig) => ({
+							...current,
+							voice: {
+								...current.voice,
+								delegationAcknowledgements: value === "on",
+							},
+						}),
+					},
+				]
+			: []),
 		{
 			id: "forwardReasoningSummaries",
 			label: "Forward reasoning summaries for compatible models",
@@ -221,6 +233,8 @@ export function buildGippitySettings(
 		{
 			id: "dictationMode",
 			label: "Dictation key behavior",
+			description:
+				"Hold the shortcut to record and release to finish, or press once to start and again to stop.",
 			currentValue:
 				config.voice.dictationShortcutMode === "push"
 					? "push to dictate"
@@ -237,6 +251,8 @@ export function buildGippitySettings(
 		{
 			id: "contextModel",
 			label: "Voice context model",
+			description:
+				"Give voice calls a summary of the Pi conversation. Off starts calls without that summary.",
 			currentValue: config.voice.contextModel
 				? formatContextModel(config.voice.contextModel)
 				: "off",
@@ -280,6 +296,8 @@ export function buildGippitySettings(
 		{
 			id: "refreshRealtimeAfterCompaction",
 			label: "Refresh realtime voice after compaction",
+			description:
+				"After compaction, replace the active call if a fresh context summary is available. Requires a Voice context model.",
 			currentValue: config.voice.refreshRealtimeAfterCompaction ? "on" : "off",
 			values: ["off", "on"],
 			update: (value, current) => ({
@@ -298,10 +316,4 @@ function formatVoiceName(voice: string): string {
 
 function formatContextModel(model: VoiceContextModel): string {
 	return `${model.provider}/${model.modelId}`;
-}
-
-function formatVoiceModel(model: string): string {
-	if (model === "realtime-2.1") return "GPT-Realtime-2.1 (API)";
-	if (model === "realtime-2.1-mini") return "GPT-Realtime-2.1 Mini (API)";
-	return "Codex Live (OAuth)";
 }

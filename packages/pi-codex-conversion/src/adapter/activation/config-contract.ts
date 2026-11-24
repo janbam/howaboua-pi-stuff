@@ -1,17 +1,34 @@
 // Invalid explicit selections stay invalid instead of switching accounts to openai.
 export function normalizeVoiceApiProvider(value: unknown): string | undefined {
-	return typeof value === "string" && value.trim() === value &&
-		value.length > 0 && Buffer.byteLength(value) <= 512 &&
+	return typeof value === "string" &&
+		value.trim() === value &&
+		value.length > 0 &&
+		Buffer.byteLength(value) <= 512 &&
+		// oxlint-disable-next-line no-control-regex -- Intentionally matches terminal controls or rejects control characters at the boundary.
 		!/[\u0000-\u001f\u007f]/u.test(value)
-		? value : undefined;
+		? value
+		: undefined;
 }
 
 export const GIPPITY_VOICE_MODELS = [
 	"codex-live-1.1",
+	"api-live-1.1",
 	"realtime-2.1",
 	"realtime-2.1-mini",
 ] as const;
 type GippityVoiceModel = (typeof GIPPITY_VOICE_MODELS)[number];
+export const GIPPITY_VOICE_MODEL_OPTIONS = {
+	"codex-live-1.1": { label: "Codex Live (OAuth)", kind: "codex" },
+	"api-live-1.1": { label: "GPT Live 1.1 (API)", kind: "live" },
+	"realtime-2.1": { label: "GPT-Realtime-2.1 (API)", kind: "realtime" },
+	"realtime-2.1-mini": {
+		label: "GPT-Realtime-2.1 Mini (API)",
+		kind: "realtime",
+	},
+} as const satisfies Record<
+	GippityVoiceModel,
+	{ label: string; kind: "codex" | "live" | "realtime" }
+>;
 export const OPENAI_REALTIME_VOICES = [
 	"alloy",
 	"ash",
@@ -39,7 +56,6 @@ export function normalizeOpenAIRealtimeVoice(
 import type { ExecutionMode } from "./execution-mode.ts";
 
 export type CodexVerbosity = "low" | "medium" | "high";
-export type HeavySystemPromptOverwrite = boolean | "gpt";
 export const FAST_MODE_FAMILIES = ["astra", "sol", "terra", "luna"] as const;
 export type FastModeFamily = (typeof FAST_MODE_FAMILIES)[number];
 export type FastModeConfig = Record<
@@ -47,7 +63,7 @@ export type FastModeConfig = Record<
 	boolean | "ultrafast"
 >;
 export type CacheDiagnosticsMode = "off" | "status" | "status-and-log";
-export type CompactToolsMode = "off" | "on" | "minimal";
+export type ToolDetailsMode = "minimal" | "compact" | "preview";
 export type LunaCacheKeepaliveMinutes = 0 | 5 | 10 | 15;
 export type LunaCacheKeepaliveIntervalMinutes = 2.5 | 4.5;
 export type CacheKeepaliveIntervalMinutes = 25 | 55;
@@ -71,6 +87,10 @@ export type VoiceContextReasoning =
 	(typeof VOICE_CONTEXT_REASONING_LEVELS)[number];
 export const DEFAULT_VOICE_CONTEXT_REASONING: VoiceContextReasoning = "high";
 export type VoiceContextModel = { provider: string; modelId: string };
+export const DEFAULT_VOICE_CONTEXT_MODEL: VoiceContextModel = {
+	provider: "openai-codex",
+	modelId: "gpt-6-luna",
+};
 
 export const REALTIME_V3_VOICES = [
 	"juniper",
@@ -92,25 +112,23 @@ export const LUNA_CACHE_KEEPALIVE_MINUTES_OPTIONS: readonly LunaCacheKeepaliveMi
 
 export interface CodexConversionConfig {
 	executionMode: ExecutionMode;
-	voiceFeaturesOnly: boolean;
 	prompt: {
-		heavySystemPromptOverwrite: HeavySystemPromptOverwrite;
+		heavySystemPromptOverwrite: boolean;
 		currentTimeReminderMinutes: 0 | 30 | 60;
 		appendSystemPromptFile: boolean;
 	};
 	scope: { allProviders: AllProvidersMode; additionalProviders: string[] };
 	tools: {
 		autoReasoning: boolean;
-		customRustBinariesDir: string;
-		viewImageFallback: boolean;
 		applyPatchOnly: boolean;
 		viewImageOnly: boolean;
+		customRustBinariesDir: string;
+		viewImageFallback: boolean;
 	};
 	ui: {
 		statusLine: boolean;
 		toolRenaming: boolean;
-		compactTools: CompactToolsMode;
-		codeModeDetails: boolean;
+		toolDetails: ToolDetailsMode;
 		backgroundShellWidget: boolean;
 		backgroundShellToggleShortcut: string;
 		backgroundShellPrevShortcut: string;
@@ -122,8 +140,6 @@ export interface CodexConversionConfig {
 		v2UserMessageRetention: V2UserMessageRetention;
 	};
 	notebook: {
-		journals: "off" | "week" | "on";
-		checkpointCleanup: "never" | "month" | "week";
 		maxHeapMiB: number;
 		plainCommandOutput: boolean;
 		profile?: string | undefined;
@@ -146,7 +162,7 @@ export interface CodexConversionConfig {
 		muteShortcut: string;
 		serverShortcut: string;
 		dictationShortcutMode: DictationShortcutMode;
-		contextModel?: VoiceContextModel | undefined;
+		contextModel?: VoiceContextModel | "current" | undefined;
 		contextReasoning: VoiceContextReasoning;
 		taskDelegationModel: string;
 		taskDelegationReasoning: VoiceContextReasoning;
@@ -163,13 +179,11 @@ export interface CodexConversionConfig {
 		cacheKeepaliveIntervalMinutes: CacheKeepaliveIntervalMinutes;
 		proxyResponsesLite: boolean;
 		cacheDiagnostics: CacheDiagnosticsMode;
-		harnessIdentifierHeader: boolean | "codex";
 	};
 }
 
 export const DEFAULT_CODEX_CONVERSION_CONFIG: CodexConversionConfig = {
 	executionMode: "normal",
-	voiceFeaturesOnly: false,
 	prompt: {
 		heavySystemPromptOverwrite: false,
 		currentTimeReminderMinutes: 0,
@@ -178,16 +192,15 @@ export const DEFAULT_CODEX_CONVERSION_CONFIG: CodexConversionConfig = {
 	scope: { allProviders: "off", additionalProviders: [] },
 	tools: {
 		autoReasoning: false,
-		customRustBinariesDir: "",
-		viewImageFallback: false,
 		applyPatchOnly: false,
 		viewImageOnly: false,
+		customRustBinariesDir: "",
+		viewImageFallback: false,
 	},
 	ui: {
 		statusLine: true,
 		toolRenaming: true,
-		compactTools: "off",
-		codeModeDetails: false,
+		toolDetails: "compact",
 		backgroundShellWidget: true,
 		backgroundShellToggleShortcut: "alt+w",
 		backgroundShellPrevShortcut: "alt+q",
@@ -200,9 +213,7 @@ export const DEFAULT_CODEX_CONVERSION_CONFIG: CodexConversionConfig = {
 	},
 	notebook: {
 		maxHeapMiB: 4_096,
-		plainCommandOutput: false,
-		journals: "week",
-		checkpointCleanup: "never",
+		plainCommandOutput: true,
 	},
 	voice: {
 		model: "codex-live-1.1",
@@ -222,10 +233,7 @@ export const DEFAULT_CODEX_CONVERSION_CONFIG: CodexConversionConfig = {
 		muteShortcut: "ctrl+alt+m",
 		serverShortcut: "ctrl+alt+g",
 		dictationShortcutMode: "push",
-		contextModel: {
-			provider: "openai-codex",
-			modelId: "gpt-6-luna",
-		},
+		contextModel: "current",
 		contextReasoning: DEFAULT_VOICE_CONTEXT_REASONING,
 		taskDelegationModel: "openai-codex/gpt-6-luna",
 		taskDelegationReasoning: "low",
@@ -240,6 +248,5 @@ export const DEFAULT_CODEX_CONVERSION_CONFIG: CodexConversionConfig = {
 		cacheKeepaliveIntervalMinutes: 25,
 		proxyResponsesLite: false,
 		cacheDiagnostics: "off",
-		harnessIdentifierHeader: false,
 	},
 };

@@ -1,0 +1,7 @@
+- Reuse Grok audio bundle unchanged. No DSP copies or credentials in companion/Pi bridge.
+- Owned reader task handles native framing. Cancelling partial reads in `select!` loses framing. Audio lifetime independent of UI.
+- Pane launch via session-addressed bridge mailbox and verified receipts. No editor keystrokes. Unknown slash commands become model input: verify loaded command, retain `expandPromptTemplates: true`.
+- Provision marked bridge only. Manual and Quickstart share one registration. Preserve unrelated extensions and kept Pi terminals on failure.
+- Disposable framing peers. Live mic or provider call: separate approval.
+- Beyond `herdr-app check`, inspect isolated dock/overlay renders. Bound full-size roots. Dismissible settings. Escape reaches terminal beneath floating windows.
+- Native virtual list owns keyed `on_item_click` and container focus, never rows.

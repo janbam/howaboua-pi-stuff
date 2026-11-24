@@ -1,8 +1,90 @@
 # @howaboua/pi-stuff
 
+## 0.0.118
+
+- Include bundled package updates:
+
+  - @howaboua/pi-ask: Ask always uses compact question and handoff help, including in standalone installs.
+  - @howaboua/pi-better-skills-tool: - Skills lists trusted repository `.agents/skills` under Session alongside `.pi/skills`, without duplicates. Global `~/.agents/skills` are excluded. - Skills always uses compact discovery and reading guidance, including in standalone installs.
+  - @howaboua/pi-gippity-control: - GipPity settings explain how browser access, dropped-call recovery and voice context refresh work. - Bundled voice helpers use updated Rust dependencies.
+  - @howaboua/pi-github-watch: GitHub Watch always uses compact watch help, including in standalone installs.
+  - @howaboua/pi-shepherdr: - Shared Notes and Board recovery messages direct users to Agent Comms. - Shepherdr settings distinguish delegation guidance from starting workers and explain what adding an SSH connection does. - Agent discovery shows and accepts the local Herdr Core name. For remote machines, use the label or ID from `list`, not the hostname. - Agent help uses compact wording and separates terminal commands from Herdr window controls.
+  - @howaboua/pi-unicode-charts: Chart instructions always use the compact format. Pi Codex Conversion is no longer needed to select it.
+
+## 0.0.117
+
+**Bundle removals**
+
+- Grok Realtime and Pet are no longer bundled. Install either separately with `pi install npm:@howaboua/pi-grok-realtime` or `pi install npm:@howaboua/pi-pet`.
+- Removed the retired Auto Trees, Smart BTW and Subagent Review extensions.
+
+**Bundled updates**
+
+- GipPity Control adds optional GPT Live 1.1 voice with an OpenAI API key.
+- GitHub Watch shows known review-bot quota notices without waking the agent.
+- Better Skills Tool fixes empty-object discovery and avoids opening unrelated skill files.
+- Shepherdr fixes stale attachments blocking unrelated Notes and History lookups.
+- Suggestions skips history scans when disabled and scans once per request when enabled.
+- Ask and Unicode Charts have shorter agent guidance.
+
+## 0.0.116
+
+- Include bundled package updates:
+
+  - @howaboua/pi-ask: Ask help now identifies `handoff` as a boolean.
+  - @howaboua/pi-better-skills-tool: Requires Pi 1.5 or newer. - Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`. - Removed the TypeBox installation requirement. Skills discovery examples no longer prescribe `await`.
+  - @howaboua/pi-github-watch: PR watches now notify when the head commit changes, even without a new comment or review.
+  - @howaboua/pi-gpt-switcher: Requires Pi 1.5 or newer. - Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`. - `/sol` and `/astra` now select GPT-6.2 Sol and Astra, including without Codex Conversion. - Context defaults are now 500K for Sol, Terra and Luna, and 256K for Astra. Existing preferences are preserved.
+  - @howaboua/pi-pet: The animated pet canvas now exposes its accessible name to screen readers.
+  - @howaboua/pi-shepherdr: - Fixed resumed workers failing to start or losing completion reports after crashes or restarts. - Fixed agent launches and window focus in standalone Bun builds of Pi. - Sender labels now show machine, full agent address and terminal without repeated labels. - Empty turns from unassigned workers no longer trigger completion notices. - Agent guidance now favours outcome-focused delegation, actionable handoffs and fewer duplicate completion messages. - Tool examples no longer prescribe `await`. - New general profiles use GPT-6.2 Sol.
+  - @howaboua/pi-subagent-review: - New review configurations use GPT-6.2 Sol. - Custom reviewer model IDs now use Pi's CLI instead of falling back when their provider is configured.
+
+## 0.0.115
+
+- Include bundled package updates:
+
+  - @howaboua/pi-github-watch: Return `OK` after cancelling all watches.
+  - @howaboua/pi-shepherdr: Reduce CPU use when monitoring long sessions.
+
+## 0.0.114
+
+- Include bundled package updates:
+
+  - @howaboua/pi-ask: Requires Node.js 22.19 or newer. - Replaced the TypeBox dependency with Pi's native schema builders and validation.
+  - @howaboua/pi-gippity-control: - Voice task acknowledgements now omit unused task IDs. - Bundled voice helpers now use refreshed Rust dependencies. - Local voice tools now use Pi's native schema types instead of TypeBox.
+  - @howaboua/pi-github-watch: Requires Pi 1.5 or newer. - Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`. - Feedback notices now frame replies and review resolution around the current task rather than prescribing a response. - Watch schedules now display check times to the minute. - Removed the TypeBox installation requirement.
+  - @howaboua/pi-grok-realtime: - Voice task acknowledgements now omit unused task IDs. - Voice context timestamps now use minute precision. - Bundled audio helpers now use refreshed Rust dependencies. - Local voice tools now use Pi's native schema types instead of TypeBox.
+  - @howaboua/pi-pet: Requires Pi 1.5 or newer and Node.js 22.19 or newer. - Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`. - Pet-authoring metadata now records UTC timestamps to the minute. - Removed the TypeBox installation requirement.
+  - @howaboua/pi-shepherdr: Removed the legacy Herdr backend and SSH bridge. Requires Herdr Core 0.1.18+, Pi 1.5+ and Node.js 22.19+. Legacy Herdr TUI is unsupported. Its last supported release, Shepherdr 0.2.27, is unmaintained, with [source available for forks](https://github.com/IgorWarzocha/howaboua-pi-stuff/tree/5ede06bdc32da2b513f0709966af1f32908f243c/packages/pi-shepherdr). Update and restart controllers and workers together. Start fresh Core terminals for older Herdr sessions and reselect watches when changing Core namespaces. Replace pane placement with terminal, new-tab or new-workspace placement. - Shepherdr now runs without other extensions. Optional sharing supports Agent Comms or standalone Notes Compaction and Agent Board, preserving saved notes and boards. - Agent calls now accept current Core machine names or stable IDs. Saved routes and watches survive renames. Connections adds machines through `hc machine add`. - Remote supervision and sharing now use persistent Core attachments. Saved checkpoints remain readable after workers and intermediate controllers close, including older sessions across connected machines. - Concurrent Pi sessions now share machine-local launch and saved-session read limits, with calls remaining pending until their normal result is available. - Ordinary workers now end with their parent's program. Active remote connections enforce cross-machine cleanup. Detached workers remain independent. - Added a public worker API with saved-session reuse and caller-selected detached lifetime. - `/root` now follows saved spawn ancestry independently of sharing. Older workers without saved ancestry must use exact session references. - Sending or assigning work to a closed, owned worker now resumes its saved Pi session before delivery. - The widget now shows watched peers without repeating supervised workers. Monitoring warnings remain visible. Shells retaining old Pi labels no longer appear as live agents. - Fixed completed replies being hidden by empty notice turns, and closed agents causing collection warnings or settlement retries. - Agent replies now return when the extension accepts the answer instead of blocking later questions until resumed work finishes. - Attachment and detachment now accept context or Board sharing independently. Incoming messages identify sender access, distinguishing machine IDs from Pi agent references. - Monitoring notices now describe delayed or unavailable agent updates and automatic retry without duplicate internal errors during Core restarts. - Agent help now asks callers to trust worker judgement instead of over-prescribing restrictions or narrowing the task unnecessarily. - Worker profiles now brief only the initial assignment instead of pinning restrictions in the standing prompt. Later assignments and model-role changes can reuse the same agent and its notes. - Agent help now keeps each agent available until its task is verified complete, with corrections returned to the same agent before closing it. - Agent help now directs callers to skip acknowledgements, status-only updates and standby reminders that needlessly wake idle agents. - Removed the TypeBox installation requirement.
+  - @howaboua/pi-subagent-review: Requires Pi 1.5 or newer. - Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`. - Conversation summaries now use minute-precision timestamps.
+  - @howaboua/pi-skill-harness-and-agent-engineering: Pi extension guidance now recommends native schema builders and validation.
+
+## 0.0.113
+
+- Include bundled package updates:
+
+  - @howaboua/pi-suggestions: Requires Pi 1.5 or newer. - Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`. - Fixed ghost suggestions in empty editors with decorated prompt prefixes, including `pi-powerline-footer`. - Added an off-by-default chat model fallback for unavailable or failed suggestion models.
+
+## 0.0.112
+
+- Include bundled package updates:
+
+  - @howaboua/pi-shepherdr: - New remote workers retain their Core parent link for sidebar nesting. - Agent guidance now requires the agents tool for supported local and remote operations, including after failures, instead of bypassing it with shell commands.
+
+## 0.0.111
+
+- Include bundled package updates:
+
+  - @howaboua/pi-ask: Requires Pi 1.5 or newer. - Waiting prompts now report Pi's native blocked state. Steering prompts remain non-blocking. - Invalid question arguments now explain how to find the supported format. - Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`.
+  - @howaboua/pi-gippity-control: Requires Pi 1.5 or newer. - Fixed duplicate voice task submissions from progress updates and repeated handoffs. - Voice task preparation now preserves captured speech, tone and instructions without adding questions or next steps. - Voice now recognises conversational wrap-ups and waits for LAN speaker playback before ending calls. - Fixed stalled short audio tails, playback bursts and duplicated LAN audio. Codex Live now uses Opus packet repair. - Added content-free connection and playback diagnostics without recording audio. - Fixed generated task text appearing as user speech. - LAN Stop now cancels pending task preparation. Herdr Disconnect also closes the listener. - Added host-side voice settings without starting Pi or a call. - Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`.
+  - @howaboua/pi-grok-realtime: Requires Pi 1.5 or newer. - Added host-side voice settings without starting Pi or a call. - Herdr Disconnect now shuts down the LAN listener after stopping the call. - Reduced mid-word playback cutouts. Initial playback buffers about 500 ms plus one device callback, and quiet pauses can grow by up to 500 ms. - Recoverable audio-device underruns and overruns no longer end calls. - Added bounded playback and device-recovery diagnostics without recording audio. - Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`.
+  - @howaboua/pi-shepherdr: Requires Pi 1.5 or newer. Update and restart controllers and workers together for shared Notes and boards. - `spawn` and `assign` now return after task submission by default. Set `blocking: true` to wait for the result. A profile's `blocking` setting still overrides `spawn`. - Agent references now use Pi session IDs across delegation, Notes and boards. Spawn returns one `agent` reference and sharing flags instead of separate context and board references. - Attached Notes reads keep alias paths and read-only warnings consistent across native, Code and Notebook results. - Rollover briefings now retain initial scope and the latest instruction without accumulating every message. Full messages remain in session history. - Fixed repeated writes of unchanged agent snapshots. - Closed workers no longer trigger a misleading notices-unavailable reconnect warning. - Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`.
+  - @howaboua/pi-unicode-charts: Requires Pi 1.5 or newer. - Other extensions' later prompt sections now reach the model in interactive sessions. - Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`.
+
 ## 0.0.110
 
 - Updated bundled packages.
+
 ## 0.0.109
 
 - Include bundled package updates:

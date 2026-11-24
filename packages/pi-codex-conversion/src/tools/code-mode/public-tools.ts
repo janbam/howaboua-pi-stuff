@@ -1,5 +1,16 @@
-import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+	ToolDefinition,
+} from "@earendil-works/pi-coding-agent";
+import {
+	bool,
+	int,
+	obj,
+	opt,
+	str,
+	type Static,
+} from "@earendil-works/pi-schema";
 import { getExperimentalToolSampling } from "../tool-sampling.ts";
 import {
 	DEFAULT_CODE_MODE_OUTPUT_TOKENS,
@@ -7,95 +18,106 @@ import {
 } from "./host-protocol.js";
 import {
 	EXEC_DESCRIPTION,
-	GPT_EXEC_DESCRIPTION,
-	GPT_ISOLATED_EXEC_GUIDANCE,
-	GPT_JS_EXEC_DESCRIPTION,
 	ISOLATED_EXEC_GUIDANCE,
-	JS_EXEC_DESCRIPTION,
+	VM_EXEC_DESCRIPTION,
 	WAIT_DESCRIPTION,
 } from "./custom-tool-prompt.js";
 import { createCodeModeRenderTracker } from "./render-tracker.js";
-import {
-	renderExecCall,
-	renderWaitCall,
-} from "./call-rendering.js";
+import { renderExecCall, renderWaitCall } from "./call-rendering.js";
 import { renderTrackedCodeModeResult } from "./result-rendering.js";
 import type { SharedCodeModeRuntime } from "./shared-runtime.js";
-import {
-	toCodeModeToolResult,
-} from "./tool-result.js";
+import { toCodeModeToolResult } from "./tool-result.js";
 import type {
 	CodeModeRenderContext,
 	CodeModeRenderTheme,
 	ToolExecutionContext,
 } from "./types.js";
 import { CODE_MODE_EXEC_CONSTRAINED_SAMPLING } from "./exec-contract.js";
-import {
-	registerCodeModePreflightBroker,
-} from "./nested-tool-preflight.js";
+import { registerCodeModePreflightBroker } from "./nested-tool-preflight.js";
 import { continueExecSessionFromMistakenWait } from "./wait-session-recovery.js";
 import { registerNotebookTool } from "./notebook-tool.ts";
 import { PiToolCallScope } from "./pi-tool-call-scope.ts";
-import { registerGptPromptMode } from "../../prompt-mode.ts";
 
 const DEFAULT_WAIT_MS = 10_000;
 const MIN_ADAPTIVE_WAIT_MS = 5_000;
 const MAX_ADAPTIVE_WAIT_MS = 1_800_000;
 type RenderTracker = ReturnType<typeof createCodeModeRenderTracker>;
-const EXEC_PARAMETERS = Type.Object({
-	code: Type.String(),
-});
-const WAIT_PARAMETERS = Type.Object({
-	cell_id: Type.String(),
-	yield_time_ms: Type.Optional(
-		Type.Integer({
-			minimum: 0,
-			default: DEFAULT_WAIT_MS,
-		}),
-	),
-	max_tokens: Type.Optional(
-		Type.Integer({
-			minimum: 1,
-			maximum: MAX_CODE_MODE_OUTPUT_TOKENS,
-			default: DEFAULT_CODE_MODE_OUTPUT_TOKENS,
-		}),
-	),
-	terminate: Type.Optional(Type.Boolean()),
-});
+const EXEC_PARAMETERS = obj(
+	{
+		code: str(),
+	},
+	{ open: true },
+);
+const WAIT_PARAMETERS = obj(
+	{
+		cell_id: str(),
+		yield_time_ms: opt(
+			int({
+				minimum: 0,
+				default: DEFAULT_WAIT_MS,
+			}),
+		),
+		max_tokens: opt(
+			int({
+				minimum: 1,
+				maximum: MAX_CODE_MODE_OUTPUT_TOKENS,
+				default: DEFAULT_CODE_MODE_OUTPUT_TOKENS,
+			}),
+		),
+		terminate: opt(bool()),
+	},
+	{ open: true },
+);
 
 export function registerPublicCodeModeTools(
 	pi: ExtensionAPI,
 	runtime: SharedCodeModeRuntime,
-): void {
+) {
 	const tracker = createCodeModeRenderTracker();
 	const waitAttempts = new Map<string, number>();
 	const renderResult = createResultRenderer(runtime, tracker);
 	const broker = registerCodeModePreflightBroker(pi);
 	const hooks = { preflight: broker.run, completion: broker.complete };
-	let gpt = false;
-	const isGpt = () => gpt;
-	const exec = createExecTool(runtime, tracker, renderResult, hooks, isGpt);
-	const wait = createWaitTool(runtime, tracker, renderResult, waitAttempts, hooks, isGpt);
+	const exec = createExecTool(runtime, tracker, renderResult, hooks);
+	const wait = createWaitTool(
+		runtime,
+		tracker,
+		renderResult,
+		waitAttempts,
+		hooks,
+	);
 	pi.registerTool(exec);
 	pi.registerTool(wait);
+	registerNotebookTool(pi, runtime);
 	let currentExec = exec;
-	registerGptPromptMode(pi, (active, context) => {
-		gpt = active;
-		const js = context !== undefined && runtime.executionKind(context) === "js";
-		const ts = context !== undefined && runtime.executionKind(context) === "ts";
-		const deno = context !== undefined && runtime.executionKind(context) === "notebook";
-		const description = js ? (active ? GPT_JS_EXEC_DESCRIPTION : JS_EXEC_DESCRIPTION)
-			: (active ? GPT_EXEC_DESCRIPTION : EXEC_DESCRIPTION).replace("JavaScript", ts ? "TypeScript" : "JavaScript")
-				+ (ts || deno ? `\n${active ? GPT_ISOLATED_EXEC_GUIDANCE : ISOLATED_EXEC_GUIDANCE}` : "");
-		const executionMode = ts || js || deno ? "parallel" : "sequential";
-		if (currentExec.description !== description || currentExec.executionMode !== executionMode) {
-			if (currentExec.executionMode !== executionMode) pi.registerTool({ ...wait, executionMode });
-			currentExec = { ...exec, description, executionMode, promptSnippet: `Compose tools with ${ts ? "TypeScript" : "JavaScript"}` };
+	return (context: ExtensionContext, toolSnippets: Record<string, string>) => {
+		const kind = runtime.executionKind(context);
+		const vm = kind === "vm";
+		const notebook = kind === "ts";
+		const language = notebook ? "TypeScript" : "JavaScript";
+		const description = vm
+			? VM_EXEC_DESCRIPTION
+			: EXEC_DESCRIPTION.replace("JavaScript", language) +
+				(notebook ? `\n${ISOLATED_EXEC_GUIDANCE}` : "");
+		const executionMode = notebook ? "parallel" : "sequential";
+		const promptSnippet = `Run ${language} cells`;
+		if (
+			currentExec.description !== description ||
+			currentExec.executionMode !== executionMode
+		) {
+			if (currentExec.executionMode !== executionMode)
+				pi.registerTool({ ...wait, executionMode });
+			currentExec = {
+				...exec,
+				description,
+				executionMode,
+				promptSnippet,
+			};
 			pi.registerTool(currentExec);
 		}
-		return [currentExec];
-	});
-	registerNotebookTool(pi, runtime);
+		// Pi has already cloned prompt options for this kickoff.
+		toolSnippets["exec"] = promptSnippet;
+	};
 }
 
 function createExecTool(
@@ -103,7 +125,6 @@ function createExecTool(
 	tracker: RenderTracker,
 	renderResult: ReturnType<typeof createResultRenderer>,
 	hooks: Pick<ToolExecutionContext, "preflight" | "completion">,
-	isGpt: () => boolean,
 ): ToolDefinition<typeof EXEC_PARAMETERS> {
 	return {
 		name: "exec",
@@ -112,7 +133,7 @@ function createExecTool(
 		executionMode: "sequential",
 		label: "Exec",
 		description: EXEC_DESCRIPTION,
-		promptSnippet: "Compose tools with JavaScript",
+		promptSnippet: "Run JavaScript cells",
 		parameters: EXEC_PARAMETERS,
 		constrainedSampling: CODE_MODE_EXEC_CONSTRAINED_SAMPLING,
 		prepareLoadout: (loadout) => runtime.prepareLoadout(loadout),
@@ -121,30 +142,51 @@ function createExecTool(
 			if (typeof code !== "string") return [];
 			return /\bALL_TOOLS\b/.test(code) ? "all" : (code.match(/\w+/g) ?? []);
 		},
-		async execute(id, params, signal, onUpdate, ctx) {
+		async execute(
+			id,
+			params: Static<typeof EXEC_PARAMETERS>,
+			signal,
+			onUpdate,
+			ctx,
+		) {
 			tracker.start(id);
 			const piToolScope = new PiToolCallScope(ctx, signal);
 			try {
 				const tools = runtime.collectTools(ctx);
-				const guard = tools.some(tool => "invoke" in tool && tool.opaqueResult)
-					? await runtime.opaqueContextGuard(ctx) : undefined;
-				const response = await (await runtime.getClient(ctx)).execute(
+				const guard = tools.some(
+					(tool) => "invoke" in tool && tool.opaqueResult,
+				)
+					? await runtime.opaqueContextGuard(ctx)
+					: undefined;
+				const response = await (
+					await runtime.getClient(ctx)
+				).execute(
 					params.code,
-					{ cwd: ctx.cwd, toolCallId: id, originalExecCallId: id, extensionContext: ctx, piToolScope, ...hooks, onUpdate,
-						opaqueScope: guard?.scope, opaqueContextGeneration: guard?.generation, opaqueContextValid: guard?.valid,
-						resolveOpaqueScope: guard?.lazy ? guard.resolveScope : undefined },
+					{
+						cwd: ctx.cwd,
+						toolCallId: id,
+						originalExecCallId: id,
+						extensionContext: ctx,
+						piToolScope,
+						...hooks,
+						onUpdate,
+						opaqueScope: guard?.scope,
+						opaqueContextGeneration: guard?.generation,
+						opaqueContextValid: guard?.valid,
+						resolveOpaqueScope: guard?.lazy ? guard.resolveScope : undefined,
+					},
 					signal,
 					tools,
 				);
-				if (guard?.lazy && response.opaqueOutputs?.length) await guard.resolveScope();
-				if (guard && !await guard.valid())
-					throw new Error("Remote context changed after execution; check completed results before retrying");
+				if (guard?.lazy && response.opaqueOutputs?.length)
+					await guard.resolveScope();
+				if (guard && !(await guard.valid()))
+					throw new Error(
+						"Remote context changed after execution; check completed results before retrying",
+					);
 				const visible = runtime.deliverOpaqueResponse(response, id, guard);
-				tracker.finish(
-					id,
-					visible.kind === "yielded" ? "yielded" : "done",
-				);
-				return toCodeModeToolResult(visible, undefined, isGpt());
+				tracker.finish(id, visible.kind === "yielded" ? "yielded" : "done");
+				return toCodeModeToolResult(visible);
 			} catch (error) {
 				tracker.finish(id);
 				throw error;
@@ -162,7 +204,7 @@ function createExecTool(
 				theme,
 				context,
 				tracker,
-				runtime.useRichRendering(),
+				runtime.toolDetails(),
 			)) as any,
 		renderResult: renderResult as any,
 	};
@@ -174,7 +216,6 @@ function createWaitTool(
 	renderResult: ReturnType<typeof createResultRenderer>,
 	waitAttempts: Map<string, number>,
 	hooks: Pick<ToolExecutionContext, "preflight" | "completion">,
-	isGpt: () => boolean,
 ): ToolDefinition<typeof WAIT_PARAMETERS> {
 	const constrainedSampling = getExperimentalToolSampling("wait");
 	return {
@@ -187,7 +228,13 @@ function createWaitTool(
 		promptSnippet: "Resume or terminate an exec cell",
 		parameters: WAIT_PARAMETERS,
 		...(constrainedSampling ? { constrainedSampling } : {}),
-		async execute(id, params, signal, onUpdate, ctx) {
+		async execute(
+			id,
+			params: Static<typeof WAIT_PARAMETERS>,
+			signal,
+			onUpdate,
+			ctx,
+		) {
 			tracker.start(id);
 			const piToolScope = new PiToolCallScope(ctx, signal);
 			try {
@@ -196,14 +243,26 @@ function createWaitTool(
 				if (completed) {
 					waitAttempts.delete(params.cell_id);
 					tracker.finish(id, "done");
-					return toCodeModeToolResult(completed, params.max_tokens, isGpt());
+					return toCodeModeToolResult(completed, params.max_tokens);
 				}
 				const client = await runtime.getClient(ctx);
-				const guard = runtime.collectTools(ctx).some(tool => "invoke" in tool && tool.opaqueResult)
-					? await runtime.opaqueContextGuard(ctx) : undefined;
-				const context = { cwd: ctx.cwd, toolCallId: id, extensionContext: ctx, piToolScope, ...hooks, onUpdate,
-					opaqueScope: guard?.scope, opaqueContextGeneration: guard?.generation, opaqueContextValid: guard?.valid,
-					resolveOpaqueScope: guard?.lazy ? guard.resolveScope : undefined };
+				const guard = runtime
+					.collectTools(ctx)
+					.some((tool) => "invoke" in tool && tool.opaqueResult)
+					? await runtime.opaqueContextGuard(ctx)
+					: undefined;
+				const context = {
+					cwd: ctx.cwd,
+					toolCallId: id,
+					extensionContext: ctx,
+					piToolScope,
+					...hooks,
+					onUpdate,
+					opaqueScope: guard?.scope,
+					opaqueContextGeneration: guard?.generation,
+					opaqueContextValid: guard?.valid,
+					resolveOpaqueScope: guard?.lazy ? guard.resolveScope : undefined,
+				};
 				const attempt = waitAttempts.get(params.cell_id) ?? 0;
 				const resumed = params.terminate
 					? await client.terminate(params.cell_id, context, signal)
@@ -213,15 +272,19 @@ function createWaitTool(
 							context,
 							signal,
 						);
-				if (guard?.lazy && resumed.opaqueOutputs?.length) await guard.resolveScope();
-				if (guard && !await guard.valid())
-					throw new Error("Remote context changed after execution; check completed results before retrying");
+				if (guard?.lazy && resumed.opaqueOutputs?.length)
+					await guard.resolveScope();
+				if (guard && !(await guard.valid()))
+					throw new Error(
+						"Remote context changed after execution; check completed results before retrying",
+					);
 				if (resumed.missingCell && guard)
-					throw new Error("Remote cell unavailable; operations may already have executed, so check completed results before retrying");
+					throw new Error(
+						"Remote cell unavailable; operations may already have executed, so check completed results before retrying",
+					);
 				const response = runtime.deliverOpaqueResponse(resumed, id, guard);
 				const recovered =
-					!params.terminate &&
-					response.missingCell === true
+					!params.terminate && response.missingCell === true
 						? await continueExecSessionFromMistakenWait(
 								params.cell_id,
 								params.yield_time_ms ?? DEFAULT_WAIT_MS,
@@ -239,11 +302,8 @@ function createWaitTool(
 				if (response.kind === "yielded")
 					waitAttempts.set(params.cell_id, attempt + 1);
 				else waitAttempts.delete(params.cell_id);
-				tracker.finish(
-					id,
-					response.kind === "yielded" ? "yielded" : "done",
-				);
-				return toCodeModeToolResult(response, params.max_tokens, isGpt());
+				tracker.finish(id, response.kind === "yielded" ? "yielded" : "done");
+				return toCodeModeToolResult(response, params.max_tokens);
 			} catch (error) {
 				waitAttempts.delete(params.cell_id);
 				tracker.finish(id);
@@ -262,16 +322,22 @@ function createWaitTool(
 				theme,
 				context,
 				tracker,
-				runtime.useRichRendering(),
+				runtime.toolDetails(),
 			)) as any,
 		renderResult: renderResult as any,
 	};
 }
 
-function adaptiveWaitMs(requestedMs: number, previousIncompleteWaits: number): number {
+function adaptiveWaitMs(
+	requestedMs: number,
+	previousIncompleteWaits: number,
+): number {
 	const multiplier = 2 ** previousIncompleteWaits;
 	const grown = requestedMs * multiplier * 2;
-	const adaptive = Math.min(MAX_ADAPTIVE_WAIT_MS, Math.max(MIN_ADAPTIVE_WAIT_MS * multiplier, grown));
+	const adaptive = Math.min(
+		MAX_ADAPTIVE_WAIT_MS,
+		Math.max(MIN_ADAPTIVE_WAIT_MS * multiplier, grown),
+	);
 	return Math.max(requestedMs, adaptive);
 }
 
@@ -293,7 +359,6 @@ function createResultRenderer(
 			tracker,
 			runtime.renderStore,
 			runtime.collectRenderTools(),
-			runtime.useRichRendering(),
-			runtime.useMinimalOutput(),
+			runtime.toolDetails(),
 		);
 }

@@ -18,37 +18,36 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 ## Latest package changelogs
 
-### @howaboua/pi-agent-board — 0.0.4
+### @howaboua/pi-agent-comms — 0.0.5
 
-- - Board and connected extension briefings now refresh after Notes context-window rollover.
-  - Board listings now omit internal session identifiers.
-  - GPT mode uses note-style Board help and briefings.
+- Replaces standalone Notes Compaction and Agent Board. Remove the old extensions when switching. Their settings move to `pi-agent-comms.json`; saved data stays in place. Features without prior settings start off.
+- Added `/board viewer` to open the read-only browser viewer directly.
+- Added Conversation and Full rollover tails for notes-only `/compact` and idle rollover. Both keep conversation after the last completed Notes save on the selected branch. Full also keeps complete tool-call groups.
+- Idle rollover with a tail now asks for a checkpoint when no save qualifies, then releases your original prompt and attachments.
+- Settings clarify ranked history search, when pruning runs, how Notes rollovers differ from compaction, and what Board thread consolidation does.
+- Code and Notebook list History alongside Notes. Notes, History and Board use compact help in every prompt mode.
+- Notes help shows which fields list, search, read and write return.
+- Fixed Board replies using the `reply` alias failing Notebook type checks.
 
-[Full changelog](./packages/pi-agent-board/CHANGELOG.md)
+[Full changelog](./packages/pi-agent-comms/CHANGELOG.md)
 
-### @howaboua/pi-ask — 0.0.17
+### @howaboua/pi-ask — 0.0.22
 
-- - Removed redundant help-call instructions from Ask's help.
-  - GPT mode uses note-style question and handoff guidance.
+- Ask always uses compact question and handoff help, including in standalone installs.
 
 [Full changelog](./packages/pi-ask/CHANGELOG.md)
 
-### @howaboua/pi-auto-trees — 0.1.19
+### @howaboua/pi-better-skills-tool — 0.0.15
 
-- GPT mode uses note-style priming, commit-summary and voice guidance.
-
-[Full changelog](./packages/pi-auto-trees/CHANGELOG.md)
-
-### @howaboua/pi-better-skills-tool — 0.0.12
-
-- - Skills now shows its exact discovery call in Code and Notebook modes and clarifies batch-read syntax in help.
-  - GPT mode uses note-style skill discovery and reading guidance.
+- Skills lists trusted repository `.agents/skills` under Session alongside `.pi/skills`, without duplicates. Global `~/.agents/skills` are excluded.
+- Skills always uses compact discovery and reading guidance, including in standalone installs.
 
 [Full changelog](./packages/pi-better-skills-tool/CHANGELOG.md)
 
-### @howaboua/pi-browser — 0.0.13
+### @howaboua/pi-browser — 0.0.15
 
-- Fixed npm-installed Pi Browser blocking startup when Pi Codex Conversion is installed.
+- Browser settings clarify which listed host runs locally and where to set the Node.js executable for SSH hosts.
+- Browser always uses compact tool help, including in standalone installs.
 
 [Full changelog](./packages/pi-browser/CHANGELOG.md)
 
@@ -62,17 +61,35 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-cache-hit-predictor/CHANGELOG.md)
 
-### @howaboua/pi-chatgpt-sites — 0.0.3
+### @howaboua/pi-chatgpt-sites — 0.0.6
 
-- - Sites calls now return their payload directly instead of an outer `result` wrapper.
-  - Errors show the problem and recovery information without diagnostic envelopes.
-  - GPT mode uses note-style guide and schema discovery.
+- Added `site.open` to restore an existing Site's committed source into a new local checkout without publishing.
+- Fixed saving source with Sites access tokens or an authenticated Work proxy.
+- Fixed private deployments for accounts without a shared deployment route.
+- Updated the Sites guides for building, access, and connecting Site-hosted MCP tools.
+- Sites always uses compact guide and schema discovery, including in standalone installs.
 
 [Full changelog](./packages/pi-chatgpt-sites/CHANGELOG.md)
 
-### @howaboua/pi-codex-conversion — 4.0.7
+### @howaboua/pi-codex-conversion — 5.1.0
 
-- Updated package dependencies.
+- Removed Voice only mode. Existing settings follow Provider scope. Use GipPity Control for voice without the Codex adapter.
+- Removed the Extra tools only scope and standalone `apply_patch` and `view_image` switches. Existing Extra tools only settings switch to Codex and configured providers. Both tools remain available through the adapter.
+- Removed Deno Notebook. Existing settings select TS Notebook without importing Deno state. [Recover or remove old notebook files](https://github.com/IgorWarzocha/howaboua-pi-stuff/blob/main/docs/deno-to-ts-notebook.md).
+- Replaced QuickJS Code with VM Code. Existing settings select VM Code, which keeps JavaScript bindings across cells. Select Code for fresh cells. VM Code runs on Linux, macOS and Windows. On Linux with Bun it requires a systemd user session and cgroup v2.
+- Removed the Harness identifier setting. Codex requests always use `codex_cli_rs` as the originator.
+- Replaced Compact tool output and Code / Notebook details with one Tool details setting: Minimal, Compact or Preview. Expand tool rows to see their available source, output and diffs.
+- Heavy system prompt overwrite is now Off or On. On uses the former GPT mode.
+- Older global and trusted project settings are migrated once without overwriting unrelated fields. Legacy Notes continuity notices now point to Agent Comms.
+- Codex switches to HTTP for the session when it detects a WebSocket size limit before text appears. If a size rejection follows visible text, Codex reports the incomplete response without replaying it.
+- Folded shell rows distinguish errors from searches with no matches. Background completion notices collapse to one line, and expanded cells show identical shell output only once.
+- Code and Notebook group exact usage calls. `ALL_TOOLS` lists every public tool available to the cell.
+- Code and Notebook guidance recommends composing related calls in one cell and checking JavaScript syntax before sending. VM Code and TS Notebook explain how to recover from redeclaring a binding.
+- TS Notebook resolves packages and type roots more reliably.
+- Code and Notebook print plain shell output by default. Existing choices are preserved. To opt out, set `notebook.plainCommandOutput` to `false` in `pi-codex-conversion.json`.
+- Auto Reasoning recommends adjusting effort when the work phase changes or a task turns out harder or easier than expected.
+- Codex puts tool instructions before workspace context and directs agents to act on clear requests and work through recoverable blockers.
+- Updated the bundled Codex tools and voice helpers.
 
 [Full changelog](./packages/pi-codex-conversion/CHANGELOG.md)
 
@@ -87,89 +104,88 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-codex-guardian/CHANGELOG.md)
 
-### @howaboua/pi-codex-imagegen — 0.0.12
+### @howaboua/pi-codex-imagegen — 0.0.17
 
-- - Report invalid or unreadable tool configuration without parser or filesystem diagnostics.
-  - GPT mode uses note-style image-generation guidance in Code and Notebook.
+- Image generation settings clarify when Codex uses the current model’s provider and when a separate Codex login or API credentials are needed.
+- Image generation always uses compact discovery and tool help, including in standalone installs.
 
 [Full changelog](./packages/pi-codex-imagegen/CHANGELOG.md)
 
-### @howaboua/pi-codex-web-run — 0.0.10
+### @howaboua/pi-codex-web-run — 0.0.13
 
-- Added an extension API for Web Run search and navigation, using the existing provider and login without adding conversation messages.
+- Web activity rows distinguish searches, opened pages and links, and in-page finds. Batched and mixed requests show how many actions were requested.
+- Web Run always uses compact search and reference guidance, without requiring Pi Codex Conversion.
 
 [Full changelog](./packages/pi-codex-web-run/CHANGELOG.md)
 
-### @howaboua/pi-extensions — 0.0.102
+### @howaboua/pi-extensions — 0.0.110
 
-- Updated bundled packages.
+- Include bundled package updates:
+
+  - @howaboua/pi-ask: Ask always uses compact question and handoff help, including in standalone installs.
+  - @howaboua/pi-better-skills-tool: - Skills lists trusted repository `.agents/skills` under Session alongside `.pi/skills`, without duplicates. Global `~/.agents/skills` are excluded. - Skills always uses compact discovery and reading guidance, including in standalone installs.
+  - @howaboua/pi-gippity-control: - GipPity settings explain how browser access, dropped-call recovery and voice context refresh work. - Bundled voice helpers use updated Rust dependencies.
+  - @howaboua/pi-github-watch: GitHub Watch always uses compact watch help, including in standalone installs.
+  - @howaboua/pi-shepherdr: - Shared Notes and Board recovery messages direct users to Agent Comms. - Shepherdr settings distinguish delegation guidance from starting workers and explain what adding an SSH connection does. - Agent discovery shows and accepts the local Herdr Core name. For remote machines, use the label or ID from `list`, not the hostname. - Agent help uses compact wording and separates terminal commands from Herdr window controls.
+  - @howaboua/pi-unicode-charts: Chart instructions always use the compact format. Pi Codex Conversion is no longer needed to select it.
 
 [Full changelog](./packages/pi-extensions/CHANGELOG.md)
 
-### @howaboua/pi-gippity-control — 0.0.30
+### @howaboua/pi-gippity-control — 0.0.34
 
-- Updated package dependencies.
+- GipPity settings explain how browser access, dropped-call recovery and voice context refresh work.
+- Bundled voice helpers use updated Rust dependencies.
 
 [Full changelog](./packages/pi-gippity-control/CHANGELOG.md)
 
-### @howaboua/pi-github-watch — 0.0.4
+### @howaboua/pi-github-watch — 0.0.9
 
-- - GPT mode uses note-style watch help.
-  - Active watch results now state that updates arrive automatically without polling or a separate CLI watch.
+- GitHub Watch always uses compact watch help, including in standalone installs.
 
 [Full changelog](./packages/pi-github-watch/CHANGELOG.md)
 
-### @howaboua/pi-gpt-switcher — 0.1.6
+### @howaboua/pi-gpt-switcher — 0.1.7
 
-- Added `/terra` to switch to GPT-6.1 Terra with configurable context and reasoning defaults.
+- Requires Pi 1.5 or newer.
+
+  - Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`.
+
+  - `/sol` and `/astra` now select GPT-6.2 Sol and Astra, including without Codex Conversion.
+  - Context defaults are now 500K for Sol, Terra and Luna, and 256K for Astra. Existing preferences are preserved.
 
 [Full changelog](./packages/pi-gpt-switcher/CHANGELOG.md)
 
-### @howaboua/pi-grok-realtime — 0.0.4
+### @howaboua/pi-grok-realtime — 0.0.8
 
-- Updated package dependencies.
+- Grok settings explain how the access selection matches Pi’s active xAI credential, and when voice context summaries and follow-ups are used.
 
 [Full changelog](./packages/pi-grok-realtime/CHANGELOG.md)
 
-### @howaboua/pi-notes-compaction — 0.0.13
+### @howaboua/pi-observatory — 0.0.6
 
-- Model roles are now agent-operated. Configure them in `model-roles.json`. `/roles` is read-only, and the old `enabled` flag and accept/dismiss controls no longer apply.
-- Added `new_context({role})` to continue the next context window on a role's configured model and reasoning after saving a checkpoint.
-- Agents receive role names, descriptions and guidance to switch only for sustained scope changes, with subagents considered for bounded specialist work.
-
-[Full changelog](./packages/pi-notes-compaction/CHANGELOG.md)
-
-### @howaboua/pi-observatory — 0.0.3
-
-- Cache diagnostics now index with less disk-sync overhead.
+- The investigation guide distinguishes read-only evidence gathering from starting the viewer or collectors.
 
 [Full changelog](./packages/pi-observatory/CHANGELOG.md)
 
-### @howaboua/pi-pet — 0.1.7
+### @howaboua/pi-pet — 0.1.10
 
-- Added empty-call reaction discovery, including when no pet is connected, and deferred Code and Notebook help.
+- The pet authoring guide clarifies reference-image requirements and when generation jobs are complete.
 
 [Full changelog](./packages/pi-pet/CHANGELOG.md)
 
-### @howaboua/pi-sandbox — 0.1.4
+### @howaboua/pi-sandbox — 0.1.7
 
-- Fixed TypeScript calls rejecting action objects while equivalent JSON strings worked.
-- Fixed concurrent first calls failing while the sandbox client was loading.
+- Sandbox command waits use fewer guest processes to check whether a command has finished.
+- Sandbox help clarifies command wait timeouts and warns against secrets in templates or setup commands.
 
 [Full changelog](./packages/pi-sandbox/CHANGELOG.md)
 
-### @howaboua/pi-shepherdr — 0.2.25
+### @howaboua/pi-shepherdr — 1.0.4
 
-- When switching from the older Herdr TUI or another Core instance, reselect local watches.
-- Added Herdr Core and Herdr app support for local and remote delegation, focus, voice transfers, shared Notes and boards, including Windows hosts.
-- Added Core session discovery by terminal title, with spaces, hyphens and underscores treated alike.
-- Added `/herdr close-idle` to close idle children spawned by the current session branch, leaving attached and busy sessions open.
-- Spawn results now return `contextAgent` and `boardAgent` inside `sharing` instead of at the top level. The agent `target` is unchanged.
-- Reduced resume delays in sessions with many delegated agents, including closed children.
-- Remote sharing helpers now start only when sharing is used or restored, avoiding idle polling on unrelated machines.
-- Fixed intermediate tool calls being reported as completed agent work.
-- Agent guidance now distinguishes automatic background reports from blocking calls that must be awaited.
-- Agent tool declarations now accept action fields discovered through help, including in native codemode.
+- Shared Notes and Board recovery messages direct users to Agent Comms.
+- Shepherdr settings distinguish delegation guidance from starting workers and explain what adding an SSH connection does.
+- Agent discovery shows and accepts the local Herdr Core name. For remote machines, use the label or ID from `list`, not the hostname.
+- Agent help uses compact wording and separates terminal commands from Herdr window controls.
 
 [Full changelog](./packages/pi-shepherdr/CHANGELOG.md)
 
@@ -193,9 +209,9 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-skill-foundations/CHANGELOG.md)
 
-### @howaboua/pi-skill-harness-and-agent-engineering — 0.0.7
+### @howaboua/pi-skill-harness-and-agent-engineering — 0.0.8
 
-- Clarified help-backed tool design: ignore unused presentation hints without weakening validation of meaningful arguments.
+- Pi extension guidance now recommends native schema builders and validation.
 
 [Full changelog](./packages/pi-skill-harness-and-agent-engineering/CHANGELOG.md)
 
@@ -205,52 +221,44 @@ Going forward, package-level changelogs remain the source of truth for each pack
 
 [Full changelog](./packages/pi-skill-omarchy-help/CHANGELOG.md)
 
-### @howaboua/pi-skills — 0.0.26
+### @howaboua/pi-skills — 0.0.27
 
 - Include bundled package updates:
 
-  - @howaboua/pi-skill-code: Removed the manual Codex PR review request template from repository-delivery guidance.
+  - @howaboua/pi-skill-harness-and-agent-engineering: Pi extension guidance now recommends native schema builders and validation.
 
 [Full changelog](./packages/pi-skills/CHANGELOG.md)
 
-### @howaboua/pi-smart-btw — 0.2.8
+### @howaboua/pi-stuff — 0.0.118
 
-- GPT-6 Sol and Luna now share Astra's Codex support.
-  - Removed `/terra`; use `/luna` instead.
-  - Added Responses Lite, non-destructive reasoning changes and terse context guidance for GPT-6 Sol and Luna.
-  - Image descriptions now use GPT-6 Luna directly instead of preferring older mini models.
-  - Cost estimates now use published GPT-6 Sol and Luna rates, including cache writes and long-context pricing.
-  - Agent, review, exploration, web search, voice summary and image-description defaults now use GPT-6; Luna replaces Terra defaults. GPT Switcher retains Luna's 472K context limit, while Codex Conversion defaults all three GPT-6 models to 272K.
+- Include bundled package updates:
 
-[Full changelog](./packages/pi-smart-btw/CHANGELOG.md)
-
-### @howaboua/pi-stuff — 0.0.110
-
-- Updated bundled packages.
+  - @howaboua/pi-ask: Ask always uses compact question and handoff help, including in standalone installs.
+  - @howaboua/pi-better-skills-tool: - Skills lists trusted repository `.agents/skills` under Session alongside `.pi/skills`, without duplicates. Global `~/.agents/skills` are excluded. - Skills always uses compact discovery and reading guidance, including in standalone installs.
+  - @howaboua/pi-gippity-control: - GipPity settings explain how browser access, dropped-call recovery and voice context refresh work. - Bundled voice helpers use updated Rust dependencies.
+  - @howaboua/pi-github-watch: GitHub Watch always uses compact watch help, including in standalone installs.
+  - @howaboua/pi-shepherdr: - Shared Notes and Board recovery messages direct users to Agent Comms. - Shepherdr settings distinguish delegation guidance from starting workers and explain what adding an SSH connection does. - Agent discovery shows and accepts the local Herdr Core name. For remote machines, use the label or ID from `list`, not the hostname. - Agent help uses compact wording and separates terminal commands from Herdr window controls.
+  - @howaboua/pi-unicode-charts: Chart instructions always use the compact format. Pi Codex Conversion is no longer needed to select it.
 
 [Full changelog](./packages/pi-stuff/CHANGELOG.md)
 
-### @howaboua/pi-subagent-review — 0.2.25
+### @howaboua/pi-subdir-agents — 0.0.10
 
-- Reviewer prompts now request evidence-backed findings without issue-count targets.
-
-[Full changelog](./packages/pi-subagent-review/CHANGELOG.md)
-
-### @howaboua/pi-subdir-agents — 0.0.9
-
-- Expanded AGENTS.md notices now use the same muted theme colour as their summaries.
+- Updates use Pi's native changelog notices and `collapseChangelog` instead of custom suppression.
+- Nested AGENTS.md guidance is saved once per delivery without duplicating its text in session metadata.
 
 [Full changelog](./packages/pi-subdir-agents/CHANGELOG.md)
 
-### @howaboua/pi-suggestions — 0.0.2
+### @howaboua/pi-suggestions — 0.0.4
 
-- Added editable Markdown instructions in /suggestions, with defaults favouring productive next actions and avoiding repeated requests or completed work.
+- Disabled suggestions no longer scan conversation history. Enabled suggestions scan it once per request.
+- Suggestion requests no longer repeat the draft instruction on every turn.
 
 [Full changelog](./packages/pi-suggestions/CHANGELOG.md)
 
-### @howaboua/pi-unicode-charts — 0.1.3
+### @howaboua/pi-unicode-charts — 0.1.6
 
-- GPT mode uses note-style chart guidance.
+- Chart instructions always use the compact format. Pi Codex Conversion is no longer needed to select it.
 
 [Full changelog](./packages/pi-unicode-charts/CHANGELOG.md)
 

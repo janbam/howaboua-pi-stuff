@@ -10,8 +10,13 @@ export function feedbackMessage(
 	thread: Thread,
 	snapshot: ThreadSnapshot,
 	conversationChanges: number,
+	headChange?: { before: string; after: string },
 ): string {
 	const parts = [`GitHub watch: ${thread.url}.`];
+	if (headChange)
+		parts.push(
+			`PR head changed: ${headChange.before} → ${headChange.after}. Read the updated diff with gh pr diff ${thread.number} --repo ${thread.repo}.`,
+		);
 	const pending = [...snapshot.unresolved.values()];
 	if (thread.kind === "pr")
 		parts.push(`${pending.length} unresolved review thread(s).`);
@@ -33,11 +38,11 @@ export function feedbackMessage(
 			`${conversationChanges} conversation/review update(s). Read context with gh ${thread.kind === "pr" ? "pr" : "issue"} view ${thread.number} --repo ${thread.repo} --comments.`,
 		);
 	parts.push(
-		"Evaluate feedback. Where a response is needed, reply in its discussion with the fix or reasoned disposition. Verify the posting account before publishing.",
+		"Consider feedback in the context of the current task. If responding, reply in its discussion with the fix or reasoned disposition and verify the posting account before publishing.",
 	);
 	if (thread.kind === "pr")
 		parts.push(
-			"Resolve review threads once addressed, not while work remains. Do not re-review unchanged resolved threads.",
+			"When addressing reviews, resolve threads only after the work is complete. Skip unchanged resolved threads.",
 		);
 	return parts.join(" ");
 }

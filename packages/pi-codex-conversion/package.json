@@ -1,6 +1,6 @@
 {
   "name": "@howaboua/pi-codex-conversion",
-  "version": "4.0.7",
+  "version": "5.1.0",
   "description": "Codex-oriented tool and prompt adapter for pi coding agent",
   "type": "module",
   "repository": {
@@ -65,7 +65,8 @@
       "types": "./dist/realtime-voice.d.ts",
       "import": "./dist/realtime-voice.js"
     },
-    "./*": "./*"
+    "./*": "./*",
+    "./host-settings": "./dist/host-settings.js"
   },
   "pi": {
     "extensions": [
@@ -77,6 +78,7 @@
     "dist/**/*.d.ts",
     "src/**/*.ts",
     "src/**/*.md",
+    "src/tools/vm-mode/bunfig.toml",
     "types/**/*.d.ts",
     "src/voice/lan/assets/**",
     "vendor/tree-sitter-bash/**",
@@ -95,21 +97,19 @@
     "code-mode/NOTICE",
     "scripts/code-mode",
     "!src/**/AGENTS.md",
-    "!src/tools/target/**",
-    "changelog.ts",
-    "changelog.js"
+    "!src/tools/target/**"
   ],
   "scripts": {
-    "build": "node -e \"const fs=require('node:fs'); fs.rmSync('dist', { recursive: true, force: true }); fs.rmSync('changelog.js', { force: true })\" && tsc -p tsconfig.build.json && node ../../scripts/build-extension-changelog.mjs .",
-    "typecheck": "tsc -p tsconfig.json",
-    "test": "tsx --test tests/*.test.ts",
-    "check": "node ../../scripts/sync-browser-cdp.mjs --check && bun run typecheck && bun run test",
+    "build": "node -e \"const fs=require('node:fs'); fs.rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json && bun run build:host-settings",
+    "typecheck": "tsrs --noEmit -p tsconfig.json",
+    "bench:code-modes": "tsx scripts/bench-code-modes.ts",
+    "check": "node ../../scripts/sync-browser-cdp.mjs --check && bun run lint && bun run typecheck",
     "publish:dry-run": "npm publish --dry-run",
     "publish:dev": "npm publish --tag dev",
     "release:dev": "npm version prerelease --preid dev && npm publish --tag dev",
-    "prepack": "bun run check && bun run build",
-    "prepare": "bun run build",
-    "prepublishOnly": "bun run verify:extension-artifact && bun run verify:codex-tool-binaries && bun run verify:code-mode-host-assets",
+    "prepack": "bun run check",
+    "prepare": "node ../../scripts/prepare-codex-package.mjs",
+    "prepublishOnly": "bun run build && bun run verify:extension-artifact && bun run verify:codex-tool-binaries && bun run verify:code-mode-host-assets",
     "verify:extension-artifact": "node ../../scripts/verify-pi-extension-artifact.mjs --no-build packages/pi-codex-conversion",
     "build:apply-patch": "node scripts/build-apply-patch-binary.mjs",
     "sync:apply-patch-source": "node scripts/sync-apply-patch-source.mjs",
@@ -117,41 +117,42 @@
     "build:changed-native-tools": "node scripts/build-changed-native-tool-binaries.mjs",
     "build:native-tool": "node scripts/build-native-tool-binary.mjs",
     "build:voice-helper": "node scripts/build-voice-helper.mjs",
-    "verify:code-mode-host-assets": "node scripts/code-mode/verify-host-assets.mjs"
+    "verify:code-mode-host-assets": "node scripts/code-mode/verify-host-assets.mjs",
+    "build:host-settings": "bun build ./src/host-settings.ts --target=node --outfile=./dist/host-settings.js",
+    "format:check": "oxfmt --check '**/*.{js,cjs,mjs,jsx,ts,cts,mts,tsx,json,jsonc,json5,css}'",
+    "lint": "bun run format:check && oxlint --type-aware"
   },
   "publishConfig": {
     "access": "public"
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": ">=1.4.0",
-    "@earendil-works/pi-coding-agent": ">=1.4.0",
-    "@earendil-works/pi-tui": ">=1.2.0",
-    "typebox": "*"
+    "@earendil-works/pi-ai": ">=1.5.0",
+    "@earendil-works/pi-coding-agent": ">=1.5.0",
+    "@earendil-works/pi-tui": ">=1.0.0"
   },
   "devDependencies": {
-    "@earendil-works/pi-agent-core": "1.4.0",
-    "@earendil-works/pi-ai": "1.4.0",
-    "@earendil-works/pi-coding-agent": "1.4.0",
-    "@earendil-works/pi-codemode": "1.4.0",
-    "@earendil-works/pi-tui": "1.4.0",
-    "@types/node": "26.6.5",
-    "@types/ws": "^8.18.2",
-    "quickjs-wasi": "3.6.3",
-    "tsrs": "0.20.0-ts7.1.0-beta",
-    "tsx": "^4.23.15",
-    "typebox": "1.3.27",
-    "typescript": "^7.0.2"
+    "@earendil-works/pi-agent-core": "1.6.0",
+    "@earendil-works/pi-ai": "1.6.0",
+    "@earendil-works/pi-coding-agent": "1.6.0",
+    "@earendil-works/pi-tui": "1.6.0",
+    "@types/node": "26.6.6",
+    "@types/ws": "8.18.2",
+    "tsrs": "7.1.0-beta.tsrs4",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
   },
   "dependencies": {
-    "@howaboua/pi-browser": "^0.0.13",
+    "@earendil-works/pi-schema": "1.6.0",
+    "@howaboua/pi-browser": "0.0.15",
     "acorn": "8.19.0",
-    "openai": "7.45.0",
+    "https-proxy-agent": "9.1.0",
+    "openai": "7.62.0",
     "proxy-from-env": "2.1.0",
-    "selfsigned": "^5.5.0",
-    "smol-toml": "^1.9.1",
-    "undici": "8.12.3",
-    "web-tree-sitter": "^0.27.1",
-    "ws": "^8.22.0"
+    "selfsigned": "5.5.0",
+    "smol-toml": "1.9.1",
+    "undici": "8.13.1",
+    "web-tree-sitter": "0.27.2",
+    "ws": "8.23.0"
   },
   "engines": {
     "node": ">=22.19.0"

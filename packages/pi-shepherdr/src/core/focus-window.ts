@@ -11,6 +11,13 @@ const exec = promisify(execFile);
 const delay = (ms: number) =>
 	new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+function rejected(cause: unknown): Error {
+	return Object.assign(
+		cause instanceof Error ? cause : new Error(String(cause)),
+		{ code: "SHEPHERDR_DELIVERY_REJECTED" },
+	);
+}
+
 function appSocket(): string {
 	return join(
 		process.env["HERDR_APP_HOME"] ||
@@ -79,10 +86,10 @@ export async function focusCoreWindow(
 	target: string,
 ): Promise<void> {
 	if (!/^t[0-9a-z]+$/.test(target))
-		throw new Error("Use the exact local terminal address");
+		throw rejected("Use the exact local terminal address");
 	const socket = appSocket();
 	const original = await stat(socket).catch(() => {
-		throw new Error("Open the Herdr window on this machine and retry focus");
+		throw rejected("Open the Herdr window on this machine and retry focus");
 	});
 	const token = randomBytes(12).toString("hex");
 	const name = `probe-${token}`;
@@ -90,12 +97,17 @@ export async function focusCoreWindow(
 	const tab = `tb${token}`;
 	let probe: string | undefined;
 	let focused = false;
+	let dispatched = false;
 	let failed = false;
 	let failure: unknown;
 	try {
 		const created = object(
 			await core.request("terminal.run", {
-				argv: [process.execPath, "-e", "setTimeout(()=>{},120000)"],
+				argv: [
+					process.versions["bun"] ? "node" : process.execPath,
+					"-e",
+					"setTimeout(()=>{},120000)",
+				],
 				name,
 				labels: { "herdr.space": space, "herdr.tab": tab },
 				no_parent: true,
@@ -148,6 +160,7 @@ export async function focusCoreWindow(
 		};
 		await checkWindow();
 		if (!world.some((entry) => entry.terminal === target)) {
+			dispatched = true;
 			await app(["do", "space.select", JSON.stringify({ id: space })]);
 			await checkWindow();
 			await app(["do", "terminal.keep", JSON.stringify({ terminal: target })]);
@@ -163,11 +176,12 @@ export async function focusCoreWindow(
 				);
 		}
 		await checkWindow();
+		dispatched = true;
 		await app(["do", "pane.focus", JSON.stringify({ terminal: target })]);
 		focused = true;
 	} catch (error) {
 		failed = true;
-		failure = error;
+		failure = dispatched ? error : rejected(error);
 	} finally {
 		if (probe) {
 			try {
@@ -178,13 +192,17 @@ export async function focusCoreWindow(
 					"kind" in error &&
 					error.kind === "not_found"
 				) {
+					// oxlint-disable-next-line no-unsafe-finally -- Preserve the focus result while treating an already-closed probe as successful cleanup.
 					if (failed) throw failure;
+					// oxlint-disable-next-line no-unsafe-finally -- Preserve the focus result while treating an already-closed probe as successful cleanup.
 					return;
 				}
-				throw new Error(
+				const cleanupFailure = new Error(
 					`${focused ? "Focus succeeded" : `Focus failed: ${String(failure)}`} but its temporary terminal could not be closed: ${String(error)}`,
 					{ cause: failure ?? error },
 				);
+				// oxlint-disable-next-line no-unsafe-finally -- Preserve the focus result while treating an already-closed probe as successful cleanup.
+				throw dispatched ? cleanupFailure : rejected(cleanupFailure);
 			}
 		}
 	}

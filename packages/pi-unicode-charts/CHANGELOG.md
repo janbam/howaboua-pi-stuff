@@ -1,5 +1,19 @@
 # @howaboua/pi-unicode-charts
 
+## 0.1.6
+
+- Chart instructions always use the compact format. Pi Codex Conversion is no longer needed to select it.
+
+## 0.1.5
+
+- Shortened chart-format guidance in both prompt modes.
+
+## 0.1.4
+
+- Requires Pi 1.5 or newer.
+  - Other extensions' later prompt sections now reach the model in interactive sessions.
+  - Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`.
+
 ## 0.1.3
 
 - GPT mode uses note-style chart guidance.

@@ -129,13 +129,25 @@ export class ActivityRenderers {
 					view.detailsOpen = undefined;
 					group.nativeExpansion(context.expanded, call.id);
 				}
-				const container = new Container();
+				const container = new (class extends Container {
+					override invalidate(): void {
+						// Folded children are detached, but retain native rendering caches.
+						view.callComponent?.invalidate();
+						view.resultComponent?.invalidate();
+						super.invalidate();
+					}
+				})();
 				view.offShell = undefined;
-				if (this.isEnabled() && group.anchorId === call.id) {
-					container.addChild(
-						renderActivityHeading(group, theme, context.outputPad),
-					);
+				const enabled = this.isEnabled();
+				const heading =
+					enabled && group.anchorId === call.id
+						? renderActivityHeading(group, theme, context.outputPad)
+						: undefined;
+				if (member) {
+					if (heading) member.invalidateHeading = () => heading.invalidate();
+					else delete member.invalidateHeading;
 				}
+				if (heading) container.addChild(heading);
 				if (!this.isEnabled() || rawVisible(context)) {
 					// The wrapped renderer owns its own mutable state and cached components.
 					// Passing Chill's container back as lastComponent would corrupt reuse.
@@ -192,7 +204,13 @@ export class ActivityRenderers {
 						{ ...options, expanded: rawContext.expanded },
 						theme,
 						rawContext,
-					) ?? renderResultFallback(result, rawContext.expanded, theme);
+					) ??
+					renderResultFallback(
+						result,
+						rawContext.expanded,
+						theme,
+						context.keyHint,
+					);
 				view.resultComponent = child;
 				if (!this.isEnabled() && view.offShell) {
 					view.offShell.addChild(toggleDetails(child, context));

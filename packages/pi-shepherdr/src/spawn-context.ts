@@ -3,10 +3,11 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import type { ContextSharingService } from "@howaboua/pi-agent-comms/context-sharing";
 import type { CodexAgentRelationshipService } from "@howaboua/pi-codex-conversion/agent-relationship";
-import type { ContextSharingService } from "@howaboua/pi-notes-compaction/context-sharing";
+import { nativeAgentName } from "./agent-identity.js";
+import { sessionPath } from "./core/agents.js";
 import type { ConnectedMachine } from "./fleet/index.js";
-import { sessionPath } from "./herdr.js";
 import { sessionContextPath } from "./remote/shepherdr-context.mjs";
 import type { PaneInfo } from "./types.js";
 
@@ -21,6 +22,7 @@ export interface Member {
 interface Routing {
 	transport: "shepherdr";
 	parent: string;
+	savedParent: { machine: string; sessionFile: string };
 }
 
 export class SpawnContext {
@@ -29,14 +31,17 @@ export class SpawnContext {
 		| CodexAgentRelationshipService
 		| undefined;
 	private readonly getService: () => ContextSharingService | undefined;
+	private readonly localMachine: () => string;
 	constructor(
 		pi: ExtensionAPI,
 		getService: () => ContextSharingService | undefined,
 		getRelationships: () => CodexAgentRelationshipService | undefined,
+		localMachine: () => string,
 	) {
 		this.pi = pi;
 		this.getRelationships = getRelationships;
 		this.getService = getService;
+		this.localMachine = localMachine;
 	}
 	canShare(ctx: ExtensionContext): boolean {
 		return this.getService()?.canCreateChild(ctx) === true;
@@ -100,7 +105,6 @@ export class SpawnContext {
 	async prepare(
 		ctx: ExtensionContext,
 		runtime: ConnectedMachine,
-		name: string,
 		args: readonly string[] = [],
 	) {
 		const service = this.getService();
@@ -125,24 +129,29 @@ export class SpawnContext {
 		await runtime.prepareSharing();
 		const routing: Routing = {
 			transport: "shepherdr",
+			savedParent: {
+				machine: this.localMachine(),
+				sessionFile: parentFile,
+			},
 			parent: runtime.local
 				? sessionContextPath(parentFile)
 				: runtime.client.contextRelayPath(),
 		};
-		const { binding, adopt } = await service.createChild(ctx, {
-			name,
-			routing,
-		});
 		return {
 			accept: async (agent: PaneInfo) => {
 				const sessionFile = sessionPath(agent);
 				if (!sessionFile)
 					throw new Error("Spawned agent has no native Pi session path");
+				const agentName = await nativeAgentName(runtime.client, agent);
+				const { binding, adopt } = await service.createChild(ctx, {
+					threadId: agentName.slice(1),
+					routing,
+				});
 				const value = await runtime.client.requestContext(
 					sessionContextPath(sessionFile),
 					{ operation: "bind", binding },
 				);
-				if (!value)
+				if (value === null)
 					return {
 						warning: "Spawned without shared context: the target needs Notes",
 					};

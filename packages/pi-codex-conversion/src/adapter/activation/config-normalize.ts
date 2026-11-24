@@ -1,4 +1,8 @@
-import { normalizeVoiceApiProvider, normalizeGippityVoiceModel, normalizeOpenAIRealtimeVoice } from "./config-contract.ts";
+import {
+	normalizeVoiceApiProvider,
+	normalizeGippityVoiceModel,
+	normalizeOpenAIRealtimeVoice,
+} from "./config-contract.ts";
 import {
 	type CodexConversionConfig,
 	DEFAULT_CODEX_CONVERSION_CONFIG,
@@ -11,7 +15,7 @@ import {
 	normalizeCacheDiagnosticsMode,
 	normalizeCodexVerbosity,
 	normalizeCompactionMethod,
-	normalizeCompactToolsMode,
+	normalizeToolDetailsMode,
 	normalizeCustomRustBinariesDir,
 	normalizeDictationShortcutMode,
 	normalizeLunaCacheKeepaliveMinutes,
@@ -46,23 +50,28 @@ export function normalizeCodexConversionConfig(
 	const openai = isObject(value["openai"]) ? value["openai"] : {};
 	const inputDevice = normalizeOptionalString(voice["inputDevice"]);
 	const outputDevice = normalizeOptionalString(voice["outputDevice"]);
-	const contextModel = normalizeVoiceContextModel(voice["contextModel"]);
-	const notebookProfile = normalizeNotebookProfile(notebook["profile"]);
+	const contextModel =
+		voice["contextModel"] === "current"
+			? "current"
+			: normalizeVoiceContextModel(voice["contextModel"]);
+	const notebookProfile =
+		value["executionMode"] === "notebook"
+			? undefined
+			: normalizeNotebookProfile(notebook["profile"]);
 	const executionMode =
 		normalizeExecutionMode(value["executionMode"]) ??
 		DEFAULT_CODEX_CONVERSION_CONFIG.executionMode;
 	return {
 		executionMode,
-		voiceFeaturesOnly: normalizeBoolean(
-			value["voiceFeaturesOnly"],
-			DEFAULT_CODEX_CONVERSION_CONFIG.voiceFeaturesOnly,
-		),
 		prompt: {
-			currentTimeReminderMinutes: prompt["currentTimeReminderMinutes"] === 30 || prompt["currentTimeReminderMinutes"] === 60
-				? prompt["currentTimeReminderMinutes"] : 0,
-			heavySystemPromptOverwrite: prompt["heavySystemPromptOverwrite"] === "gpt" || typeof prompt["heavySystemPromptOverwrite"] === "boolean"
-				? prompt["heavySystemPromptOverwrite"]
-				: DEFAULT_CODEX_CONVERSION_CONFIG.prompt.heavySystemPromptOverwrite,
+			currentTimeReminderMinutes:
+				prompt["currentTimeReminderMinutes"] === 30 ||
+				prompt["currentTimeReminderMinutes"] === 60
+					? prompt["currentTimeReminderMinutes"]
+					: 0,
+			heavySystemPromptOverwrite:
+				prompt["heavySystemPromptOverwrite"] === "gpt" ||
+				prompt["heavySystemPromptOverwrite"] === true,
 			appendSystemPromptFile: normalizeBoolean(
 				prompt["appendSystemPromptFile"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.prompt.appendSystemPromptFile,
@@ -75,21 +84,25 @@ export function normalizeCodexConversionConfig(
 			additionalProviders: normalizeProviderList(scope["additionalProviders"]),
 		},
 		tools: {
-			autoReasoning: normalizeBoolean(tools["autoReasoning"], DEFAULT_CODEX_CONVERSION_CONFIG.tools.autoReasoning),
+			// Keep fork-owned extras selected across settings upgrades and scope changes.
+			applyPatchOnly: normalizeBoolean(
+				tools["applyPatchOnly"],
+				value["applyPatchOnly"] === true,
+			),
+			viewImageOnly: normalizeBoolean(
+				tools["viewImageOnly"],
+				value["viewImageOnly"] === true,
+			),
+			autoReasoning: normalizeBoolean(
+				tools["autoReasoning"],
+				DEFAULT_CODEX_CONVERSION_CONFIG.tools.autoReasoning,
+			),
 			customRustBinariesDir: normalizeCustomRustBinariesDir(
 				tools["customRustBinariesDir"],
 			),
 			viewImageFallback: normalizeBoolean(
 				tools["viewImageFallback"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.tools["viewImageFallback"],
-			),
-			applyPatchOnly: normalizeBoolean(
-				tools["applyPatchOnly"],
-				DEFAULT_CODEX_CONVERSION_CONFIG.tools["applyPatchOnly"],
-			),
-			viewImageOnly: normalizeBoolean(
-				tools["viewImageOnly"],
-				DEFAULT_CODEX_CONVERSION_CONFIG.tools["viewImageOnly"],
 			),
 		},
 		ui: {
@@ -104,12 +117,9 @@ export function normalizeCodexConversionConfig(
 					DEFAULT_CODEX_CONVERSION_CONFIG.ui["toolRenaming"],
 				),
 			),
-			compactTools: normalizeCompactToolsMode(ui["compactTools"])
-				?? DEFAULT_CODEX_CONVERSION_CONFIG.ui.compactTools,
-			codeModeDetails: normalizeBoolean(
-				ui["codeModeDetails"],
-				DEFAULT_CODEX_CONVERSION_CONFIG.ui["codeModeDetails"],
-			),
+			toolDetails:
+				normalizeToolDetailsMode(ui["toolDetails"]) ??
+				DEFAULT_CODEX_CONVERSION_CONFIG.ui.toolDetails,
 			backgroundShellWidget: normalizeBoolean(
 				ui["backgroundShellWidget"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.ui["backgroundShellWidget"],
@@ -132,15 +142,14 @@ export function normalizeCodexConversionConfig(
 			),
 		},
 		compaction: {
-			method: normalizeCompactionMethod(compaction["method"])
-				?? DEFAULT_CODEX_CONVERSION_CONFIG.compaction.method,
+			method:
+				normalizeCompactionMethod(compaction["method"]) ??
+				DEFAULT_CODEX_CONVERSION_CONFIG.compaction.method,
 			v2UserMessageRetention:
 				normalizeV2UserMessageRetention(compaction["v2UserMessageRetention"]) ??
 				DEFAULT_CODEX_CONVERSION_CONFIG.compaction.v2UserMessageRetention,
 		},
 		notebook: {
-			journals: notebook["journals"] === "off" || notebook["journals"] === "on" ? notebook["journals"] : "week",
-			checkpointCleanup: notebook["checkpointCleanup"] === "month" || notebook["checkpointCleanup"] === "week" ? notebook["checkpointCleanup"] : "never",
 			maxHeapMiB: normalizeIntegerInRange(
 				notebook["maxHeapMiB"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.notebook.maxHeapMiB,
@@ -155,11 +164,17 @@ export function normalizeCodexConversionConfig(
 		},
 		voice: {
 			model: normalizeGippityVoiceModel(voice["model"]) ?? "codex-live-1.1",
-			apiProvider: voice["apiProvider"] === undefined ? "openai" : normalizeVoiceApiProvider(voice["apiProvider"]) ?? "",
- realtimeVoice: normalizeOpenAIRealtimeVoice(voice["realtimeVoice"]) ?? "marin",
- realtimeAlternateVoice: normalizeOpenAIRealtimeVoice(voice["realtimeAlternateVoice"]) ?? "cedar",
- webSearch: voice["webSearch"] === true,
- v3Voice:
+			apiProvider:
+				voice["apiProvider"] === undefined
+					? "openai"
+					: (normalizeVoiceApiProvider(voice["apiProvider"]) ?? ""),
+			realtimeVoice:
+				normalizeOpenAIRealtimeVoice(voice["realtimeVoice"]) ?? "marin",
+			realtimeAlternateVoice:
+				normalizeOpenAIRealtimeVoice(voice["realtimeAlternateVoice"]) ??
+				"cedar",
+			webSearch: voice["webSearch"] === true,
+			v3Voice:
 				normalizeRealtimeV3Voice(voice["v3Voice"]) ??
 				DEFAULT_CODEX_CONVERSION_CONFIG.voice.v3Voice,
 			v3AlternateVoice:
@@ -169,10 +184,11 @@ export function normalizeCodexConversionConfig(
 				voice["autoResumeRealtime"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.voice.autoResumeRealtime,
 			),
-			refreshRealtimeAfterCompaction: normalizeBoolean(
-				voice["refreshRealtimeAfterCompaction"],
-				DEFAULT_CODEX_CONVERSION_CONFIG.voice.refreshRealtimeAfterCompaction,
-			) && contextModel !== undefined,
+			refreshRealtimeAfterCompaction:
+				normalizeBoolean(
+					voice["refreshRealtimeAfterCompaction"],
+					DEFAULT_CODEX_CONVERSION_CONFIG.voice.refreshRealtimeAfterCompaction,
+				) && contextModel !== undefined,
 			audioSetupCompleted: normalizeBoolean(
 				voice["audioSetupCompleted"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.voice.audioSetupCompleted,
@@ -205,8 +221,14 @@ export function normalizeCodexConversionConfig(
 				normalizeDictationShortcutMode(voice["dictationShortcutMode"]) ??
 				DEFAULT_CODEX_CONVERSION_CONFIG.voice.dictationShortcutMode,
 			...(contextModel ? { contextModel } : {}),
-			taskDelegationModel: normalizeString(voice["taskDelegationModel"], DEFAULT_CODEX_CONVERSION_CONFIG.voice.taskDelegationModel),
-			taskDelegationReasoning: normalizeVoiceContextReasoning(voice["taskDelegationReasoning"], "low"),
+			taskDelegationModel: normalizeString(
+				voice["taskDelegationModel"],
+				DEFAULT_CODEX_CONVERSION_CONFIG.voice.taskDelegationModel,
+			),
+			taskDelegationReasoning: normalizeVoiceContextReasoning(
+				voice["taskDelegationReasoning"],
+				"low",
+			),
 			contextReasoning: normalizeVoiceContextReasoning(
 				voice["contextReasoning"],
 			),
@@ -227,8 +249,10 @@ export function normalizeCodexConversionConfig(
 				openai["cacheKeepalive"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.openai["cacheKeepalive"],
 			),
-			lunaCacheKeepaliveIntervalMinutes: openai["lunaCacheKeepaliveIntervalMinutes"] === 4.5 ? 4.5 : 2.5,
-			cacheKeepaliveIntervalMinutes: openai["cacheKeepaliveIntervalMinutes"] === 55 ? 55 : 25,
+			lunaCacheKeepaliveIntervalMinutes:
+				openai["lunaCacheKeepaliveIntervalMinutes"] === 4.5 ? 4.5 : 2.5,
+			cacheKeepaliveIntervalMinutes:
+				openai["cacheKeepaliveIntervalMinutes"] === 55 ? 55 : 25,
 			proxyResponsesLite: normalizeBoolean(
 				openai["proxyResponsesLite"],
 				DEFAULT_CODEX_CONVERSION_CONFIG.openai.proxyResponsesLite,
@@ -236,10 +260,6 @@ export function normalizeCodexConversionConfig(
 			cacheDiagnostics:
 				normalizeCacheDiagnosticsMode(openai["cacheDiagnostics"]) ??
 				DEFAULT_CODEX_CONVERSION_CONFIG.openai.cacheDiagnostics,
-			harnessIdentifierHeader: openai["harnessIdentifierHeader"] === "codex" ? "codex" : normalizeBoolean(
-				openai["harnessIdentifierHeader"],
-				DEFAULT_CODEX_CONVERSION_CONFIG.openai.harnessIdentifierHeader === true,
-			),
 		},
 	};
 }

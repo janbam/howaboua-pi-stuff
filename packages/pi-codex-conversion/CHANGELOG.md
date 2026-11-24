@@ -1,8 +1,111 @@
 # Changelog
 
+## 5.1.0
+
+- Removed Voice only mode. Existing settings follow Provider scope. Use GipPity Control for voice without the Codex adapter.
+- Removed the Extra tools only scope and standalone `apply_patch` and `view_image` switches. Existing Extra tools only settings switch to Codex and configured providers. Both tools remain available through the adapter.
+- Removed Deno Notebook. Existing settings select TS Notebook without importing Deno state. [Recover or remove old notebook files](https://github.com/IgorWarzocha/howaboua-pi-stuff/blob/main/docs/deno-to-ts-notebook.md).
+- Replaced QuickJS Code with VM Code. Existing settings select VM Code, which keeps JavaScript bindings across cells. Select Code for fresh cells. VM Code runs on Linux, macOS and Windows. On Linux with Bun it requires a systemd user session and cgroup v2.
+- Removed the Harness identifier setting. Codex requests always use `codex_cli_rs` as the originator.
+- Replaced Compact tool output and Code / Notebook details with one Tool details setting: Minimal, Compact or Preview. Expand tool rows to see their available source, output and diffs.
+- Heavy system prompt overwrite is now Off or On. On uses the former GPT mode.
+- Older global and trusted project settings are migrated once without overwriting unrelated fields. Legacy Notes continuity notices now point to Agent Comms.
+- Codex switches to HTTP for the session when it detects a WebSocket size limit before text appears. If a size rejection follows visible text, Codex reports the incomplete response without replaying it.
+- Folded shell rows distinguish errors from searches with no matches. Background completion notices collapse to one line, and expanded cells show identical shell output only once.
+- Code and Notebook group exact usage calls. `ALL_TOOLS` lists every public tool available to the cell.
+- Code and Notebook guidance recommends composing related calls in one cell and checking JavaScript syntax before sending. VM Code and TS Notebook explain how to recover from redeclaring a binding.
+- TS Notebook resolves packages and type roots more reliably.
+- Code and Notebook print plain shell output by default. Existing choices are preserved. To opt out, set `notebook.plainCommandOutput` to `false` in `pi-codex-conversion.json`.
+- Auto Reasoning recommends adjusting effort when the work phase changes or a task turns out harder or easier than expected.
+- Codex puts tool instructions before workspace context and directs agents to act on clear requests and work through recoverable blockers.
+- Updated the bundled Codex tools and voice helpers.
+
+## 5.0.2
+
+- Added GPT Live 1.1 voice with an OpenAI API key. Codex login remains the default.
+- Active voice calls carry their summary and spoken conversation across compaction and Notes rollovers. Refresh waits for playback to finish, or keeps the current call open if playback does not settle.
+- Codex Responses Lite preserves more screenshot detail, up to Codex's 6,000-pixel and 10,000-patch limits.
+- Reduced memory use when preparing image-heavy Codex requests and continuing WebSocket sessions.
+- Codex honours `Retry-After` in streamed errors and `Retry-After-Ms` in HTTP and streamed errors.
+- Codex omits reasoning effort when the model declares the requested level unsupported.
+- Auto Reasoning guidance maps effort levels to the work ahead and recommends changing effort by work phase rather than by tool call.
+- QuickJS Code uses Pi's bundled runtime instead of downloading another copy.
+- VM Code reports the actual syntax error in malformed cells with top-level `await`. Its guidance explains how to scope temporary variables to avoid redeclaration errors.
+- TS mode accepts empty-object help calls, matching other Code and Notebook modes.
+- Code and Notebook guidance covers in-cell data processing, binding reuse, patch syntax, rollback limits and restorable hook dependencies. Image and binding errors explain how to recover.
+- Code and Notebook no longer save a second copy of images already included in the tool result. Expanded cells omit text already shown in a nested tool trace.
+- Notes checkpoints no longer repeat an unchanged tool list.
+
+## 5.0.1
+
+- Added VM Code with conversation-local bindings, top-level `await`, bounded memory and hard cancellation.
+- Added GPT-6.2 Sol and Astra with live reasoning controls and API-equivalent cost estimates.
+- TS mode now uses tsrs 0.25 with TypeScript 7.1 beta.
+- Tool images now appear once and respect visibility settings.
+- Image-heavy Code results now retain cached previews when toggling details.
+- Cache logs now locate prompt changes without recording prompt text.
+- Tool examples no longer prescribe `await`.
+
+## 5.0.0
+
+### Breaking changes
+
+- Replaced JS Notebook with QuickJS Code. Existing `js` settings now run fresh JavaScript per call, with up to four concurrent cells. Notebook checkpoints, profiles and project-shared variables are no longer available in this mode. Existing saved files remain untouched but are not loaded.
+- QuickJS Code retains conversation-local JSON through `store` and `load` without disk persistence.
+- Exact patch success acknowledgements now use `OK`. Incomplete-change warnings remain unchanged.
+
+## 4.0.10
+
+- Code, Notebook, TS and JS Notebook now provide `content()` to emit mixed MCP text and images in order.
+- Code and Notebook now keep unchanged nested-tool images stable across progress updates.
+- Code and Notebook guidance now follows the available nested tools instead of recommending absent shell or patch bindings.
+- General guidance now asks for direct, supported conclusions, with caveats only when they change the answer or next action.
+- Uncollected background shell completions now wake idle agents without interrupting active work.
+- Compaction and rollover now restore a background-shell inventory in late runtime context without changing the standing prompt.
+- Patch success results omit routine counters. Errors retain partial-change details and recovery instructions.
+- Unavailable image viewing and reasoning adjustment now report recovery options.
+- Voice task acknowledgements now omit unused task IDs.
+- Reduced temporary memory use when checking Codex conversation continuity and preparing WebSocket requests.
+- Codex now stops retrying recognised content-policy, inference-hook, access-program and workspace rejections while preserving transient-error retries.
+- JS Notebook now uses the Pi codemode 1.5.2 runtime.
+- Tool schemas and input validation now use Pi's native schema package without a TypeBox dependency.
+- TS notebooks now use tsrs 0.23, including upstream fixes for memory growth during repeated compiler rebuilds.
+- Code now uses the official 0.167 host runtime.
+- Bundled native tools and voice helpers now use refreshed Rust dependencies.
+- Responses Lite proxies now honour `compat.promptCacheKeyMode: "disabled"`.
+- Notebook, compaction metadata and usage reset dates now use minute precision.
+
+## 4.0.9
+
+- Removed unsupported reasoning-off options for GPT-6.1 Terra, GPT-6 Sol and GPT-6 Luna on Codex.
+
+## 4.0.8
+
+- Requires Pi 1.5 or newer.
+
+  Custom voice-helper overrides must be rebuilt. Bundled helpers update with the package.
+
+  - Reduced parsing overhead for large streamed tool calls.
+  - Code and Notebook now preserve declared structured results and apply native tool argument preparation once.
+  - Code and Notebook guidance now separates help discovery from calls using unknown arguments and distinguishes printing from return values.
+  - TS execution now uses tsrs 0.21.0 with TypeScript 7.1 beta.
+  - Expansion hints now use the configured keybinding.
+  - Agent guidance now prioritises acting on clear requests without unsolicited deferral.
+  - Fixed transient Codex transport failures becoming non-retryable after recovery attempts.
+  - Fixed duplicate voice task submissions from progress updates and repeated handoffs.
+  - Voice task preparation now preserves captured speech, tone and instructions without adding questions or next steps.
+  - Voice now recognises conversational wrap-ups and waits for LAN speaker playback before ending calls.
+  - Fixed stalled short audio tails, playback bursts and duplicated LAN audio. Codex Live now uses Opus packet repair.
+  - Added content-free connection and playback diagnostics without recording audio.
+  - Fixed generated task text appearing as user speech.
+  - LAN Stop now cancels pending task preparation. Herdr Disconnect also closes the listener.
+  - Added host-side voice settings without starting Pi or a call.
+  - Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`.
+
 ## 4.0.7
 
 - Updated package dependencies.
+
 ## 4.0.6
 
 - Added Realtime 2.1 and Realtime 2.1 Mini, with model-specific voices in terminal and LAN settings. Codex Live remains the default.

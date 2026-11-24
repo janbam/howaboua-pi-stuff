@@ -1,5 +1,4 @@
 import type { ExtensionAPI, Skill } from "@earendil-works/pi-coding-agent";
-import registerPackageChangelog from "./changelog.js";
 import { createSkillsTool, prepareSkillsCodeModeInput } from "./src/tool.js";
 
 export { createSkillsTool, prepareSkillsCodeModeInput } from "./src/tool.js";
@@ -11,7 +10,6 @@ const CODE_MODE_PACKAGE = "@howaboua/pi-codex-conversion";
 const CODE_MODE_MODULE = `${CODE_MODE_PACKAGE}/code-mode`;
 
 export default async function skillsExtension(pi: ExtensionAPI): Promise<void> {
-	registerPackageChangelog(pi);
 	const sharedState = pi.events as typeof pi.events & {
 		[REGISTRATION_KEY]?: object;
 	};
@@ -35,40 +33,10 @@ export default async function skillsExtension(pi: ExtensionAPI): Promise<void> {
 			);
 		}
 	});
-	let gpt = false;
 	const tool = createSkillsTool({
 		getLoadedSkills: () => loadedSkills,
-		isGpt: () => gpt,
 	});
-	const ordinaryGuidelines = tool.promptGuidelines;
 	pi.registerTool(tool);
-	try {
-		const { registerGptPromptMode } = await import(
-			"@howaboua/pi-codex-conversion/prompt-mode"
-		);
-		registerGptPromptMode(pi, (active) => {
-			gpt = active;
-			if (active)
-				tool.promptGuidelines = [
-					"skills: List once/session start; before work read always-applicable+task-relevant skills",
-				];
-			else if (ordinaryGuidelines) tool.promptGuidelines = ordinaryGuidelines;
-			else delete tool.promptGuidelines;
-			return [tool];
-		});
-	} catch (error) {
-		if (
-			!(error instanceof Error) ||
-			!("code" in error) ||
-			![
-				"ERR_MODULE_NOT_FOUND",
-				"MODULE_NOT_FOUND",
-				"ERR_PACKAGE_PATH_NOT_EXPORTED",
-			].includes(String(error.code)) ||
-			!error.message.includes(CODE_MODE_PACKAGE)
-		)
-			throw error;
-	}
 
 	const registration = await registerSkillsInCodeMode(pi, tool);
 	pi.on("session_shutdown", () => {
@@ -88,9 +56,9 @@ async function registerSkillsInCodeMode(
 		return registerCodeModeExtensionTools(pi, () => [
 			adaptToolForCodeMode(tool, {
 				kind: "freeform",
-				inputOptional: true,
+				discovery: "help",
 				prepareInput: prepareSkillsCodeModeInput,
-				usage: "await tools.skills() // discover skills and calling syntax",
+				usage: "tools.skills() // discover skills and calling syntax",
 			}),
 		]);
 	} catch (error) {

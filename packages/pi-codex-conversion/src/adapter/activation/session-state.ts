@@ -1,4 +1,7 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 
 /** Session-entry type used only to restore adapter activation for one conversation. */
 const CODEX_ADAPTER_SESSION_STATE = "codex-adapter-session-state";
@@ -12,12 +15,14 @@ interface CodexAdapterSessionState {
 export function readSessionAdapterEnabled(
 	ctx: Pick<ExtensionContext, "sessionManager">,
 ): boolean {
-	const entry = ctx.sessionManager.getBranch().findLast(
-		(item) =>
-			item.type === "custom" &&
-			item.customType === CODEX_ADAPTER_SESSION_STATE &&
-			isCodexAdapterSessionState(item.data),
-	);
+	const entry = ctx.sessionManager
+		.getBranch()
+		.findLast(
+			(item) =>
+				item.type === "custom" &&
+				item.customType === CODEX_ADAPTER_SESSION_STATE &&
+				isCodexAdapterSessionState(item.data),
+		);
 	if (entry?.type !== "custom") return true;
 	return (entry.data as CodexAdapterSessionState).enabled;
 }
@@ -36,8 +41,8 @@ function isCodexAdapterSessionState(
 ): value is CodexAdapterSessionState {
 	return Boolean(
 		value &&
-			typeof value === "object" &&
-			"enabled" in value &&
-			typeof value.enabled === "boolean",
+		typeof value === "object" &&
+		"enabled" in value &&
+		typeof value.enabled === "boolean",
 	);
 }

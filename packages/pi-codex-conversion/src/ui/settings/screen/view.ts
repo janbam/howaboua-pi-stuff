@@ -4,7 +4,11 @@ import type { CodexConversionConfig } from "../../../adapter/activation/config.t
 import type { CodexConversionConfigScope } from "../../../adapter/activation/config-store.ts";
 import type { CodexLanVoiceServerStatus } from "../../../voice/lan/controller.ts";
 import { formatVoiceShortcut } from "../../../voice/setup.ts";
-import { getCodexVoiceSystemPromptChangelogPath, getCodexVoiceSystemPromptPath, REALTIME_SYSTEM_PROMPT_BASENAME } from "../../../voice/system-prompt.ts";
+import {
+	getCodexVoiceSystemPromptChangelogPath,
+	getCodexVoiceSystemPromptPath,
+	REALTIME_SYSTEM_PROMPT_BASENAME,
+} from "../../../voice/system-prompt.ts";
 import { renderAboutTab } from "../about-tab.ts";
 import { SETTINGS_TABS, type SettingsTab } from "../tabs.ts";
 import type { createUsageTab } from "../usage-tab.ts";
@@ -18,7 +22,12 @@ export function renderSettingsScreen(
 	settings: SettingsConfiguration,
 	usageTab: ReturnType<typeof createUsageTab>,
 ): string[] {
-	const { activeTab, draft, contextWindowPickerOpen, retentionPickerOpen, list: settingsList } = settings;
+	const {
+		activeTab,
+		draft,
+		contextWindowPickerOpen,
+		list: settingsList,
+	} = settings;
 	const hasSettingsList = activeTab !== "usage" && activeTab !== "about";
 	let settingsLines = hasSettingsList ? settingsList.render(width) : [];
 	if (hasSettingsList)
@@ -29,7 +38,7 @@ export function renderSettingsScreen(
 		);
 	if (activeTab === "context" && !contextWindowPickerOpen)
 		settingsLines = withContextPortabilityWarning(settingsLines, theme, width);
-	if (activeTab === "tools" && !retentionPickerOpen)
+	if (activeTab === "tools")
 		settingsLines = withSettingsDetails(
 			settingsLines,
 			formatToolsDetails(theme, options.configScope.path()),
@@ -50,7 +59,9 @@ export function renderSettingsScreen(
 			: []),
 		"",
 		...(hasSettingsList
-			? contextWindowPickerOpen ? settingsLines : withSettingsFooter(settingsLines, theme)
+			? contextWindowPickerOpen
+				? settingsLines
+				: withSettingsFooter(settingsLines, theme)
 			: [theme.fg("dim", formatFooter(activeTab))]),
 		rule(width, theme, "accent"),
 	].map((line) => truncateToWidth(line, width, ""));
@@ -118,10 +129,7 @@ function formatVoiceDetails(
 			"dim",
 			`  LAN server: ${formatVoiceShortcut(config.voice.serverShortcut)}`,
 		),
-		theme.fg(
-			"dim",
-			`  Change keybinds: ${configPath} (/reload to apply)`,
-		),
+		theme.fg("dim", `  Change keybinds: ${configPath} (/reload to apply)`),
 		theme.fg(
 			"dim",
 			"  Voice context refresh uses the selected summarisation model",
@@ -148,7 +156,7 @@ function formatFooter(activeTab: SettingsTab): string {
 	return "  Tab/Shift+Tab to switch sections · Esc to close";
 }
 
-function withSettingsFooter(lines: string[], theme: Theme): string[] {
+function withSettingsFooter(lines: readonly string[], theme: Theme): string[] {
 	const next = [...lines];
 	for (let index = next.length - 1; index >= 0; index -= 1) {
 		if (next[index]?.includes("Enter/Space")) {
@@ -163,24 +171,32 @@ function withSettingsFooter(lines: string[], theme: Theme): string[] {
 }
 
 function withConfigScopeDetails(
-	lines: string[],
+	lines: readonly string[],
 	theme: Theme,
 	scope: CodexConversionConfigScope,
 ): string[] {
 	const next = [...lines];
 	const scopeIndex = next.findIndex((line) => line.includes("Editing"));
 	if (scopeIndex < 0) return next;
-	const detail = scope === "folder"
-		? "Changes here update this project."
-		: "Changes here update global settings.";
+	const detail =
+		scope === "folder"
+			? "Changes here update this project."
+			: "Changes here update global settings.";
 	next.splice(scopeIndex + 1, 0, theme.fg("dim", "  " + detail));
 	return next;
 }
 
-function withContextPortabilityWarning(lines: string[], theme: Theme, width: number): string[] {
-	const wrap = (text: string) => wrapTextWithAnsi(text, Math.max(1, width - 2)).map((line) => "  " + line);
+function withContextPortabilityWarning(
+	lines: readonly string[],
+	theme: Theme,
+	width: number,
+): string[] {
+	const wrap = (text: string) =>
+		wrapTextWithAnsi(text, Math.max(1, width - 2)).map((line) => "  " + line);
 	return [
-		...wrap("Switching providers?").map((line) => theme.fg("warning", theme.bold(line))),
+		...wrap("Switching providers?").map((line) =>
+			theme.fg("warning", theme.bold(line)),
+		),
 		...[
 			"Use Pi summary or Both for readable checkpoints when switching providers.",
 			"V2 checkpoints are encrypted for OpenAI; other providers cannot use them.",
@@ -198,7 +214,10 @@ function formatToolsDetails(theme: Theme, configPath: string): string[] {
 	];
 }
 
-function withSettingsDetails(lines: string[], details: string[]): string[] {
+function withSettingsDetails(
+	lines: readonly string[],
+	details: string[],
+): string[] {
 	const next = [...lines];
 	const footerIndex = next.findIndex((line) => line.includes("Enter/Space"));
 	next.splice(footerIndex < 0 ? next.length : footerIndex, 0, ...details, "");

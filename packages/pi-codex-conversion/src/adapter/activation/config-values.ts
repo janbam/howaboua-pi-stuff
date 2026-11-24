@@ -14,7 +14,10 @@ export function normalizeString(value: unknown, fallback: string): string {
 }
 
 // FORK_MOD: unlike a plain string normalizer, an empty string is a meaningful shortcut value — it disables the binding — so only non-strings fall back to the default.
-export function normalizeShortcutString(value: unknown, fallback: string): string {
+export function normalizeShortcutString(
+	value: unknown,
+	fallback: string,
+): string {
 	return typeof value === "string" ? value.trim() : fallback;
 }
 

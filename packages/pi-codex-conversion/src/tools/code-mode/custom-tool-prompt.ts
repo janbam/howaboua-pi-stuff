@@ -1,7 +1,4 @@
-import type {
-	CodeModeToolDefinition,
-	CustomToolDefinition,
-} from "./types.js";
+import type { CodeModeToolDefinition, CustomToolDefinition } from "./types.js";
 import type { CodeModeExecutionKind } from "./shared-runtime.js";
 import {
 	codeModeGlobalName,
@@ -10,40 +7,25 @@ import {
 	translateCodeModeUsage,
 } from "./tool-identity.ts";
 
-export const EXEC_DESCRIPTION = `Run JavaScript to compose tools; source only, no JSON or fences
-Optional // @exec: {"yield_time_ms": 10000, "max_output_tokens": 1000}; defaults 30000 ms/10000 tokens
-Await work; use a timeout when an operation might not finish on its own
-Bare values are discarded; globals: tools, image, generatedImage, store, load, exit, setTimeout, clearTimeout, ALL_TOOLS; text(value) serializes output, notify(value) emits, yield_control() yields`;
+const JS_CELL_DESCRIPTION =
+	"JavaScript computation/tool calls; source ONLY, NO JSON/fences";
 
-export const GPT_EXEC_DESCRIPTION = `JavaScript tool composition; source ONLY, NO JSON/fences
+export const EXEC_DESCRIPTION = `${JS_CELL_DESCRIPTION}
 Optional // @exec: {"yield_time_ms": 10000, "max_output_tokens": 1000}; defaults=30000ms/10000tokens
-Await work; possibly nonterminating→timeout
-Bare values discarded; globals: tools, image, generatedImage, store, load, exit, setTimeout, clearTimeout, ALL_TOOLS; text(value)→serialized output, notify(value)→emit, yield_control()→yield`;
+Bare values discarded; globals: tools, image, generatedImage, store, load, exit, setTimeout, clearTimeout, ALL_TOOLS; content(value)→emit MCP text/images in order; text(value)→print serialized output; notify(value)→emit; both→undefined; yield_control()→yield`;
 
-export const ISOLATED_EXEC_GUIDANCE = 'For independent work while another cell runs, add "isolated":true to // @exec. Starts from last saved state; leaves shared variables unchanged';
-export const GPT_ISOLATED_EXEC_GUIDANCE = 'Concurrent isolated: // @exec: {"isolated":true}; last checkpoint; shared vars unchanged';
+export const ISOLATED_EXEC_GUIDANCE =
+	'Concurrent isolated: // @exec: {"isolated":true}; last checkpoint; shared vars unchanged';
 
-export const JS_EXEC_DESCRIPTION = `Run JavaScript in a persistent kernel; source only, no JSON or fences
-Optional // @exec: {"yield_time_ms": 10000, "max_output_tokens": 1000}; defaults 30000 ms/10000 tokens
-For independent work while another cell runs, add "isolated":true to // @exec. Starts from last checkpoint; leaves shared variables unchanged
-Top-level await supported. Await host calls; dangling calls prevent checkpointing
-Bare values discarded; globals: tools, text, image, notify, generatedImage, store, load, yield_control, exit, ALL_TOOLS
-No Node, imports, fetch, timers or TypeScript checking`;
-
-export const GPT_JS_EXEC_DESCRIPTION = `Persistent JS kernel; source ONLY, NO JSON/fences
+export const VM_EXEC_DESCRIPTION = `${JS_CELL_DESCRIPTION}
 Optional // @exec: {"yield_time_ms": 10000, "max_output_tokens": 1000}; defaults=30000ms/10000tokens
-${GPT_ISOLATED_EXEC_GUIDANCE}
-Top-level await; await host calls; dangling calls block checkpoint
-Bare values discarded; globals: tools, text, image, notify, generatedImage, store, load, yield_control, exit, ALL_TOOLS
-NO Node/imports/fetch/timers/TSchecking`;
+Bare values discarded; globals: tools, text, image, notify, generatedImage, store, load, yield_control, exit, console, ALL_TOOLS
+content(value)→emit MCP text/images in order`;
 
-export const WAIT_DESCRIPTION =
-	"Resume or terminate a yielded exec cell";
+export const WAIT_DESCRIPTION = "Resume or terminate a yielded exec cell";
 
 const BUNDLED_TOOLS_HEADING = "Tools available in exec:";
 const CUSTOM_TOOLS_HEADING = "Configured custom tools:";
-const TOOL_GUIDANCE_HEADING = "Tool guidance:";
-const DEFERRED_TOOLS_GUIDANCE = "For additional tools and their contracts, run text(ALL_TOOLS) in exec";
 const CUSTOM_TOOLS_GUIDANCE =
 	"Prefer custom tools for command-backed capabilities";
 export const CODE_MODE_TOOLS_SECTION = "exec_tools";
@@ -53,9 +35,24 @@ export interface CodeModeSystemPromptOptions {
 	sections?: Record<string, string> | undefined;
 }
 
-const customizationGuidance = new WeakMap<CodeModeSystemPromptOptions, () => string>();
+const customizationGuidance = new WeakMap<
+	CodeModeSystemPromptOptions,
+	() => string
+>();
+const promptToolNames = new WeakMap<
+	CodeModeSystemPromptOptions,
+	readonly string[]
+>();
 
-export function codeModeCustomizationGuidance(options: CodeModeSystemPromptOptions): string {
+export function codeModePromptToolNames(
+	options: CodeModeSystemPromptOptions,
+): readonly string[] {
+	return promptToolNames.get(options) ?? [];
+}
+
+export function codeModeCustomizationGuidance(
+	options: CodeModeSystemPromptOptions,
+): string {
 	return customizationGuidance.get(options)?.() ?? "";
 }
 
@@ -65,9 +62,12 @@ function isConfiguredCustomTool(
 	return "command" in tool;
 }
 
-export function isCodeModeToolDiscoverable(tool: CodeModeToolDefinition): boolean {
-	return isConfiguredCustomTool(tool) ||
-		(tool.deferLoading && "invoke" in tool && tool.discoverWhenDeferred === true);
+export function isCodeModeToolListed(tool: CodeModeToolDefinition): boolean {
+	return !(
+		"invoke" in tool &&
+		tool.deferLoading &&
+		tool.discoverWhenDeferred === false
+	);
 }
 
 export function formatCodeModeToolHelp(tool: CodeModeToolDefinition): string {
@@ -80,12 +80,20 @@ export function formatCodeModeToolHelp(tool: CodeModeToolDefinition): string {
 			? translateCodeModeToolReferences(tool.promptSnippet, tool.name)
 			: undefined,
 		...(tool.promptGuidelines ?? []).map((guideline) =>
-			translateCodeModeGuideline(guideline, tool.name)),
-		tool.namespace?.instructions ? `Instructions: ${tool.namespace.instructions}` : undefined,
-		isConfiguredCustomTool(tool) ? 'Schema: {"type":"string"}'
-			: "inputSchema" in tool && tool.inputSchema ? `Schema: ${formatSchema(tool.inputSchema)}` : undefined,
+			translateCodeModeGuideline(guideline, tool.name),
+		),
+		tool.namespace?.instructions
+			? `Instructions: ${tool.namespace.instructions}`
+			: undefined,
+		isConfiguredCustomTool(tool)
+			? 'Schema: {"type":"string"}'
+			: "inputSchema" in tool && tool.inputSchema
+				? `Schema: ${formatSchema(tool.inputSchema)}`
+				: undefined,
 		tool.output ? `Output: ${tool.output}` : undefined,
-		tool.annotations ? `Annotations: ${JSON.stringify(tool.annotations)}` : undefined,
+		tool.annotations
+			? `Annotations: ${JSON.stringify(tool.annotations)}`
+			: undefined,
 	]
 		.filter(Boolean)
 		.join("\n");
@@ -99,18 +107,47 @@ function formatSchema(schema: unknown): string {
 	}
 }
 
-function translatedPromptLines(tool: CodeModeToolDefinition): string[] {
-	if (!("invoke" in tool) || tool.translatePromptMetadata !== true) return [];
-	// Usage owns the callable contract here; native descriptions and schemas do not.
-	return (tool.promptGuidelines ?? []).map((guideline) =>
-		`- ${translateCodeModeGuideline(guideline, tool.name)}`);
+function hasUsageCall(tool: CodeModeToolDefinition): boolean {
+	return "discovery" in tool && tool.discovery === "help";
 }
 
-function buildGuidanceSection(tools: CodeModeToolDefinition[]): string {
-	const lines = tools
-		.filter((tool) => !tool.deferLoading)
-		.flatMap(translatedPromptLines);
-	return lines.length ? `${TOOL_GUIDANCE_HEADING}\n${lines.join("\n")}` : "";
+function renderStandingTool(tool: CodeModeToolDefinition): string[] {
+	const name = codeModeGlobalName(tool.name);
+	const binding = `tools.${name}`;
+	const help = hasUsageCall(tool);
+	const description = translateCodeModeToolReferences(
+		tool.description ?? "",
+		tool.name,
+	).trim();
+	const capability =
+		help &&
+		name === "agents" &&
+		description.endsWith("; {} lists action fields")
+			? description.slice(0, -"; {} lists action fields".length)
+			: description;
+	const usage = translateCodeModeUsage(tool.usage, tool.name);
+	const call = usage.startsWith(`${binding}(`) ? usage : undefined;
+	const entry = help
+		? `- ${binding}()${capability ? `: ${capability}` : ""}`
+		: call
+			? `- ${call}${description ? `; ${description}` : ""}`
+			: `- ${binding}: ${[description, `Usage: ${usage}`].filter(Boolean).join("; ")}`;
+	if (!("invoke" in tool) || tool.translatePromptMetadata !== true)
+		return [entry];
+	const labels = [binding, name, tool.name, tool.topLevelName];
+	return [
+		entry,
+		...(tool.promptGuidelines ?? []).map((guideline) => {
+			const translated = translateCodeModeGuideline(guideline, tool.name);
+			const label = labels.find(
+				(label) => label && translated.startsWith(`${label}:`),
+			);
+			const rule = label
+				? translated.slice(label.length + 1).trimStart()
+				: translated;
+			return `- ${binding}: ${rule}`;
+		}),
+	];
 }
 
 function buildUsageSection(
@@ -125,69 +162,82 @@ function buildUsageSection(
 				const index = priority.indexOf(name);
 				return index === -1 ? priority.length : index;
 			};
-			return rank(left.name) - rank(right.name) || left.name.localeCompare(right.name);
+			return (
+				rank(left.name) - rank(right.name) ||
+				left.name.localeCompare(right.name)
+			);
 		})
-		.map((tool) => "discovery" in tool && tool.discovery === "help"
-			? `- tools.${codeModeGlobalName(tool.name)}: ${translateCodeModeToolReferences(tool.description ?? "", tool.name)}`
-			: `- ${translateCodeModeUsage(tool.usage, tool.name)}`)
+		.flatMap(renderStandingTool)
 		.join("\n")}`;
 }
 
 export function buildCodeModeToolsPrompt(
 	tools: CodeModeToolDefinition[],
 	executionKind: CodeModeExecutionKind = "code",
-	gpt = false,
+	heavy = false,
 ): string {
 	const bundled = tools.filter(
 		(tool) => !isConfiguredCustomTool(tool) && !tool.deferLoading,
 	);
 	const custom = tools.filter(isConfiguredCustomTool);
 	const promotedCustom = custom.filter((tool) => !tool.deferLoading);
+	const usageCalls = bundled.filter(hasUsageCall);
 	const sections = [
-		executionKind === "js"
-			? gpt
-				? "exec=project-shared JS; checkpoints preserve closures/classes/cycles; cancel→stop kernel; notebook restart→checkpoint≠external rollback"
-				: "exec=project-shared JavaScript kernel; checkpoints preserve closures/classes/cycles. Cancellation stops the kernel; notebook restart restores its checkpoint, not external tool effects"
+		executionKind === "vm"
+			? "exec=one JS context for this conversation; let/const/function/class persist; NO Node/imports/fetch/timers; stall/cancel/memory limit/terminate drops bindings"
 			: executionKind === "ts"
-			? gpt
 				? "exec=persistent TS; imports/npm/Node/Web APIs; bindings/modules persist"
-				: "exec is a persistent TypeScript kernel with imports, npm, Node and Web APIs; live bindings and module instances persist across cells"
-			: executionKind === "notebook"
-			? gpt
-				? "exec=persistent Deno/TS; console/imports/npm/Deno/Web APIs; small programs across cells; globals MAY predate agent/session"
-				: "exec is a persistent Deno/TypeScript notebook with console, imports, npm, Deno, and Web APIs; globals may come from earlier agents and sessions. Build small programs on retained state across cells"
-			: gpt ? "exec=fresh restricted JS; NO console/imports/Node/browser APIs"
-				: "exec runs fresh restricted JavaScript; no console, imports, Node, or browser APIs",
-		executionKind === "ts"
-			? gpt ? "Whole-cell strictcheck INCL toolargs; typeerror→NO execution" : "Strict typechecking covers the whole cell, including tool arguments. Any type error prevents cell execution"
+				: "exec=fresh restricted JS; NO console/imports/Node/browser APIs",
+		executionKind !== "code"
+			? "One-off const/let→{ ... }; top-level ONLY for reuse across cells"
 			: undefined,
 		executionKind === "ts"
-			? gpt ? 'Markdown/multiline text→ordinary quoted line arrays joined with "\\n"; template literals require escaping backticks and ${...}'
-				: 'For Markdown or multiline text, use ordinary quoted line arrays joined with "\\n". Template literals require escaping backticks and ${...} to keep them literal.'
+			? "Whole-cell strictcheck INCL toolargs; typeerror→NO execution"
 			: undefined,
-		gpt ? "No call signature→noargs help ONLY; structured→{}. Unfamiliar help→read BEFORE use"
-			: "For tools listed without a call signature, call with no arguments to get usage without performing an operation. Structured calls use {}. Read unfamiliar tool help before use.",
-		buildUsageSection(BUNDLED_TOOLS_HEADING, bundled, [
-			"exec_command", "write_stdin", "apply_patch", "view_image",
-			"change_reasoning", "get_context_remaining",
-		]),
+		executionKind === "ts"
+			? 'Markdown/multiline text→ordinary quoted line arrays joined with "\\n"; template literals require escaping backticks and ${...}'
+			: undefined,
+		buildUsageSection(
+			BUNDLED_TOOLS_HEADING,
+			bundled.filter((tool) => !hasUsageCall(tool)),
+			[
+				"exec_command",
+				"write_stdin",
+				"apply_patch",
+				"view_image",
+				"change_reasoning",
+				"get_context_remaining",
+			],
+		),
+		buildUsageSection(
+			heavy
+				? "Usage calls below. MUST NOT guess args. Unknown args→call for usage first, separately; known args→call directly"
+				: "These calls show usage. MUST NOT guess arguments. If you don't know the current arguments, call for usage separately before the operation. If you know them, call the operation directly.",
+			usageCalls,
+		),
 		buildUsageSection(CUSTOM_TOOLS_HEADING, promotedCustom),
-		buildGuidanceSection(tools),
 		// The catalogue is always available, even when its first or last tool is unlisted.
-		gpt ? "More tools/contracts→text(ALL_TOOLS)" : DEFERRED_TOOLS_GUIDANCE,
+		"Tool names→text(ALL_TOOLS.map(t=>t.name)); contract→text(ALL_TOOLS.find(t=>t.name==='NAME'))",
 		custom.length > 0 ? CUSTOM_TOOLS_GUIDANCE : undefined,
 	].filter(Boolean);
 	return sections.join("\n");
 }
 
-function upsertCodeModeToolsSection(systemPrompt: string, section: string): string {
+function upsertCodeModeToolsSection(
+	systemPrompt: string,
+	section: string,
+): string {
 	const open = `<${CODE_MODE_TOOLS_SECTION}>`;
 	const close = `</${CODE_MODE_TOOLS_SECTION}>`;
 	const start = systemPrompt.indexOf(open);
-	const end = start === -1 ? -1 : systemPrompt.indexOf(close, start + open.length);
+	const end =
+		start === -1 ? -1 : systemPrompt.indexOf(close, start + open.length);
 	if (start !== -1 && end !== -1) {
 		const after = end + close.length;
-		if (!section) return `${systemPrompt.slice(0, start)}${systemPrompt.slice(after)}`.replace(/\n{3,}/g, "\n\n").trim();
+		if (!section)
+			return `${systemPrompt.slice(0, start)}${systemPrompt.slice(after)}`
+				.replace(/\n{3,}/g, "\n\n")
+				.trim();
 		return `${systemPrompt.slice(0, start)}${open}\n${section}\n${close}${systemPrompt.slice(after)}`;
 	}
 	if (!section) return systemPrompt;
@@ -216,17 +266,25 @@ export function prepareCodeModeToolsPrompt(
 	documentationPath?: string,
 	isEnabled: () => boolean = () => true,
 	executionKind: CodeModeExecutionKind = "code",
-	gpt = false,
+	heavy = false,
 ): string {
-	const sections = options.sections ??= {};
-	customizationGuidance.set(options, () => documentationPath && isEnabled()
-		? gpt
+	const sections = (options.sections ??= {});
+	// Share this turn's canonical snapshot, not the changing live catalogue.
+	promptToolNames.set(
+		options,
+		tools.map((tool) => tool.name),
+	);
+	customizationGuidance.set(options, () =>
+		documentationPath && isEnabled()
 			? `exec custom tools→read ${documentationPath}, NOT Pi docs`
-			: `Custom tools to run in exec: read ${documentationPath} instead of Pi docs`
-		: "");
-	const section = buildCodeModeToolsPrompt(tools, executionKind, gpt);
+			: "",
+	);
+	const section = buildCodeModeToolsPrompt(tools, executionKind, heavy);
 	if (options.forceSystemPrompt !== undefined) {
-		options.forceSystemPrompt = upsertCodeModeToolsSection(options.forceSystemPrompt, isEnabled() ? section : "");
+		options.forceSystemPrompt = upsertCodeModeToolsSection(
+			options.forceSystemPrompt,
+			isEnabled() ? section : "",
+		);
 	} else {
 		defineCodeModeToolsSection(sections, section, isEnabled);
 	}

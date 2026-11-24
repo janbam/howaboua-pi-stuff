@@ -1,0 +1,4 @@
+- Workspace Markdown owns instructions, one policy/pulse per file. No bodies in Core documents or DB rows. Activity, cursors, controls, receipts: workspace SQLite tables, no serialised files or JSON blobs. Change markers only notify.
+- Live edits: watch owned paths, isolate malformed definitions, verify revisions at admission. Missing editor jobs aren't deletions. Preserve pulse-local AGENTS.md, journals, artefacts and unrelated frontmatter. Interrupted sends uncertain, never replay.
+- Validate with disposable Core sessions and inert PTYs. No live install, policy activation or prompt sends.
+- Match Voice and State: quiet sidebar row, 28px icon actions, rail popup, dismissible settings. User terms: check-ins and automations. Runtime/storage terms only in Details.

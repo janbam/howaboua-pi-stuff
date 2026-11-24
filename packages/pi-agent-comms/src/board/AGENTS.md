@@ -1,0 +1,9 @@
+- Only loaded Agent Comms or standalone Board activates. Discovery never imports engine. Disabled: retain binding/settings routes, reconcile inherited enablement before preparation, replay briefings natively. Viewer/settings reads never activate.
+- Preserve schema-v1 archive paths/identity and `shepherdr-board-*` records across takeover. Sequence orders posts/cursors, never timestamp text.
+- Native session IDs own public refs. Legacy names only aliases. Adoption preserves parent-session associations for descendant authorisation and notice routing.
+- Status and comment: one transaction/invocation ID. Check open status for new replies inside transaction after invocation replay. Never reapply replayed status. Legacy reads default open without creating tables.
+- Derived summaries invalidated in status transaction. Late save must match closing comment and latest covered post. Tool/viewer search substitutes summaries unless `full`. Legacy reads never create summary tables.
+- Summaries off by default. Fresh committed status notice only. Validate preference inside caught background job. System prompt owns instructions. Source: channel/status and chronological author/timestamp/text, closing comment marked, no IDs/context. Tool-free, cancel with owning session/board.
+- `runtime/owner.ts` validates, commits before summaries or best-effort notices. `coordinator.ts`: settings, refresh, cancellation. `routing.ts`: adapters/envelopes, binding waits for refresh. `turns.ts`: session turn capabilities. No duplicate executor state.
+- Hosts own fleet discovery/spawn/SSH. Lazy viewer opens resolved source read-only, serves packaged local assets. No live viewer/listener changes in validation.
+- Explicit browser asset allowlist despite recursive `web/` copy. `session.js` owns shared selection/queue. Render/navigation/updates use it, no parallel snapshots.

@@ -50,7 +50,7 @@ function stableActivity(value: unknown): StableAgentActivity | undefined {
 		: attemptId === false
 			? undefined
 			: expectedUserAfter === false ||
-					(expectedUserAfter !== undefined && !task)
+				  (expectedUserAfter !== undefined && !task)
 				? undefined
 				: {
 						phase: "working",
@@ -95,6 +95,7 @@ export function parseMonitoredAgent(
 	const record = value as Record<string, unknown>;
 	if (
 		(record["scope"] !== "task" && record["scope"] !== "persistent") ||
+		(record["worker"] !== undefined && record["worker"] !== true) ||
 		typeof record["paneId"] !== "string" ||
 		typeof record["terminalId"] !== "string" ||
 		(record["workspaceId"] !== undefined &&
@@ -109,13 +110,14 @@ export function parseMonitoredAgent(
 		record["notifiedExtensionMessages"] === undefined
 			? undefined
 			: Array.isArray(record["notifiedExtensionMessages"]) &&
-					record["notifiedExtensionMessages"].every(
+				  record["notifiedExtensionMessages"].every(
 						(value) => typeof value === "string",
-					)
+				  )
 				? (record["notifiedExtensionMessages"] as string[])
 				: false;
 	const name = optionalString(record, "name");
 	const instructions = optionalString(record, "instructions");
+	const latestInstruction = optionalString(record, "latestInstruction");
 	const activity = parsedActivity(record["activity"]);
 	if (
 		cwd === false ||
@@ -123,13 +125,16 @@ export function parseMonitoredAgent(
 		notifiedExtensionMessages === false ||
 		name === false ||
 		instructions === false ||
+		latestInstruction === false ||
 		!activity
 	) {
 		return undefined;
 	}
 	return {
 		scope: record["scope"],
+		...(record["worker"] === true ? { worker: true } : {}),
 		...(instructions ? { instructions } : {}),
+		...(latestInstruction ? { latestInstruction } : {}),
 		activity,
 		paneId: record["paneId"],
 		terminalId: record["terminalId"],
@@ -154,6 +159,7 @@ export function recordForPanel(
 	const cwd = panel.foreground_cwd ?? panel.cwd;
 	return {
 		scope,
+		...(panel.worker ? { worker: true } : {}),
 		activity,
 		paneId: panel.pane_id,
 		terminalId: panel.terminal_id,
@@ -172,7 +178,9 @@ export function sameMonitorRecord(
 ): boolean {
 	return (
 		left.scope === right.scope &&
+		left.worker === right.worker &&
 		left.instructions === right.instructions &&
+		left.latestInstruction === right.latestInstruction &&
 		left.paneId === right.paneId &&
 		left.terminalId === right.terminalId &&
 		left.workspaceId === right.workspaceId &&

@@ -16,14 +16,6 @@ export function buildPanelItems(
 	draft: SshSetupDraft,
 ): SettingItem[] {
 	if (tab === "Connections") {
-		if (process.env["HC_TERMINAL_SOCKET"])
-			return [
-				{
-					id: "core-machines",
-					label: "Manage machines in Herdr or with hc machine add",
-					currentValue: "",
-				},
-			];
 		return sshSetupItems(draft);
 	}
 	if (tab === "Status")
@@ -33,9 +25,8 @@ export function buildPanelItems(
 				label: "Refresh and reconnect",
 				currentValue: "Enter",
 				values: ["Enter"],
-				description: process.env["HC_TERMINAL_SOCKET"]
-					? "Refresh Core machines and retry connections."
-					: "Reload Herdr profiles and retry connections.",
+				description:
+					"Pick up changes to the machine list and retry disconnected machines.",
 			},
 			...options.fleet.statuses().map((machine) => ({
 				id: `machine:${machine.id}`,
@@ -69,7 +60,8 @@ export function buildPanelItems(
 			label: "Prioritize delegation",
 			currentValue: options.orchestration() ? "on" : "off",
 			values: ["off", "on"],
-			description: "Prefer delegation over direct work in this session.",
+			description:
+				"Tell this session’s agent to delegate by default. Does not start workers on its own.",
 		},
 	];
 }

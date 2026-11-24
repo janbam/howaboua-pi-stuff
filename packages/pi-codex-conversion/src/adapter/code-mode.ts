@@ -1,4 +1,9 @@
-import { getAgentDir, type AgentToolResult, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+	getAgentDir,
+	type AgentToolResult,
+	type ExtensionAPI,
+	type ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import type { CodexExtensionRuntime } from "../extension/runtime.ts";
 import { getCodeModeExtensionToolSnapshot } from "../code-mode-extension-tools.ts";
 import {
@@ -12,9 +17,18 @@ import { createExecCommandTool } from "../tools/exec/command-tool.ts";
 import { createWriteStdinTool } from "../tools/exec/write-stdin-tool.ts";
 import { createViewImageTool } from "../tools/view-image/tool.ts";
 import { supportsViewImageInputs } from "./tool-support.ts";
-import { isCodeModeRuntime, resolveCodexRuntimePlanForState } from "./activation/runtime-plan.ts";
-import { CODE_MODE_TOOL_NAMES, NOTEBOOK_MODE_TOOL_NAMES } from "./activation/tool-set.ts";
-import { codeModeImageResult, toNestedTool } from "./code-mode/nested-tool-adapter.ts";
+import {
+	isCodeModeRuntime,
+	resolveCodexRuntimePlanForState,
+} from "./activation/runtime-plan.ts";
+import {
+	CODE_MODE_TOOL_NAMES,
+	NOTEBOOK_MODE_TOOL_NAMES,
+} from "./activation/tool-set.ts";
+import {
+	codeModeImageResult,
+	toNestedTool,
+} from "./code-mode/nested-tool-adapter.ts";
 import { resolveProtectedOutputScope } from "../tools/code-mode/protected-output.ts";
 import { appendRemoteDelivery } from "../tools/code-mode/protected-delivery.ts";
 import { createPiCodeModeBridge } from "./code-mode/pi-tools.ts";
@@ -33,11 +47,13 @@ export async function registerCodexCodeMode(
 	const piTools = createPiCodeModeBridge(pi);
 	const isActive = (ctx: unknown) => {
 		if (ctx) latestContext = ctx as ExtensionContext;
-		const plan = resolveCodexRuntimePlanForState(ctx as ExtensionContext, runtime.state);
+		const plan = resolveCodexRuntimePlanForState(
+			ctx as ExtensionContext,
+			runtime.state,
+		);
 		if (!isCodeModeRuntime(plan)) return false;
-		const requiredTools = plan.kind !== "code"
-			? NOTEBOOK_MODE_TOOL_NAMES
-			: CODE_MODE_TOOL_NAMES;
+		const requiredTools =
+			plan.kind === "ts" ? NOTEBOOK_MODE_TOOL_NAMES : CODE_MODE_TOOL_NAMES;
 		const activeTools = pi.getActiveTools();
 		return requiredTools.every((name) => activeTools.includes(name));
 	};
@@ -47,30 +63,64 @@ export async function registerCodexCodeMode(
 	const programmaticRuntime = await registerCodeModeTools(pi, {
 		prepareLoadout: (loadout) => {
 			if (!latestContext) return undefined;
-			const plan = resolveCodexRuntimePlanForState(latestContext, runtime.state);
+			const plan = resolveCodexRuntimePlanForState(
+				latestContext,
+				runtime.state,
+			);
 			if (!isCodeModeRuntime(plan)) return undefined;
-			const required = plan.kind !== "code" ? NOTEBOOK_MODE_TOOL_NAMES : CODE_MODE_TOOL_NAMES;
-			if (!required.every((name) => loadout.declared.some((tool) => tool.name === name))) return undefined;
+			const required =
+				plan.kind === "ts" ? NOTEBOOK_MODE_TOOL_NAMES : CODE_MODE_TOOL_NAMES;
+			if (
+				!required.every((name) =>
+					loadout.declared.some((tool) => tool.name === name),
+				)
+			)
+				return undefined;
 			// MCP can activate native discovery after our preparation hook or during
 			// a run. Reconcile outside Pi's synchronous loadout callback.
-			const nativeSearch = pi.getAllTools().some(tool =>
-				tool.name === "tool_search" && tool.sourceInfo?.path === "builtin:tool-search");
-			if (!pendingNativeProjection && loadout.declared.some((tool) =>
-				tool.name === "codemode" || (nativeSearch && tool.name === "tool_search"))) {
+			const nativeSearch = pi
+				.getAllTools()
+				.some(
+					(tool) =>
+						tool.name === "tool_search" &&
+						tool.sourceInfo?.path === "builtin:tool-search",
+				);
+			if (
+				!pendingNativeProjection &&
+				loadout.declared.some(
+					(tool) =>
+						tool.name === "codemode" ||
+						(nativeSearch && tool.name === "tool_search"),
+				)
+			) {
 				pendingNativeProjection = true;
 				queueMicrotask(() => {
 					pendingNativeProjection = false;
-					if (!stopped && latestContext && isActive(latestContext)
-						&& pi.getActiveTools().some(name => name === "codemode" || (nativeSearch && name === "tool_search")))
+					if (
+						!stopped &&
+						latestContext &&
+						isActive(latestContext) &&
+						pi
+							.getActiveTools()
+							.some(
+								(name) =>
+									name === "codemode" ||
+									(nativeSearch && name === "tool_search"),
+							)
+					)
 						syncAdapter(pi, latestContext, runtime.state);
 				});
 			}
-			return piTools.prepareLoadout(loadout, ["codemode", ...(nativeSearch ? ["tool_search"] : [])]);
+			return piTools.prepareLoadout(loadout, [
+				"codemode",
+				...(nativeSearch ? ["tool_search"] : []),
+			]);
 		},
 		getTools: (ctx) => {
 			const context = ctx as ExtensionContext | undefined;
 			const extensions = getCodeModeExtensionToolSnapshot(pi, context, {
-				eligibleTopLevelNames: runtime.state.previousToolNames ?? pi.getActiveTools(),
+				eligibleTopLevelNames:
+					runtime.state.previousToolNames ?? pi.getActiveTools(),
 			});
 			return [
 				...createNestedTools(pi, runtime, context),
@@ -81,19 +131,24 @@ export async function registerCodexCodeMode(
 		isActive,
 		opaqueResultScope: (ctx) => resolveProtectedOutputScope(ctx),
 		lazyOpaqueResultScope: () => true,
-		deliverOpaqueResponse: (response, callId, scope, ctx) => appendRemoteDelivery(pi, response, callId, scope, ctx),
+		deliverOpaqueResponse: (response, callId, scope, ctx) =>
+			appendRemoteDelivery(pi, response, callId, scope, ctx),
 		executionKind: (ctx) => {
-			const kind = resolveCodexRuntimePlanForState(ctx as ExtensionContext, runtime.state).kind;
-			return kind === "notebook" || kind === "ts" || kind === "js" ? kind : "code";
+			const kind = resolveCodexRuntimePlanForState(
+				ctx as ExtensionContext,
+				runtime.state,
+			).kind;
+			return kind === "ts" || kind === "vm" ? kind : "code";
 		},
 		notebookOptions: () => ({
 			maxHeapMiB: runtime.state.config.notebook.maxHeapMiB,
 			agentDir: getAgentDir(),
-			...(runtime.state.config.notebook.profile ? { profile: runtime.state.config.notebook.profile } : {}),
+			...(runtime.state.config.notebook.profile
+				? { profile: runtime.state.config.notebook.profile }
+				: {}),
 		}),
 		providesRenderers: true,
-		richRendering: () => runtime.state.config.ui.codeModeDetails,
-		minimalOutput: () => runtime.state.config.ui.compactTools === "minimal",
+		toolDetails: () => runtime.state.config.ui.toolDetails,
 	});
 	return {
 		prepare: (ctx) => {
@@ -136,12 +191,20 @@ function createNestedTools(
 			createApplyPatchTool({
 				customRustBinariesDir: runtime.state.config.tools.customRustBinariesDir,
 				promptSnippet: false,
-				showDiffWhenCollapsed: runtime.state.config.ui.compactTools === "off",
+				showDiffWhenCollapsed:
+					runtime.state.config.ui.toolDetails === "preview",
 			}),
-			"await tools.apply_patch(patch) // *** Begin Patch / *** End Patch; actions: *** Add File: path | *** Update File: path | *** Delete File: path; *** Move to: path must immediately follow its Update File header and still needs a nonempty @@ hunk (use one unchanged context line for a pure move); Update hunks MUST follow file order; copy exact context; @@ text is context, not a line range; reread a file before patching if it changed since your last read",
+			"tools.apply_patch(patch)",
 			{},
 			{
 				kind: "freeform",
+				promptGuidelines: [
+					"Wrap in *** Begin Patch / *** End Patch. Actions: *** Add File: path | *** Update File: path | *** Delete File: path",
+					"*** Move to: path follows its Update File header immediately; include a nonempty @@ hunk (one unchanged context line for a pure move)",
+					"Update hunks follow file order. Copy exact context; @@ text is context, not a line range. Reread changed files before patching",
+					"One patch per file; split oversized patches serially. Batch independent files with Promise.allSettled",
+					"Use for targeted edits. Reserve shell/Python for formatting and bulk rewrites",
+				],
 				prepareInput(input) {
 					if (typeof input !== "string")
 						throw new Error("apply_patch expects a patch string");
@@ -154,17 +217,19 @@ function createNestedTools(
 						"status" in result.details &&
 						result.details.status === "partial_failure"
 					)
-						return result.content
-							.filter((item) => item.type === "text")
-							.map((item) => item.text)
-							.join("\n") || "apply_patch partially failed";
+						return (
+							result.content
+								.filter((item) => item.type === "text")
+								.map((item) => item.text)
+								.join("\n") || "apply_patch partially failed"
+						);
 					return undefined;
 				},
 			},
 		),
 		toNestedTool(
 			createExecCommandTool(runtime.tracker, runtime.sessions, options),
-			"await tools.exec_command({ cmd: string, workdir?: string, shell?: string, tty?: boolean, yield_time_ms?: number, max_output_tokens?: number, login?: boolean }) // returns { output: string, session_id?: number, exit_code?: number }",
+			"tools.exec_command({ cmd: string, workdir?: string, shell?: string, tty?: boolean, yield_time_ms?: number, max_output_tokens?: number, login?: boolean })",
 			{
 				start(id, input) {
 					const cmd =
@@ -180,52 +245,103 @@ function createNestedTools(
 			},
 			{
 				yieldTimeMs: LONG_RUNNING_TOOL_OUTER_YIELD_MS,
+				promptGuidelines: [
+					"Filter large output at the source",
+					"Use tty=true for input and persistent processes",
+					"Returns { output: string, session_id?: number, exit_code?: number }",
+				],
 				...textOutput,
 				resultValue(result) {
 					const details = result.details;
 					if (result.content.some((item) => item.type === "image")) {
 						const outputHint = isExecResult(details)
 							? details.output
-							: result.content.filter((item) => item.type === "text").map((item) => item.text).join("\n") || undefined;
+							: result.content
+									.filter((item) => item.type === "text")
+									.map((item) => item.text)
+									.join("\n") || undefined;
 						return codeModeImageResult(result, outputHint);
 					}
 					if (isExecResult(details)) return details;
-					return result.content
-						.filter((item): item is { type: "text"; text: string } => item.type === "text")
-						.map((item) => item.text)
-						.join("\n") || "(no output)";
+					return (
+						result.content
+							.filter(
+								(item): item is { type: "text"; text: string } =>
+									item.type === "text",
+							)
+							.map((item) => item.text)
+							.join("\n") || "(no output)"
+					);
 				},
 			},
 		),
 		toNestedTool(
 			createWriteStdinTool(runtime.sessions, options),
-			"await tools.write_stdin({ session_id: number, chars?: string, yield_time_ms?: number, max_output_tokens?: number }) // non-empty chars only when the original exec_command used tty=true",
+			"tools.write_stdin({ session_id: number, chars?: string, yield_time_ms?: number, max_output_tokens?: number })",
 			{},
-			{ yieldTimeMs: LONG_RUNNING_TOOL_OUTER_YIELD_MS, ...textOutput },
+			{
+				yieldTimeMs: LONG_RUNNING_TOOL_OUTER_YIELD_MS,
+				promptGuidelines: [
+					"Nonempty chars require tty=true on the original tools.exec_command call",
+				],
+				...textOutput,
+			},
 		),
 	];
-	if (!ctx || supportsViewImageInputs(ctx.model) || runtime.state.config.tools.viewImageFallback) {
+	if (
+		!ctx ||
+		supportsViewImageInputs(ctx.model) ||
+		runtime.state.config.tools.viewImageFallback
+	) {
 		const imageCapable = !ctx || supportsViewImageInputs(ctx.model);
-		tools.push(toNestedTool(
-			createViewImageTool({
-				customRustBinariesDir: runtime.state.config.tools.customRustBinariesDir,
-				describeForTextModels: runtime.state.config.tools.viewImageFallback,
-				promptSnippet: false,
-				customRendering: runtime.state.config.ui.toolRenaming,
-			}),
-			imageCapable
-				? "const result = await tools.view_image({ path: string, detail?: \"original\" }); image(result)"
-				: "const description = await tools.view_image({ path: string }); text(description)",
-			{},
-			{ ...(imageCapable ? { resultValue: codeModeImageResult } : {}) },
-		));
+		tools.push(
+			toNestedTool(
+				createViewImageTool({
+					customRustBinariesDir:
+						runtime.state.config.tools.customRustBinariesDir,
+					describeForTextModels: runtime.state.config.tools.viewImageFallback,
+					promptSnippet: false,
+					customRendering: runtime.state.config.ui.toolRenaming,
+				}),
+				imageCapable
+					? 'tools.view_image({ path: string, detail?: "original" })'
+					: "tools.view_image({ path: string })",
+				{},
+				imageCapable
+					? {
+							promptGuidelines: ["Pass the result to image()"],
+							resultValue: codeModeImageResult,
+						}
+					: {},
+			),
+		);
 	}
-	if (ctx && resolveCodexRuntimePlanForState(ctx, runtime.state).autoReasoning) {
-		tools.push(toNestedTool(runtime.autoReasoning.tool, `await tools.change_reasoning({ level: "low" | "medium" | "high" | "xhigh" | "max" }) // ${runtime.autoReasoning.tool.description}`));
+	if (
+		ctx &&
+		resolveCodexRuntimePlanForState(ctx, runtime.state).autoReasoning
+	) {
+		tools.push(
+			toNestedTool(
+				{
+					...runtime.autoReasoning.tool,
+					description: "Change reasoning effort",
+				},
+				'tools.change_reasoning({ level: "low" | "medium" | "high" | "xhigh" | "max" })',
+				{},
+				{ promptGuidelines: [runtime.autoReasoning.guidance()] },
+			),
+		);
 	}
 	return tools.filter((tool) => registeredToolNames.has(tool.name));
 }
 
-function isExecResult(details: AgentToolResult<unknown>["details"]): details is Record<string, unknown> & { output: string } {
-	return Boolean(details && typeof details === "object" && "output" in details && typeof details.output === "string");
+function isExecResult(
+	details: AgentToolResult<unknown>["details"],
+): details is Record<string, unknown> & { output: string } {
+	return Boolean(
+		details &&
+		typeof details === "object" &&
+		"output" in details &&
+		typeof details.output === "string",
+	);
 }

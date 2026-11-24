@@ -1,7 +1,7 @@
 import { codeModeGlobalName } from "./tool-identity.ts";
 import type { CodeModeToolDefinition } from "./types.js";
 
-// Inject the same formatter into V8 and Deno without changing returned objects.
+// Share formatting across runtimes without changing returned objects.
 export const commandOutputFormatterSource = `(value, plain) => {
   const metadata = Object.fromEntries(Object.entries(value).filter(([key]) =>
     key !== "output" && key !== "chunk_id" && key !== "wall_time_seconds"
@@ -12,14 +12,19 @@ export const commandOutputFormatterSource = `(value, plain) => {
   return plain ? text + "\\nOutput:\\n" + value.output : text;
 }`;
 
-export function withCommandOutput(source: string, tools: CodeModeToolDefinition[]): string {
+export function withCommandOutput(
+	source: string,
+	tools: CodeModeToolDefinition[],
+): string {
 	const hints = tools.flatMap((tool) =>
 		"textOutput" in tool && tool.textOutput !== undefined
 			? [[codeModeGlobalName(tool.name), tool.textOutput === "plain-command"]]
-			: []);
+			: [],
+	);
 	if (hints.length === 0) return source;
 	// Keep the injected prefix on one line so cell line numbers do not shift.
-	return `(() => {
+	return (
+		`(() => {
   const registry = globalThis.tools;
   const emit = globalThis.text;
   const results = new WeakMap();
@@ -33,5 +38,6 @@ export function withCommandOutput(source: string, tools: CodeModeToolDefinition[
     };
   }
   globalThis.text = (value) => emit(results.has(value) && typeof value.output === "string" ? format(value, results.get(value)) : value);
-})();`.replaceAll("\n", "") + source;
+})();`.replaceAll("\n", "") + source
+	);
 }

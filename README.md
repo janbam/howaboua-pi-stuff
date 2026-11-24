@@ -10,8 +10,8 @@ Pi packages run with your local permissions. You can obviously trust me, a stran
 
 | Package | Includes | Deliberate exclusions |
 |---|---|---|
-| [`@howaboua/pi-stuff`](./packages/pi-stuff) | 13 general extensions and 15 shareable skills | Agent Board, Browser, Sites, Notes Compaction, Observatory, Sandbox, Codex extensions, nested AGENTS loader and Omarchy support |
-| [`@howaboua/pi-extensions`](./packages/pi-extensions) | 13 general extensions | Agent Board, Browser, Sites, Notes Compaction, Observatory, Sandbox, Codex extensions and nested AGENTS loader |
+| [`@howaboua/pi-stuff`](./packages/pi-stuff) | 9 general extensions and 15 shareable skills | Agent Comms, Browser, Sites, Observatory, Sandbox, Codex extensions, nested AGENTS loader and Omarchy support |
+| [`@howaboua/pi-extensions`](./packages/pi-extensions) | 9 general extensions | Agent Comms, Browser, Sites, Observatory, Sandbox, Codex extensions and nested AGENTS loader |
 | [`@howaboua/pi-skills`](./packages/pi-skills) | 15 shareable skills | Omarchy support |
 
 ```bash
@@ -21,15 +21,17 @@ pi install npm:@howaboua/pi-extensions
 pi install npm:@howaboua/pi-skills
 ```
 
+Grok Realtime and Pet are standalone installs. Follow their links in the extension list below.
+
 `pi-codex-conversion` is separate because it changes Pi's tool surface for GPT/Codex models. `pi-codex-web-run` and `pi-codex-imagegen` are separate because they use Codex endpoints and login. `omarchy-help` is separate because it targets Arch desktops configured with Omarchy.
 
 Install `pi-browser` separately for logged-in browser control. The standalone `pi-subdir-agents` loader is also opt-in.
 
-Install `pi-agent-board` separately for message boards and the `/board` browser viewer. Shepherdr connects its agents to boards when that extension is loaded.
+[Agent Comms](./packages/pi-agent-comms) replaces Notes Compaction and Agent Board. It provides session notes, context rollover and boards. `/notes` and `/board` open settings. `/board viewer` opens the browser viewer. See the [migration steps](./packages/pi-agent-comms#switching-from-notes-compaction-or-agent-board).
 
 Install `pi-observatory` separately for local session usage, tool outcomes and custom collector dashboards. `/observatory` opens the viewer; `/observatory agent <scope>` asks your current agent to investigate recorded evidence.
 
-`pi-notes-compaction`, `pi-sandbox` and `pi-chatgpt-sites` are also separate installs for session notes and context rollover, local VMs and app previews, and ChatGPT Sites management.
+`pi-sandbox` and `pi-chatgpt-sites` are also separate installs for local VMs and app previews, and ChatGPT Sites management.
 
 Install `pi-codex-guardian` separately for tool-call approval reviews. It requires a ChatGPT-backed Codex model and blocks tools when a review cannot complete.
 
@@ -37,9 +39,8 @@ Install `pi-codex-guardian` separately for tool-call approval reviews. It requir
 
 | Package | What it adds |
 |---|---|
-| [`pi-agent-board`](./packages/pi-agent-board) | Standalone agent boards and the read-only `/board` browser viewer |
+| [`pi-agent-comms`](./packages/pi-agent-comms) | Session notes, shared-agent history, context rollover and agent boards with a read-only browser viewer |
 | [`pi-ask`](./packages/pi-ask) | Interactive user decisions, review triage, and human handoffs |
-| [`pi-auto-trees`](./packages/pi-auto-trees) | `/marker` and `/end` for rolling completed work into a compact branch summary |
 | [`pi-better-skills-tool`](./packages/pi-better-skills-tool) | Progressive skill discovery in normal Pi, Code Mode, and Notebook Mode |
 | [`pi-browser`](./packages/pi-browser) | Logged-in browser control with local CDP sessions and SSH host routing |
 | [`pi-cache-hit-predictor`](./packages/pi-cache-hit-predictor) | Inline prompt-cache hit predictions when switching models or reasoning levels |
@@ -51,17 +52,24 @@ Install `pi-codex-guardian` separately for tool-call approval reviews. It requir
 | [`pi-grok-realtime`](./packages/pi-grok-realtime) | Grok voice with Pi doing the work, local and browser dictation, and custom voice tools |
 | [`pi-gpt-switcher`](./packages/pi-gpt-switcher) | `/sol`, `/luna` and `/astra` shortcuts for Codex models with configurable reasoning defaults |
 | [`pi-codex-imagegen`](./packages/pi-codex-imagegen) | Codex image generation and editing in normal Pi, Code Mode, and Notebook Mode |
-| [`pi-notes-compaction`](./packages/pi-notes-compaction) | Provider-neutral session notes, shared-agent notes and notes-guided context rollover |
 | [`pi-observatory`](./packages/pi-observatory) | Local session usage and outcome dashboard, custom collectors and on-demand agent investigations |
 | [`pi-pet`](./packages/pi-pet) | Animated companion miniapps for GipPity Remote |
 | [`pi-sandbox`](./packages/pi-sandbox) | Persistent local VMs, guest commands, supervised services and app previews |
 | [`pi-shepherdr`](./packages/pi-shepherdr) | Herdr-native multi-agent orchestration |
-| [`pi-smart-btw`](./packages/pi-smart-btw) | Async side-session questions with explicit injection into the main chat |
-| [`pi-subagent-review`](./packages/pi-subagent-review) | `/review` through an isolated review subagent |
 | [`pi-subdir-agents`](./packages/pi-subdir-agents) | Nested `AGENTS.md` context during repository discovery |
 | [`pi-suggestions`](./packages/pi-suggestions) | Opt-in next-prompt drafts with `/suggestions` model settings |
 | [`pi-unicode-charts`](./packages/pi-unicode-charts) | Terminal-native Unicode charts for Pi Markdown |
 | [`pi-codex-web-run`](./packages/pi-codex-web-run) | Codex web search and navigation in normal Pi, Code Mode, and Notebook Mode |
+
+## Retired extensions
+
+These packages are deprecated on npm. Existing versions remain available. The links point to the source for the last published versions if you want to fork them.
+
+| Package | Last published source | Current approach |
+|---|---|---|
+| `pi-auto-trees` | [0.1.19](https://github.com/IgorWarzocha/howaboua-pi-stuff/tree/d67cb69b22decc4ea024236ba59dc4ddae9a2334/packages/pi-auto-trees) | Notes-based compaction in [Agent Comms](./packages/pi-agent-comms) |
+| `pi-smart-btw` | [0.2.8](https://github.com/IgorWarzocha/howaboua-pi-stuff/tree/a6c908cf17ce92decc54a26f753bc6c6831695b7/packages/pi-smart-btw) | A separate Pi session for side questions |
+| `pi-subagent-review` | [0.2.27](https://github.com/IgorWarzocha/howaboua-pi-stuff/tree/debd4aa3139a4fda993f9a5213cfa58eff6f21aa/packages/pi-subagent-review) | The `reviewer` profile in [Shepherdr](./packages/pi-shepherdr) |
 
 ## Skills
 
@@ -79,15 +87,53 @@ Pi discovers installed skills automatically and loads them when a task matches. 
 
 [`pi-chill`](./packages/pi-chill) folds routine tool activity into expandable progress blocks. It is a customisable starting point, installed from a checkout rather than npm, and is not included in the bundles.
 
+## Herdr apps
+
+These apps run alongside Herdr, separate from the npm bundles. Each README covers requirements, installation and everyday use.
+
+| App | What it does |
+|---|---|
+| [Herdr Voice](./apps/herdr-voice) | Use this computer's microphone and speakers with local or remote Pi sessions through a native panel |
+| [Herdr State](./apps/herdr-state) | Manually save Herdr layouts and exact agent conversations, then restore them after a reboot without submitting new tasks |
+
 ## Build an integration
 
 The [extension API guide](./docs/extension-apis.md) covers Board and Notes with other subagent extensions, PCC tool and context APIs, voice tools, and browser miniapps. It includes lifecycle diagrams, public contracts and small integration examples.
 
 [How we test changes in a sandbox](./docs/e2e-sandboxing-test-procedure/) explains our reviewer workflow, model and provider comparisons, and headless application checks.
 
+## Preview releases
+
+The `core` and `dev` npm tags are opt-in test builds. They do not change `latest` or update the bundles. For example:
+
+```sh
+pi install npm:@howaboua/pi-shepherdr@core
+```
+
+Use `@latest` instead to return to the stable package. Restart participating Pi sessions after changing versions. The published Shepherdr Core preview requires Herdr Core 0.1.18+, Pi 1.5+, Node.js 22.18+ and, for shared Notes, Notes Compaction 0.0.15+. It does not include the Agent Comms bridge update. Keep its existing Notes package until the coordinated update is available.
+
+<details>
+<summary>Publish a preview</summary>
+
+From the reviewed commit, push an explicit tag for one package:
+
+```sh
+tag="core/pi-shepherdr/$(git rev-parse --short=12 HEAD)"
+git tag "$tag"
+git push origin "refs/tags/$tag"
+```
+
+Use `dev/<package>/<commit>` for the `dev` channel. GitHub Actions runs the selected package's publish hooks and publishes only that package. Its temporary version uses the next patch number plus the channel, workflow run, attempt and commit. Source versions, lockfiles and changesets are not committed or consumed. Stable releases still follow the Changesets workflow on `main`.
+
+</details>
+
 ## Changelog
 
 See [CHANGELOG.md](./CHANGELOG.md). Package-level changelogs remain beside packages that have them.
+
+Extension updates use Pi 1.5's native notices on the next fresh launch. The first launch records installed versions silently. Use `collapseChangelog` in Pi's settings for condensed notices. Bundles show their combined changelog rather than separate notices for each bundled extension. Direct extension-file loads do not show package update notices. `/changelog` shows Pi's own history; use the links above for package history.
+
+The old `howaboua-pi-stuff-changelog.json` state and its `suppress` preference are no longer read or migrated. Set Pi's `collapseChangelog` preference yourself if you want condensed notices. This condenses updates rather than hiding them.
 
 ## License
 

@@ -4,6 +4,7 @@ export function normalizeVoiceApiProvider(value: unknown): string | undefined {
 		value.trim() === value &&
 		value.length > 0 &&
 		Buffer.byteLength(value) <= 512 &&
+		// oxlint-disable-next-line no-control-regex -- Intentionally matches terminal controls or rejects control characters at the boundary.
 		!/[\u0000-\u001f\u007f]/u.test(value)
 		? value
 		: undefined;
@@ -11,10 +12,23 @@ export function normalizeVoiceApiProvider(value: unknown): string | undefined {
 
 export const GIPPITY_VOICE_MODELS = [
 	"codex-live-1.1",
+	"api-live-1.1",
 	"realtime-2.1",
 	"realtime-2.1-mini",
 ] as const;
 type GippityVoiceModel = (typeof GIPPITY_VOICE_MODELS)[number];
+export const GIPPITY_VOICE_MODEL_OPTIONS = {
+	"codex-live-1.1": { label: "Codex Live (OAuth)", kind: "codex" },
+	"api-live-1.1": { label: "GPT Live 1.1 (API)", kind: "live" },
+	"realtime-2.1": { label: "GPT-Realtime-2.1 (API)", kind: "realtime" },
+	"realtime-2.1-mini": {
+		label: "GPT-Realtime-2.1 Mini (API)",
+		kind: "realtime",
+	},
+} as const satisfies Record<
+	GippityVoiceModel,
+	{ label: string; kind: "codex" | "live" | "realtime" }
+>;
 export const OPENAI_REALTIME_VOICES = [
 	"alloy",
 	"ash",

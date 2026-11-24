@@ -1,6 +1,6 @@
 import { defineTool } from "@earendil-works/pi-coding-agent";
+import { compile, type Static } from "@earendil-works/pi-schema";
 import { Text } from "@earendil-works/pi-tui";
-import { Check } from "typebox/value";
 import { AskParameters, type AskPrompt } from "./contracts.js";
 import {
 	type AskCoordinatorOptions,
@@ -16,6 +16,8 @@ import {
 	textContent,
 } from "./normalize.js";
 
+const askValidator = compile(AskParameters);
+
 interface BlockedState {
 	id: string;
 	active: boolean;
@@ -29,7 +31,6 @@ type OnBlockedChange = (state: BlockedState) => void;
 
 interface AskToolOptions extends AskCoordinatorOptions {
 	onBlockedChange?: OnBlockedChange;
-	isGpt?(): boolean;
 }
 
 export function createAskRuntime({
@@ -39,7 +40,6 @@ export function createAskRuntime({
 	onPendingChange,
 	onRequestChange,
 	onPresent,
-	isGpt = () => false,
 }: AskToolOptions = {}) {
 	const coordinator = createAskCoordinator({
 		...(askInComposer ? { askInComposer } : {}),
@@ -59,29 +59,29 @@ export function createAskRuntime({
 			const params = input === undefined ? {} : input;
 			const problem = askInputProblem(params);
 			if (problem) throw new Error(problem);
-			if (!Check(AskParameters, params))
-				throw new Error("Invalid ask arguments; ask({}) returns help");
+			if (!askValidator.check(params))
+				throw new Error(
+					"Ask couldn't read these arguments. Call ask({}) for the supported format.",
+				);
 			return params;
 		},
-		async execute(toolCallId, params, signal, _onUpdate, ctx) {
+		async execute(
+			toolCallId,
+			params: Static<typeof AskParameters>,
+			signal,
+			_onUpdate,
+			ctx,
+		) {
 			if (isAskHelpInput(params)) {
 				return {
 					content: [
 						textContent(
-							(isGpt()
-								? [
-										'ask({prompts:[{title,body?,multiple?,choices?:[{label,description?}]}],delivery?:"wait"|"steer",handoff?})',
-										"wait default; steer ONLY if reversible work remains; handoff→wait user action+state completion signal",
-										"Review: finding→prompt+disposition choices; NEVER report first",
-										"Auto Other/rephrase; no choices=free text; blank Other/rephrase→rephrase/follow up",
-									]
-								: [
-										'ask({ prompts: [{ title, body?, multiple?, choices?: [{ label, description? }] }], delivery?: "wait"|"steer", handoff? })',
-										"Omit delivery to wait; steer only while reversible work can continue. Handoffs wait for user action; state the completion signal",
-										"For reviews, make each finding a prompt with disposition choices; do not report first",
-										"Other/rephrase is automatic; omit choices for free text. Blank Other/rephrase means rephrase or follow up",
-									]
-							).join("\n"),
+							[
+								'ask({prompts:[{title,body?,multiple?,choices?:[{label,description?}]}],delivery?:"wait"|"steer",handoff?:boolean})',
+								"wait default; steer only while reversible work can continue. Handoff requires wait; state action+completion signal",
+								"Each review finding MUST go directly into a prompt with disposition choices",
+								"Auto Other/rephrase; no choices=free text; blank Other/rephrase→rephrase/follow up",
+							].join("\n"),
 						),
 					],
 					details: { kind: "help" },
@@ -90,7 +90,7 @@ export function createAskRuntime({
 			const { delivery, handoff, prompts } = normalizeAskInput(params);
 			if (prompts.length === 0) {
 				throw new Error(
-					"ask requires at least one prompt with a non-empty title.",
+					"Add at least one prompt with a non-empty title. Call ask({}) for the format.",
 				);
 			}
 			if (!askInComposer && !ctx.hasUI)
@@ -158,8 +158,15 @@ export function createAskRuntime({
 		renderCall(args, theme, context) {
 			if (isAskHelpInput(args))
 				return new Text(theme.fg("toolTitle", theme.bold("ask help")), 0, 0);
-			const count = Array.isArray(args.prompts) ? args.prompts.length : 0;
+			const prompts =
+				args && typeof args === "object" && "prompts" in args
+					? args.prompts
+					: undefined;
+			const count = Array.isArray(prompts) ? prompts.length : 0;
 			const label =
+				args &&
+				typeof args === "object" &&
+				"handoff" in args &&
 				args.handoff === true
 					? "ask handoff "
 					: isSteeringAskInput(args)

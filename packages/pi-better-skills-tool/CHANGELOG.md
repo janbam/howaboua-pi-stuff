@@ -1,5 +1,25 @@
 # @howaboua/pi-better-skills-tool
 
+## 0.0.15
+
+- Skills lists trusted repository `.agents/skills` under Session alongside `.pi/skills`, without duplicates. Global `~/.agents/skills` are excluded.
+- Skills always uses compact discovery and reading guidance, including in standalone installs.
+
+## 0.0.14
+
+- Fixed Skills discovery failing on an empty object in Code and Notebook.
+- Skills discovery and reads no longer open unrelated skill files when Pi has already loaded the catalog.
+- Shorter Skills help explains how to combine body and reference reads.
+
+## 0.0.13
+
+- Requires Pi 1.5 or newer.
+
+  - Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`.
+  - Removed the TypeBox installation requirement.
+
+  Skills discovery examples no longer prescribe `await`.
+
 ## 0.0.12
 
 - - Skills now shows its exact discovery call in Code and Notebook modes and clarifies batch-read syntax in help.

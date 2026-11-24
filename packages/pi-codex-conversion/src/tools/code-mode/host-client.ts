@@ -1,4 +1,5 @@
 import { withCommandOutput } from "./command-output.js";
+import { withContentOutput } from "./content-output.js";
 import { withMissingMcpToolRecovery } from "./mcp-tool-recovery.js";
 import { CodeModeHostCellOperations } from "./host-cell-operations.js";
 import { CodeModeHostDelegation } from "./host-delegation.js";
@@ -16,10 +17,7 @@ import {
 	toWireToolDefinition,
 } from "./host-protocol.js";
 import { CodeModeHostSession } from "./host-session.js";
-import {
-	directToolYieldTime,
-	scopeAllToolsToDiscoverable,
-} from "./tool-source.js";
+import { directToolYieldTime, scopeAllToolsToListed } from "./tool-source.js";
 import type { CodeModeNestedRenderStore } from "./trace-render-state.js";
 import type {
 	CodeModeToolDefinition,
@@ -91,7 +89,12 @@ export class CodeModeHostClient {
 				request: {
 					tool_call_id: `exec-${id}`,
 					enabled_tools: tools.map(toWireToolDefinition),
-					source: scopeAllToolsToDiscoverable(withMissingMcpToolRecovery(withCommandOutput(code, tools), tools), tools),
+					source: scopeAllToolsToListed(
+						withContentOutput(
+							withMissingMcpToolRecovery(withCommandOutput(code, tools), tools),
+						),
+						tools,
+					),
 					yield_time_ms: effectiveYieldTimeMs,
 					max_output_tokens: maxOutputTokens,
 				},
@@ -121,7 +124,9 @@ export class CodeModeHostClient {
 				abort();
 				throw abortError();
 			}
-			const response = this.delegation.attach(parseRuntimeResponse(await initial));
+			const response = this.delegation.attach(
+				parseRuntimeResponse(await initial),
+			);
 			const result = await this.waitForBlockers(
 				response,
 				context,
@@ -149,9 +154,17 @@ export class CodeModeHostClient {
 		signal?: AbortSignal,
 	): Promise<RuntimeResponse> {
 		let current = response;
-		while (current.kind === "yielded" && this.delegation.isBlocked(current.cellId)) {
+		while (
+			current.kind === "yielded" &&
+			this.delegation.isBlocked(current.cellId)
+		) {
 			await this.delegation.waitUntilUnblocked(current.cellId, signal);
-			current = await this.cells.wait(current.cellId, yieldTimeMs, context, signal);
+			current = await this.cells.wait(
+				current.cellId,
+				yieldTimeMs,
+				context,
+				signal,
+			);
 		}
 		return current;
 	}

@@ -1,5 +1,32 @@
 # @howaboua/pi-codex-imagegen
 
+## 0.0.17
+
+- Image generation settings clarify when Codex uses the current model’s provider and when a separate Codex login or API credentials are needed.
+- Image generation always uses compact discovery and tool help, including in standalone installs.
+
+## 0.0.16
+
+- Displaying generated images inline no longer rereads the saved files.
+- Image help shows the current access mode's arguments once, including how to select an edit target.
+
+## 0.0.15
+
+- Generated images now display once in ordinary and nested tool results.
+- Image generation help no longer prescribes `await` or `.then()` syntax.
+
+## 0.0.14
+
+- Replaced the TypeBox dependency with Pi's native schema builders and validation.
+
+## 0.0.13
+
+- Requires Pi 1.5 or newer.
+  - Added `/imagegen` access selection and API model, quality and complexity preferences.
+  - OpenAI API access now supports GIF and SVG generation and per-request output controls.
+  - Tool discovery now shows controls for the selected access route and requires explicit image references for edits.
+  - Removed custom changelog suppression. Updates use Pi's native notices and `collapseChangelog`.
+
 ## 0.0.12
 
 - - Report invalid or unreadable tool configuration without parser or filesystem diagnostics.

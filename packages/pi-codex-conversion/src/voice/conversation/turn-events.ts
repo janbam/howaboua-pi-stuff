@@ -52,8 +52,9 @@ export class ConversationTurns {
 		);
 		this.handoff = new RealtimeDelegationHandoff({
 			isActive: () => this.isActive(),
+			// Pi's transcript already contains the content forwarded by its agent turn.
 			onContext: (target, channel, content) =>
-				this.sendContext(target, channel, content),
+				this.sendContext(target, channel, content, "forwarding"),
 			onSettled: (id) => this.turnTracker.delegationSettled(id),
 		});
 	}
@@ -69,8 +70,15 @@ export class ConversationTurns {
 		}
 		if (event["type"] === "turn.created") {
 			const turn = event["turn"];
-			if (turn && typeof turn === "object" && "role" in turn && turn.role === "user")
-				{ this.inputGeneration++; this.turnTracker.inputStarted(); }
+			if (
+				turn &&
+				typeof turn === "object" &&
+				"role" in turn &&
+				turn.role === "user"
+			) {
+				this.inputGeneration++;
+				this.turnTracker.inputStarted();
+			}
 		}
 
 		if (
@@ -95,9 +103,7 @@ export class ConversationTurns {
 			return;
 		}
 		if (event["type"] === "output_transcript.added") {
-			const output = transcriptText(
-				transcriptItemText(event["item"]),
-			);
+			const output = transcriptText(transcriptItemText(event["item"]));
 			if (output) {
 				this.playback.outputAdded();
 				this.turnTracker.outputAdded(output);
@@ -137,12 +143,16 @@ export class ConversationTurns {
 			.join("")
 			.trim();
 		if (!input) {
-			this.onFailure(
-				new Error("Codex voice delegation was empty"),
-			);
+			this.onFailure(new Error("Codex voice delegation was empty"));
 			return;
 		}
-		const delegated = this.turnTracker.delegated(input, delegationId);
+		const delegated = this.turnTracker.delegated(
+			input,
+			delegationId,
+			typeof record["user_bidi_turn_id"] === "string"
+				? record["user_bidi_turn_id"]
+				: undefined,
+		);
 		this.callbacks.onEvent?.(
 			realtimeEventDetails(this.callId, event, input, Boolean(delegated)),
 		);
@@ -166,13 +176,25 @@ export class ConversationTurns {
 						);
 					const prepared = await this.callbacks.rewriteDelegation(turn, signal);
 					const { input } = prepared;
-					if (prepared.endCall && this.isActive() && this.inputGeneration === inputAtDelegation)
-						this.callbacks.onEndCall?.(this.completedOutputs > outputsAtDelegation, input ? turn.delegationId : undefined);
-					if (!input && turn.delegationId) this.turnTracker.delegationSettled(turn.delegationId);
+					if (
+						prepared.endCall &&
+						this.isActive() &&
+						this.inputGeneration === inputAtDelegation
+					)
+						this.callbacks.onEndCall?.(
+							this.completedOutputs > outputsAtDelegation,
+							input ? turn.delegationId : undefined,
+						);
+					if (!input && turn.delegationId)
+						this.turnTracker.delegationSettled(turn.delegationId);
 					if (!signal.aborted && (this.isActive() || this.finishing) && input) {
 						// Retain the original delegation for display; Pi receives only the prepared task.
 						const { transcriptDelta: _transcriptDelta, ...delegation } = turn;
-						this.callbacks.onTurn({ ...delegation, input, originalDelegation: turn.input });
+						this.callbacks.onTurn({
+							...delegation,
+							input,
+							originalDelegation: turn.input,
+						});
 					}
 				} catch (error) {
 					if (signal.aborted || (!this.isActive() && !this.finishing)) return;
@@ -237,10 +259,12 @@ export class ConversationTurns {
 		if (completed) this.callbacks.onTurn(completed);
 	}
 
+	/** Submit context chunks and expose hidden controls through the display-only audit. */
 	sendContext(
 		target: RealtimeHandoffTarget,
 		channel: RealtimeHandoffChannel,
 		content: string,
+		source: "control" | "forwarding" = "control",
 	): void {
 		try {
 			if (channel === "speakable") {
@@ -264,11 +288,12 @@ export class ConversationTurns {
 									content: [{ type: "input_text", text }],
 								},
 					);
-					submitted.push(text);
+					if (source === "control") submitted.push(text);
 				}
 			} finally {
-				// Audit logical updates, retaining only the prefix submitted if transport fails mid-update.
-				if (submitted.length) this.callbacks.onContextSubmitted?.(submitted.join(""));
+				// If transport fails mid-update, reveal only the prefix sent to the peer.
+				if (submitted.length)
+					this.callbacks.onContextSubmitted?.(submitted.join(""));
 			}
 		} catch (error) {
 			this.onFailure(error instanceof Error ? error : new Error(String(error)));

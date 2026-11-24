@@ -1,15 +1,28 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CONFIG_DIR_NAME, defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { compile, obj, opt, str } from "@earendil-works/pi-schema";
 import { Container, Text } from "@earendil-works/pi-tui";
-import { Type } from "typebox";
-import registerPackageChangelog from "../changelog.js";
 import { type PetRuntime, resolvePetRuntime } from "../src/pet-storage.ts";
 import { type PetCatalog, type PetState, parseActionName, parseNote } from "../src/protocol/index.ts";
 import { registerPetDevices } from "./desktop-command.ts";
 import { GIPPITY_REQUIRED_TOOL_MESSAGE, GIPPITY_REQUIRED_USER_MESSAGE } from "./gippity.ts";
 import { registerRemoteApp } from "./remote-app.ts";
 
+const PetParameters = obj(
+  {
+    action: opt(
+      str({
+        minLength: 1,
+        maxLength: 64,
+        description: 'Reaction name, or "list" to return available names',
+      }),
+    ),
+    note: opt(str({ minLength: 1, maxLength: 280, description: "Short visible context" })),
+  },
+  { open: true },
+);
+const checkParameters = compile(PetParameters).check;
 const packageRoot = fileURLToPath(new URL("../", import.meta.url));
 
 function registerPetRuntime(pi: ExtensionAPI, runtime: PetRuntime) {
@@ -48,18 +61,10 @@ function registerPetRuntime(pi: ExtensionAPI, runtime: PetRuntime) {
     name: "pet_show",
     label: "Pet",
     description: "Show a named reaction on the connected Pi Pet",
-    promptGuidelines: ["Use pet_show sparingly; routine task activity animates automatically"],
-    parameters: Type.Object({
-      action: Type.Optional(
-        Type.String({
-          minLength: 1,
-          maxLength: 64,
-          description: 'Reaction name, or "list" to return available names',
-        }),
-      ),
-      note: Type.Optional(Type.String({ minLength: 1, maxLength: 280, description: "Short visible context" })),
-    }),
+    promptGuidelines: ["pet_show: sparingly; routine task activity animates automatically"],
+    parameters: PetParameters,
     async execute(_toolCallId, params) {
+      if (!checkParameters(params)) throw new Error("Invalid arguments; call pet_show with no arguments for help");
       if (params.action === undefined || params.action === "list") {
         const actions = Object.keys(catalog.actions).sort().join(", ");
         const aliases = Object.entries(catalog.aliases)
@@ -70,7 +75,7 @@ function registerPetRuntime(pi: ExtensionAPI, runtime: PetRuntime) {
           content: [
             {
               type: "text",
-              text: `${params.action === undefined ? 'pet_show({ action: "<reaction>", note?: "<short context>" }). ' : ""}${catalog.displayName} actions: ${actions}.${aliases ? ` Aliases: ${aliases}.` : ""}`,
+              text: `${params.action === undefined ? 'pet_show({ action: "<reaction>", note?: "<short context>" })\n' : ""}${catalog.displayName} actions: ${actions}${aliases ? `\nAliases: ${aliases}` : ""}`,
             },
           ],
           details: state,
@@ -86,7 +91,8 @@ function registerPetRuntime(pi: ExtensionAPI, runtime: PetRuntime) {
       };
     },
     renderCall(args, theme) {
-      return new Text(`${theme.fg("toolTitle", theme.bold("Pet"))} ${theme.fg("muted", args.action ?? "help")}`, 0, 0);
+      const action = checkParameters(args) ? args.action : undefined;
+      return new Text(`${theme.fg("toolTitle", theme.bold("Pet"))} ${theme.fg("muted", action ?? "help")}`, 0, 0);
     },
     renderResult(result, _options, theme, renderContext) {
       if (!renderContext.isError) return new Container();
@@ -105,9 +111,8 @@ export default async function piPetExtension(pi: ExtensionAPI): Promise<void> {
   let current: ReturnType<typeof registerPetRuntime> | undefined;
   let refresh = () => {};
   try {
-    const { adaptToolForCodeMode, registerCodeModeExtensionTools } = await import(
-      "@howaboua/pi-codex-conversion/code-mode"
-    );
+    const { adaptToolForCodeMode, registerCodeModeExtensionTools } =
+      await import("@howaboua/pi-codex-conversion/code-mode");
     const codeRegistration = registerCodeModeExtensionTools(pi, () => [
       ...(current ? [adaptToolForCodeMode(current.tool, { discovery: "help", deferLoading: true })] : []),
     ]);
@@ -125,7 +130,6 @@ export default async function piPetExtension(pi: ExtensionAPI): Promise<void> {
       throw error;
   }
 
-  registerPackageChangelog(pi);
   registerPetDevices(pi);
   pi.on("session_start", (_event, ctx) => {
     const resolution = resolvePetRuntime(packageRoot, join(ctx.cwd, CONFIG_DIR_NAME, "pi-pet.json"));

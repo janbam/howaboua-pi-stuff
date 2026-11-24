@@ -16,7 +16,8 @@ import {
 	visibleWidth,
 } from "@earendil-works/pi-tui";
 
-type DelegatedEditor = EditorComponent & Partial<CustomEditor>;
+type DelegatedEditor = EditorComponent &
+	Partial<Omit<CustomEditor, keyof EditorComponent>>;
 type EditorFactory = NonNullable<
 	ReturnType<ExtensionContext["ui"]["getEditorComponent"]>
 >;
@@ -159,13 +160,13 @@ class SuggestionEditor implements EditorComponent, Focusable {
 		);
 	}
 
-	render(width: number): string[] {
+	render(width: number): readonly string[] {
 		this.displayed = undefined;
 		const lines = this.inner.render(width);
 		const prediction = this.state.prediction;
 		if (!prediction || !this.canShow()) return lines;
-		// Unknown layouts and menus are left untouched. A marker alone is not
-		// enough: require the standard empty row between two editor borders.
+		// Unknown layouts and menus are left untouched. Require a single empty
+		// content row, but preserve any decoration before its cursor.
 		if (lines.length !== 3) return lines;
 		const row = lines[1];
 		if (row === undefined) return lines;
@@ -177,7 +178,6 @@ class SuggestionEditor implements EditorComponent, Focusable {
 		const cursor = renderFakeCursor(" ");
 		if (
 			!after.startsWith(cursor) ||
-			!/^[ ]*$/.test(stripTerminalSequences(before)) ||
 			!/^[ ]*$/.test(stripTerminalSequences(after)) ||
 			visibleWidth(row) !== width
 		)

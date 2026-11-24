@@ -1,10 +1,17 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { resolveCodexRuntimePlanForState } from "../adapter/activation/runtime-plan.ts";
-import { rewriteCodexProviderHeaders, rewriteCodexProviderRequest, supportsCodexDeveloperMessages } from "../adapter/provider-request.ts";
+import {
+	rewriteCodexProviderHeaders,
+	rewriteCodexProviderRequest,
+	supportsCodexDeveloperMessages,
+} from "../adapter/provider-request.ts";
 import type { OpenAICodexCustomProviderRegistration } from "../providers/openai-codex-custom-provider.ts";
 import type { CodeModeProxyProviderRegistration } from "../providers/code-mode-proxy-provider.ts";
 import type { CodeModeRegistration } from "../tools/code-mode/tools.ts";
-import { parseRealtimeVoicePrompt, REALTIME_VOICE_PROMPT_CHANNEL } from "../realtime-voice.ts";
+import {
+	parseRealtimeVoicePrompt,
+	REALTIME_VOICE_PROMPT_CHANNEL,
+} from "../realtime-voice.ts";
 import type { CodexExtensionRuntime } from "./runtime.ts";
 import type { CodexToolRegistration } from "./tools.ts";
 import type { CodexUiController } from "./ui.ts";
@@ -14,16 +21,40 @@ import { recordCodexProxyMessage } from "../codex-usage/ledger-store.ts";
 import { createCodexSessionLifecycle } from "./session-lifecycle.ts";
 import { createCodexTurnLifecycle } from "./turn-lifecycle.ts";
 import { createCodexCompactionLifecycle } from "./compaction-lifecycle.ts";
+import { registerCodexShellLifecycle } from "./shell-lifecycle.ts";
 
 function commandArg(args: unknown): string | undefined {
-	if (!args || typeof args !== "object" || !("cmd" in args) || typeof args.cmd !== "string") return undefined;
+	if (
+		!args ||
+		typeof args !== "object" ||
+		!("cmd" in args) ||
+		typeof args.cmd !== "string"
+	)
+		return undefined;
 	return args.cmd;
 }
 
 function isToolCallOnlyAssistantMessage(message: unknown): boolean {
-	if (!message || typeof message !== "object" || !("role" in message) || message.role !== "assistant") return false;
-	if (!("content" in message) || !Array.isArray(message.content) || message.content.length === 0) return false;
-	return message.content.every((item) => typeof item === "object" && item !== null && "type" in item && item.type === "toolCall");
+	if (
+		!message ||
+		typeof message !== "object" ||
+		!("role" in message) ||
+		message.role !== "assistant"
+	)
+		return false;
+	if (
+		!("content" in message) ||
+		!Array.isArray(message.content) ||
+		message.content.length === 0
+	)
+		return false;
+	return message.content.every(
+		(item) =>
+			typeof item === "object" &&
+			item !== null &&
+			"type" in item &&
+			item.type === "toolCall",
+	);
 }
 
 /** Connect Codex lifecycle handlers and provider hooks to Pi events. */
@@ -39,25 +70,60 @@ export function registerCodexEvents(
 	const { state, tracker, sessions } = runtime;
 	const reserve = createCodexReserveController(pi);
 	// Keep provider ownership with the lifecycle that restores its session toggle.
-	const session = createCodexSessionLifecycle(pi, runtime, tools, ui, codeMode, codexProvider, proxyProvider, reserve.modelSelected);
-	const turn = createCodexTurnLifecycle(pi, runtime, ui, codeMode, reserve, session);
-	const compaction = createCodexCompactionLifecycle(pi, runtime, codeMode, turn.refreshNotebookStatus);
+	const session = createCodexSessionLifecycle(
+		pi,
+		runtime,
+		tools,
+		ui,
+		codeMode,
+		codexProvider,
+		proxyProvider,
+		reserve.modelSelected,
+	);
+	const shells = registerCodexShellLifecycle(pi, sessions);
+	const turn = createCodexTurnLifecycle(
+		pi,
+		runtime,
+		ui,
+		codeMode,
+		reserve,
+		session,
+		shells,
+	);
+	const compaction = createCodexCompactionLifecycle(
+		pi,
+		runtime,
+		codeMode,
+		turn.refreshNotebookStatus,
+	);
 	pi.events.on(REALTIME_VOICE_PROMPT_CHANNEL, (value) => {
 		const report = parseRealtimeVoicePrompt(value);
 		if (report) runtime.voice.setPrompt(report);
 	});
-	sessions.onSessionExit((sessionId) => tracker.recordSessionFinished(sessionId));
+	sessions.onSessionExit((sessionId) =>
+		tracker.recordSessionFinished(sessionId),
+	);
 
 	pi.on("session_start", session.start);
 	pi.on("thinking_level_select", (event, ctx) => {
-		if (supportsCodexDeveloperMessages(ctx, state)) recordCodexReasoningUpdate(pi, ctx, runtime.projectContextMessages(ctx), event.previousLevel);
+		if (supportsCodexDeveloperMessages(ctx, state))
+			recordCodexReasoningUpdate(
+				pi,
+				ctx,
+				runtime.projectContextMessages(ctx),
+				event.previousLevel,
+			);
 	});
 	pi.on("model_select", session.modelSelected);
 	pi.on("session_tree", session.tree);
 	pi.on("message_start", async (event) => {
 		if (event.message.role === "user" || event.message.role === "custom")
 			runtime.voice.piUserMessage(event.message);
-		if (event.message.role !== "toolResult" && !isToolCallOnlyAssistantMessage(event.message)) tracker.resetExplorationGroup();
+		if (
+			event.message.role !== "toolResult" &&
+			!isToolCallOnlyAssistantMessage(event.message)
+		)
+			tracker.resetExplorationGroup();
 	});
 	pi.on("message_end", async (event, ctx) => {
 		if (event.message.role === "assistant") {
@@ -97,12 +163,18 @@ export function registerCodexEvents(
 	pi.on("cache_warming_decision", (_event, ctx) => {
 		const plan = resolveCodexRuntimePlanForState(ctx, state);
 		// These routes cannot honor Pi's one-token cap and must not advance the live response chain.
-		if (plan.codexTransport || plan.transport === "responses-lite") return { action: "stop" };
+		if (plan.codexTransport || plan.transport === "responses-lite")
+			return { action: "stop" };
 		return undefined;
 	});
 	pi.on("before_provider_request", async (event, ctx) => {
 		state.cwd = ctx.cwd;
-		return rewriteCodexProviderRequest(event.payload, ctx, state, pi.getSettings().images?.blockImages);
+		return rewriteCodexProviderRequest(
+			event.payload,
+			ctx,
+			state,
+			pi.getSettings().images?.blockImages,
+		);
 	});
 	pi.on("before_provider_headers", (event, ctx) => {
 		rewriteCodexProviderHeaders(event.headers, ctx, state);

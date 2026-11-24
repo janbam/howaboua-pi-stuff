@@ -7,28 +7,65 @@ interface StatusTheme {
 	fg(role: string, text: string): string;
 }
 
-function formatStatusText(suffix: string, theme?: StatusTheme | undefined): string {
+function formatStatusText(
+	suffix: string,
+	theme?: StatusTheme | undefined,
+): string {
 	if (!theme) return `${STATUS_TEXT}${suffix}`;
 	return `${theme.fg("accent", STATUS_TEXT)}${suffix ? theme.fg("dim", suffix) : ""}`;
 }
 
-export function buildExtraToolsOnlyStatusText(tools: string[], theme?: StatusTheme | undefined): string {
-	return formatStatusText(` • extra tools${tools.length > 0 ? `: ${tools.join(", ")}` : ""}`, theme);
+/** Identifies the standalone tool selection on Pi's extension status row. */
+export function buildExtraToolsOnlyStatusText(
+	tools: string[],
+	theme?: StatusTheme,
+): string {
+	return formatStatusText(
+		` • extra tools${tools.length ? `: ${tools.join(", ")}` : ""}`,
+		theme,
+	);
 }
 
-export function buildStatusText(options: { mode?: "normal" | "code" | "notebook" | "ts" | "js" | undefined; verbosity?: string | undefined; fast: "priority" | "ultrafast" | undefined; baseTierEstimate?: boolean | undefined; daybreak?: boolean | undefined; useOnAllModels: boolean; additionalProvider?: boolean | undefined; compaction?: boolean | undefined; usageStatus?: CodexUsageStatus | undefined }, theme?: StatusTheme | undefined): string {
+export function buildStatusText(
+	options: {
+		mode?: "normal" | "code" | "ts" | "vm" | undefined;
+		verbosity?: string | undefined;
+		fast: "priority" | "ultrafast" | undefined;
+		baseTierEstimate?: boolean | undefined;
+		daybreak?: boolean | undefined;
+		useOnAllModels: boolean;
+		additionalProvider?: boolean | undefined;
+		compaction?: boolean | undefined;
+		usageStatus?: CodexUsageStatus | undefined;
+	},
+	theme?: StatusTheme | undefined,
+): string {
 	const extras = [
-		options.mode === "js" ? "JS Notebook" : options.mode === "ts" ? "TS mode" : options.mode === "notebook" ? "notebook mode" : options.mode === "code" ? "code mode" : undefined,
+		options.mode === "vm"
+			? "VM Code"
+			: options.mode === "ts"
+				? "TS mode"
+				: options.mode === "code"
+					? "code mode"
+					: undefined,
 		options.useOnAllModels ? "all models" : undefined,
 		options.additionalProvider ? "additional provider" : undefined,
 		// FORK_MOD: fork hides the compact v2 indicator; restore this entry to re-enable it.
 		// options.compaction ? "compact v2" : undefined,
-		options.fast === "ultrafast" ? "ultrafast" : options.fast ? "fast" : undefined,
+		options.fast === "ultrafast"
+			? "ultrafast"
+			: options.fast
+				? "fast"
+				: undefined,
 		options.baseTierEstimate ? "base cost estimate" : undefined,
 		options.daybreak ? "Daybreak" : undefined,
 		// FORK_MOD: usage segments drop the "left" suffix to keep the footer compact.
-		options.usageStatus?.fiveHourUsageLeft === undefined ? undefined : `5h: ${Math.round(options.usageStatus.fiveHourUsageLeft)}%`,
-		options.usageStatus?.weeklyUsageLeft === undefined ? undefined : `weekly: ${Math.round(options.usageStatus.weeklyUsageLeft)}%`,
+		options.usageStatus?.fiveHourUsageLeft === undefined
+			? undefined
+			: `5h: ${Math.round(options.usageStatus.fiveHourUsageLeft)}%`,
+		options.usageStatus?.weeklyUsageLeft === undefined
+			? undefined
+			: `weekly: ${Math.round(options.usageStatus.weeklyUsageLeft)}%`,
 	]
 		.filter(Boolean)
 		.join(" • ");
@@ -43,7 +80,10 @@ export const SHELL_ADAPTER_TOOL_NAMES = ["exec_command", "write_stdin"];
 export const APPLY_PATCH_TOOL_NAME = "apply_patch";
 /** Pi builtins that standalone apply_patch fully covers and therefore hides while exposed. */
 export const APPLY_PATCH_REPLACED_TOOL_NAMES = ["edit", "write"];
-export const CORE_ADAPTER_TOOL_NAMES = [...SHELL_ADAPTER_TOOL_NAMES, APPLY_PATCH_TOOL_NAME];
+export const CORE_ADAPTER_TOOL_NAMES = [
+	...SHELL_ADAPTER_TOOL_NAMES,
+	APPLY_PATCH_TOOL_NAME,
+];
 export const CODE_MODE_TOOL_NAMES = ["exec", "wait"];
 export const NOTEBOOK_MODE_TOOL_NAMES = [...CODE_MODE_TOOL_NAMES, "notebook"];
 export const VIEW_IMAGE_TOOL_NAME = "view_image";
